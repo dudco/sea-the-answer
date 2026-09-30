@@ -4,7 +4,7 @@
 
 **이 README가 프로젝트의 기본 실행·구현 안내서입니다.** 처음 참여한 사람도 순서대로 따라 할 수 있도록 유지합니다. 앞으로 기능·설정·실행 방법이 바뀌면 해당 설명과 맨 아래 변경 이력을 함께 업데이트합니다.
 
-마지막 업데이트: **2026-09-28**
+마지막 업데이트: **2026-09-30**
 
 ## 목차
 
@@ -21,6 +21,26 @@
 - [11. 문제 해결](#11-문제-해결)
 - [12. 다음 작업과 문서 관리](#12-다음-작업과-문서-관리)
 - [13. 변경 이력](#13-변경-이력)
+
+## 역할4 · PostgreSQL 조회·계산 모듈
+
+역할4 결과물은 **[role4/](role4/README.md)** 에 독립 모듈로 추가했습니다. 기존 Node.js·SQLite 앱의 실행 방법과 코드는 유지되며, 기존 화면이 역할4 API를 자동 호출하지는 않습니다. MRV 80,552행 및 합성 Noon 4,380행의 전처리·적재 코드, 조회/계산 Tool, 데이터 계약, 테스트, 단계별 PDF 9종을 제공합니다. 원본 데이터와 DB·비밀번호는 포함하지 않습니다.
+
+준비물은 Python 3.12, PostgreSQL, 별도로 확보한 입력 데이터입니다. 저장소 루트에서 실행합니다.
+
+```powershell
+cd role4
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.lock.txt
+Copy-Item .env.example .env.local
+.\.venv\Scripts\python.exe -c "import secrets; print(secrets.token_urlsafe(32))"
+# .env.local에 DATABASE_URL과 위에서 생성한 ROLE4_API_TOKEN을 설정
+.\.venv\Scripts\python.exe -m uvicorn service.app:create_app --factory --host 127.0.0.1 --port 8000
+```
+
+이미 `.env.local`이 있으면 복사하지 말고 필요한 항목만 추가합니다. 명세는 http://127.0.0.1:8000/docs 에서 확인하고, Tool 호출에는 Bearer 토큰을 사용합니다. DB가 미적재 상태면 조회는 503을 반환하므로 [전처리·적재 절차](role4/README.md#4-전처리-및-db-적재)를 먼저 수행하세요. 현재 공식 CII 등급은 반환하지 않습니다.
+
+검증은 `role4/`에서 `.\.venv\Scripts\python.exe -m pytest -q`와 `.\.venv\Scripts\python.exe scripts/test_prepare_role4.py`로 실행합니다. 실제 DB 통합 테스트는 `ROLE4_TEST_DATABASE_URL`을 설정한 경우만 수행됩니다. 팀 앱 연결에는 [인수인계 계약](role4/INTEGRATION.md)의 인증·선박 식별자·오류 처리를 적용하세요.
 
 ## 1. 현재 구현 상태
 
@@ -493,6 +513,7 @@ $env:ELECTRON_RUN_AS_NODE = '1'
 
 | 날짜 | 변경 내용 | 검증·남은 사항 |
 |---|---|---|
+| 2026-09-30 | 역할4 독립 모듈·API 계약·PostgreSQL 전처리/적재·PDF 추가, 기존 앱 유지 | 역할4 테스트 47개 및 전처리 3개 통과. 팀 앱의 실제 API 연결·권한 통합은 후속 범위 |
 | 2026-09-28 | 런타임 자동 탐색 보강, 로컬·LAN 실행 파일과 서버 옵션, 접속 주소 출력, 연결 서브넷 검사, 선택적 방화벽 설정 및 다른 기기 실행 안내 추가 | 자동 테스트 15개, 로컬·LAN 브라우저 각 11개 통과. 독립된 다른 기기 연결·공용 Wi-Fi 통과는 미검증 |
 | 2026-09-28 | README를 실행·사용·수집·설정·DB·구현·API·테스트·문제 해결 안내로 확장. 지속 업데이트 지침 추가 | 경로·예제와 현재 코드 대조. 문서 정리로 외부 모델 검증이 추가된 것은 아님 |
 | 2026-09-28 | SQLite DB, 문서 수집·검색, 선택적 모델 생성, 계산 Tool, 주요 UI 연결 구현 | 백엔드 10개·브라우저 11개 통과. 실제 모델·운항 데이터·품질 평가는 남음 |
