@@ -1,17 +1,23 @@
 {
   "name": "haedap-maritime-demo",
-  "version": "1.0.0",
+  "version": "1.2.2",
   "private": true,
   "type": "module",
-  "description": "Haedap local maritime knowledge, reports and tools",
+  "description": "Haedap compact UI with public access and administrator-managed local document, operations, reporting and backup workflows",
   "scripts": {
     "start": "node server.mjs",
     "start:lan": "node server.mjs --lan",
     "dev": "node server.mjs",
     "test": "node --test tests/*.test.mjs",
-    "ingest": "node scripts/ingest.mjs"
+    "ingest": "node scripts/ingest.mjs",
+    "test:browser": "node scripts/browser-smoke.mjs",
+    "test:ui": "node --experimental-vm-modules scripts/ui-smoke.mjs",
+    "check": "node scripts/check-runtime.cjs"
   },
   "engines": {
-    "node": ">=22.13.0"
+    "node": ">=24.0.0"
+  },
+  "devDependencies": {
+    "linkedom": "0.18.13"
   }
 }

@@ -23,7 +23,10 @@ test('HTTP integration: ingestion, search, tools, persistence, input and origin 
       try { health = await (await fetch(base + '/api/health')).json(); break; } catch { await new Promise(r => setTimeout(r, 50)); }
     }
     assert.ok(health?.ok, logs); assert.equal(health.documents, 4); assert.equal(health.llmConfigured, false);
-    const post = (path, body, headers = {}) => fetch(base + path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Haedap-Token': health.csrfToken, ...headers }, body: JSON.stringify(body) });
+    let cookie = '';
+    const setup = await fetch(base+'/api/auth/login', {method:'POST',headers:{'Content-Type':'application/json','X-Haedap-Token':health.csrfToken},body:JSON.stringify({username:'admin',name:'관리자',password:'1234'})});
+    assert.equal(setup.status,200); cookie=setup.headers.getSetCookie().find(c=>c.startsWith('haedap_session=')).split(';')[0];
+    const post = (path, body, headers = {}) => fetch(base + path, { method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: cookie, 'X-Haedap-Token': health.csrfToken, ...headers }, body: JSON.stringify(body) });
     const ask = await post('/api/ask', { question: '황 함유량 기준' }); assert.equal(ask.status, 200);
     const result = await ask.json(); assert.ok(result.statements[0].text.includes('0.50%'));
     const noResult = await (await post('/api/ask', { question: 'chocolate cake recipe' })).json(); assert.equal(noResult.status, 'insufficient_evidence');
@@ -38,8 +41,8 @@ test('HTTP integration: ingestion, search, tools, persistence, input and origin 
     assert.equal((await post('/api/ask', { question: 'x'.repeat(1100000) })).status, 413);
     const malformed = await fetch(base + '/api/ask', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Haedap-Token': health.csrfToken }, body: '{bad' });
     assert.equal(malformed.status, 400);
-    for (const path of ['/data/haedap.sqlite', '/.env', '/backend/db.mjs', '/knowledge/seed.json', '/server.mjs', '/.backup/']) assert.equal((await fetch(base + path)).status, 404, path);
-    for (const path of ['/', '/app.js', '/backend-ui.js', '/style.css']) assert.equal((await fetch(base + path)).status, 200, path);
+    for (const path of ['/data/haedap.sqlite', '/.env', '/backend/db.mjs', '/knowledge/seed.json', '/server.mjs', '/.backup/', '/legacy-ui/app.js', '/backend-ui.js']) assert.equal((await fetch(base + path)).status, 404, path);
+    for (const path of ['/', '/app.js', '/ui/api.js', '/ui/state.js', '/ui/views.js', '/ui/operations-view.js', '/ui/report-view.js', '/ui/helpers.js', '/ui/sample-data.js', '/ui/icons.js', '/ui/ui.css', '/fonts/prototype/fonts.css', '/style.css']) assert.equal((await fetch(base + path)).status, 200, path);
     const calc = await (await post('/api/tools/calculate_emissions', { fuel: 100, factor: 3, dwt: 1000, distance: 100 })).json();
     assert.equal(calc.result.emission, 300);
     assert.equal((await post('/api/tools/calculate_emissions', { fuel: '100' })).status, 400);
@@ -47,7 +50,7 @@ test('HTTP integration: ingestion, search, tools, persistence, input and origin 
     const report = { title: 'HTTP 초안', type: '규정 검토', text: '검색 결과 검토', sources: [result.evidence[0].document_id], version: 0 };
     assert.equal((await post('/api/reports/current', report)).status, 200);
     assert.equal((await post('/api/reports/current', report)).status, 409);
-    assert.equal((await (await fetch(base + '/api/reports/current')).json()).report.title, report.title);
+    assert.equal((await (await fetch(base + '/api/reports/current', {headers:{Cookie:cookie}})).json()).report.title, report.title);
     assert.equal((await post('/api/reports/current', null)).status, 400);
   } finally {
     if (child.exitCode === null && child.signalCode === null) { const exited = once(child, 'exit'); child.kill(); await exited; }

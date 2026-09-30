@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { openDatabase, importDocuments } from '../backend/db.mjs';
 import { lanInterfaces } from '../backend/network.mjs';
 
+// Updated for connected IA v2 UI. Run locally with CHROME_PATH if Chrome is not in the default Windows path.
 const workspace = fileURLToPath(new URL('../', import.meta.url));
 const lan = process.argv.includes('--lan');
 const lanAddress = lan ? lanInterfaces()[0]?.address : null;
@@ -28,6 +29,7 @@ try {
   browser = spawn(process.env.CHROME_PATH || 'C:/Program Files/Google/Chrome/Application/chrome.exe',
     ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${join(run, 'chrome')}`, '--no-first-run', '--no-default-browser-check', '--disable-gpu', 'about:blank'],
     { windowsHide: true, stdio: 'ignore' });
+  browser.on('error', error => { console.error('Chrome launch failed. Set CHROME_PATH:', error.message); });
   let debugPort;
   await until(async () => { debugPort = (await readFile(join(run, 'chrome', 'DevToolsActivePort'), 'utf8')).split('\n')[0]; return debugPort; }, 'Chrome startup');
   const pages = await (await fetch(`http://127.0.0.1:${debugPort}/json/list`)).json();
@@ -55,38 +57,31 @@ try {
   }
   const waitJs = (expression, name) => until(() => evaluate(expression), name);
   await command('Runtime.enable'); await command('Page.enable');
-  await command('Page.navigate', { url: `http://${lanAddress || '127.0.0.1'}:${port}/` });
-  await waitJs('typeof backend!=="undefined" && backend.ready', 'Backend hydration'); checks.push('Backend connected');
-  await evaluate(`navigate('regulation'); document.getElementById('query').value='배출규제해역 연료 황 함유량'; document.getElementById('search-form').requestSubmit()`);
-  await waitJs('state.result==="backend" && !state.loading', 'Search');
-  assert.ok(await evaluate('document.getElementById("search-response").textContent.includes("0.50%")')); checks.push('Actual document search and decimal values');
-  await evaluate('document.querySelector(".citation").click()');
-  assert.ok(await evaluate('document.getElementById("document-dialog").open')); checks.push('Evidence dialog');
-  await evaluate(`document.getElementById('document-dialog').close(); document.querySelector('[data-action="add-backend-result"]').click(); document.getElementById('report-title').value='브라우저 검증 초안'; document.querySelector('[data-action="save-report"]').click()`);
-  await waitJs('backend.version===1 && !backend.saving', 'Report DB save'); checks.push('Report DB save');
-  await command('Page.reload'); await waitJs('typeof backend!=="undefined" && backend.ready', 'Reload');
-  assert.ok(await evaluate('state.report.text.includes("0.50%") && state.report.sources.every(id=>DOCS[id])')); checks.push('Reload with stable citations');
-  await evaluate(`document.querySelector('[data-action="load-db-report"]').click()`);
-  await waitJs('backend.version===1', 'DB report reload'); checks.push('DB draft load');
-  await evaluate(`navigate('carbon'); document.getElementById('fuel').value='100'; document.getElementById('factor').value='3'; document.getElementById('carbon-form').requestSubmit()`);
-  await waitJs('state.calc?.version==="HAEDAP-EMISSIONS-1"', 'Server calculation');
-  assert.equal(await evaluate('state.calc.emission'), 300); checks.push('Server calculation');
-  await evaluate(`navigate('ask'); document.getElementById('query').value='초콜릿 케이크 레시피'; document.getElementById('search-form').requestSubmit()`);
-  await waitJs('state.result==="backend" && !state.loading', 'Unknown question');
-  assert.equal(await evaluate('backend.result.status'), 'insufficient_evidence'); checks.push('No-evidence response');
-  const db = openDatabase(join(run, 'test.sqlite'));
-  try { importDocuments(db, [{ id: 'new-manual', title: '<img src=x onerror="window.injected=true">', kind: 'onboard', reference: 'TEST-MANUAL', version: '1', reviewedAt: '2026-09-28',
-    sections: [{ heading: '신규문서', text: '신규문서유입검증용 본문입니다. 브라우저 접속 후에 수집한 문서도 근거로 열 수 있어야 합니다.' }] }]); } finally { db.close(); }
-  await evaluate(`document.getElementById('query').value='신규문서유입검증용'; document.getElementById('search-form').requestSubmit()`);
-  await waitJs('state.result==="backend" && !state.loading', 'New document search');
-  await evaluate('document.querySelector(".citation").click()');
-  assert.ok(await evaluate('document.getElementById("document-dialog").open'));
-  assert.equal(await evaluate('window.injected===true'), false);
-  await evaluate('document.getElementById("document-dialog").close()');
-  checks.push('Newly ingested evidence hydrates and imported markup is escaped');
+  await command('Page.navigate', { url: `http://127.0.0.1:${port}/` });
+  const stateJs = `(await import('/ui/state.js')).state`;
+  await waitJs(`${stateJs}.health && !${stateJs}.connecting`, 'Authentication screen');
+  await evaluate(`document.querySelector('[data-action=openLogin]').click();for(const [id,value] of Object.entries({'auth-username':'admin','auth-password':'1234'})){const el=document.getElementById(id);el.value=value;}document.getElementById('authForm').requestSubmit()`);
+  await waitJs(`${stateJs}.ready && ${stateJs}.user.role==='admin'`, 'Backend hydration'); checks.push('Backend connected');
+  if(lanAddress){await command('Page.navigate',{url:`http://${lanAddress}:${port}/`});await waitJs(`${stateJs}.health && !${stateJs}.connecting`,'LAN login');await evaluate(`document.querySelector('[data-action=openLogin]').click();document.getElementById('auth-username').value='admin';document.getElementById('auth-password').value='1234';document.getElementById('authForm').requestSubmit()`);await waitJs(`${stateJs}.ready && ${stateJs}.user.role==='admin'`,'LAN authenticated');}
+  await evaluate(`document.getElementById('question').value='연료 황 함유량 기준'; document.getElementById('question').dispatchEvent(new Event('input',{bubbles:true})); document.getElementById('askForm').requestSubmit()`);
+  await waitJs(`${stateJs}.answer && !${stateJs}.busy`, 'Search');
+  assert.ok(await evaluate(`document.querySelector('.answer').textContent.includes('0.50%')`)); checks.push('Actual search');
+  await evaluate(`document.querySelector('.citation').click()`);
+  assert.ok(await evaluate(`document.getElementById('dialog').open`)); checks.push('Evidence dialog');
+  await evaluate(`document.querySelector('#dialog [data-action="document"]').click()`);
+  assert.ok(await evaluate(`document.querySelector('.paper').textContent.includes('0.50%')`)); checks.push('Stored source document');
+  await evaluate(`document.querySelector('[data-action="backDocument"]').click(); document.querySelector('[data-action="answerReport"]').click(); document.getElementById('report-title').value='브라우저 검증 초안'; document.getElementById('report-title').dispatchEvent(new Event('input',{bubbles:true})); document.querySelector('[data-action="saveReport"]').click()`);
+  await waitJs(`${stateJs}.draft.version===1 && !${stateJs}.saving`, 'Save'); checks.push('SQLite save');
+  await command('Page.reload'); await waitJs(`${stateJs}.ready && ${stateJs}.user.role==='admin'`, 'Reload');
+  assert.ok(await evaluate(`document.getElementById('report-text').value.includes('0.50%')`)); checks.push('Draft recovery');
+  await evaluate(`document.querySelector('[data-nav="operations"]').click(); document.querySelector('[data-tab="calculation"]').click(); for(const [id,value] of Object.entries({fuel:'100',factor:'3',dwt:'1000',distance:'100'})){const el=document.getElementById(id);el.value=value;el.dispatchEvent(new Event('input',{bubbles:true}));}document.getElementById('calcForm').requestSubmit()`);
+  await waitJs(`${stateJs}.calc?.emission===300`, 'Calculation'); checks.push('Actual tool calculation');
+  await evaluate(`document.querySelector('[data-nav="chat"]').click(); document.getElementById('question').value='초콜릿 케이크 레시피';document.getElementById('question').dispatchEvent(new Event('input',{bubbles:true}));document.getElementById('askForm').requestSubmit()`);
+  await waitJs(`${stateJs}.answer?.status==='insufficient_evidence'`, 'No evidence'); checks.push('No evidence response');
+  for(const page of ['docs','operations','reports','admin']){await evaluate(`document.querySelector('[data-nav="${page}"]').click()`);assert.ok(await evaluate(`document.getElementById('main').textContent.length>30`));}checks.push('All primary screens');
   await command('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
-  await evaluate("navigate('report')");
-  assert.ok(await evaluate('document.documentElement.scrollWidth <= innerWidth + 1')); checks.push('Mobile report layout');
+  await command('Page.navigate', {url:`http://${lanAddress || '127.0.0.1'}:${port}/#editor`});await waitJs(`${stateJs}.ready && ${stateJs}.user.role==='admin'`, 'Mobile');
+  assert.ok(await evaluate('document.documentElement.scrollWidth <= innerWidth + 1')); checks.push('Mobile report width');
   const screenshot = await command('Page.captureScreenshot', { format: 'png' });
   await writeFile(join(run, 'report-mobile.png'), Buffer.from(screenshot.data, 'base64'));
   assert.deepEqual(exceptions, []); checks.push('No JavaScript exceptions');

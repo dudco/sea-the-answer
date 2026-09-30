@@ -12,7 +12,7 @@ function Test-NodeRuntime([string]$Executable) {
     if (-not (Test-Path -LiteralPath $Executable -PathType Leaf)) { return $false }
     $probe = New-Object System.Diagnostics.Process
     $probe.StartInfo.FileName = $Executable
-    $probe.StartInfo.Arguments = '-e "try{require(''node:sqlite'');process.exit(typeof process.loadEnvFile===''function''?0:1)}catch(e){process.exit(1)}"'
+    $probe.StartInfo.Arguments = '"' + (Join-Path $PSScriptRoot 'scripts\check-runtime.cjs') + '"'
     $probe.StartInfo.UseShellExecute = $false
     $probe.StartInfo.CreateNoWindow = $true
     $probe.StartInfo.RedirectStandardOutput = $true
@@ -21,8 +21,12 @@ function Test-NodeRuntime([string]$Executable) {
     try {
         [void]$probe.Start()
         $probe.StandardOutput.ReadToEnd() | Out-Null
-        $probe.StandardError.ReadToEnd() | Out-Null
+        $probeError = $probe.StandardError.ReadToEnd()
         $probe.WaitForExit()
+        if ($probe.ExitCode -ne 0) {
+            Write-Host "Skipping incompatible runtime: $Executable"
+            if ($probeError) { Write-Host $probeError.Trim() }
+        }
         return $probe.ExitCode -eq 0
     } catch { return $false }
     finally { $probe.Dispose() }
@@ -52,7 +56,7 @@ $previousElectronMode = $env:ELECTRON_RUN_AS_NODE
 foreach ($candidate in ($candidates | Select-Object -Unique)) {
     if (Test-NodeRuntime $candidate) {
         Write-Host "Runtime: $candidate"
-        if ($Task -eq 'check') { Write-Host 'SQLite ready' }
+        if ($Task -eq 'check') { Write-Host 'SQLite + FTS5 ready' }
         $env:ELECTRON_RUN_AS_NODE = '1'
         # Piping also waits for Windows GUI executables such as Code.exe.
         $ErrorActionPreference = 'Continue'
@@ -63,5 +67,6 @@ foreach ($candidate in ($candidates | Select-Object -Unique)) {
         exit $taskExitCode
     }
 }
-Write-Host 'No compatible runtime found. Install Node.js 22.13+ or use -NodePath with a compatible node.exe / Code.exe.'
+Write-Host 'No compatible runtime found. Install official Node.js 24 LTS (with SQLite FTS5), then reopen the terminal and run start.cmd.'
+Write-Host 'Download: https://nodejs.org/en/download'
 exit 1

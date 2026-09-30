@@ -4,8 +4,12 @@ import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { prepareDocument, tokens } from './knowledge.mjs';
 import { object, string, requireValue } from './validation.mjs';
+import runtime from '../scripts/check-runtime.cjs';
+
+let runtimeChecked = false;
 
 export function openDatabase(path) {
+  if (!runtimeChecked) { runtime.checkRuntime(); runtimeChecked = true; }
   if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
   const db = new DatabaseSync(path);
   db.exec(`PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;
@@ -39,7 +43,8 @@ export function importDocuments(db, input) {
   const docs = input.map(prepareDocument);
   requireValue(new Set(docs.map(d => d.id)).size === docs.length, '한 번에 같은 문서 ID를 중복 등록할 수 없습니다.');
   const result = [];
-  db.exec('BEGIN IMMEDIATE');
+  const ownTransaction = !db.isTransaction;
+  if (ownTransaction) db.exec('BEGIN IMMEDIATE');
   try {
     for (const d of docs) {
       const old = db.prepare('SELECT id, hash FROM documents WHERE logical_id=? AND active=1').get(d.id);
@@ -56,17 +61,19 @@ export function importDocuments(db, input) {
       }
       result.push({ id: d.revisionId, status: old ? 'updated' : 'created', chunks: d.chunks.length });
     }
-    db.exec('COMMIT');
-  } catch (error) { db.exec('ROLLBACK'); throw error; }
+    if (ownTransaction) db.exec('COMMIT');
+  } catch (error) { if (ownTransaction) db.exec('ROLLBACK'); throw error; }
   return result;
 }
 export function listDocuments(db) {
   return db.prepare('SELECT * FROM documents ORDER BY active DESC, title, imported_at DESC').all().map(d => ({ ...d,
     sections: db.prepare('SELECT id, heading, text, position FROM chunks WHERE document_id=? ORDER BY position').all(d.id) }));
 }
-export function retrieve(db, question, { kind = 'all', limit = 5 } = {}) {
+export function retrieve(db, question, { kind = 'all', limit = 5, allowedIds } = {}) {
   string(question, '질문', 2000);
   requireValue(['all', 'imo', 'manual'].includes(kind), '문서 필터가 올바르지 않습니다.');
+  if (Array.isArray(allowedIds) && !allowedIds.length) return [];
+  const accessSql = Array.isArray(allowedIds) ? `AND d.id IN (${allowedIds.map(() => '?').join(',')})` : '';
   const terms = tokens(question).slice(0, 80);
   if (!terms.length) return [];
   // No raw user SQL/FTS syntax: only normalized alphanumeric terms are quoted.
@@ -74,8 +81,8 @@ export function retrieve(db, question, { kind = 'all', limit = 5 } = {}) {
   const rows = db.prepare(`SELECT c.*, d.title, d.kind, d.url, d.reference, d.version, d.reviewed_at, d.hash,
       bm25(chunks_fts) AS rank FROM chunks_fts
       JOIN chunks c ON c.id=chunks_fts.chunk_id JOIN documents d ON d.id=c.document_id
-      WHERE chunks_fts MATCH ? AND d.active=1 AND (?='all' OR (?='imo' AND d.kind='official-summary') OR (?='manual' AND d.kind!='official-summary'))
-      ORDER BY rank LIMIT 30`).all(match, kind, kind, kind);
+      WHERE chunks_fts MATCH ? AND d.active=1 ${accessSql} AND (?='all' OR (?='imo' AND d.kind='official-summary') OR (?='manual' AND d.kind!='official-summary'))
+      ORDER BY rank LIMIT 30`).all(match, ...(allowedIds || []), kind, kind, kind);
   return rows.map(r => {
     const bodyTerms = new Set(tokens(`${r.heading} ${r.text}`));
     const matched = terms.filter(t => bodyTerms.has(t));
@@ -95,7 +102,8 @@ export function saveReport(db, input) {
   const sources = [...new Set(input.sources)];
   // Legacy UI document IDs are explicitly accepted as sample evidence.
   for (const s of sources) requireValue(['sulfur','cii','checklist','noon','carbon'].includes(s) || !!db.prepare('SELECT id FROM documents WHERE id=?').get(s), '존재하지 않는 근거입니다.');
-  db.exec('BEGIN IMMEDIATE');
+  const ownTransaction = !db.isTransaction;
+  if (ownTransaction) db.exec('BEGIN IMMEDIATE');
   try {
     const old = db.prepare('SELECT version FROM reports WHERE id=?').get(id);
     requireValue((old?.version || 0) === input.version, '다른 창에서 초안이 변경되었습니다. DB 초안을 다시 불러온 뒤 저장하세요.', 'VERSION_CONFLICT', 409);
@@ -103,9 +111,9 @@ export function saveReport(db, input) {
     db.prepare(`INSERT INTO reports VALUES (?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
       title=excluded.title,type=excluded.type,text=excluded.text,sources=excluded.sources,version=excluded.version,updated_at=excluded.updated_at`)
       .run(id, title, input.type, text, JSON.stringify(sources), version, updatedAt);
-    db.exec('COMMIT');
+    if (ownTransaction) db.exec('COMMIT');
     return { id, title, type: input.type, text, sources, version, updatedAt };
-  } catch (error) { db.exec('ROLLBACK'); throw error; }
+  } catch (error) { if (ownTransaction) db.exec('ROLLBACK'); throw error; }
 }
 export function getReport(db, id = 'current') {
   const row = db.prepare('SELECT * FROM reports WHERE id=?').get(id);

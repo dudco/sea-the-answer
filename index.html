@@ -1,26 +1,23 @@
 <!doctype html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="robots" content="noindex,nofollow" />
-  <meta name="theme-color" content="#102b37" />
-  <meta name="description" content="해,답 — 근거와 함께 답하는 선원 업무 지원 인터랙티브 데모" />
-  <title>해,답 · 선원 업무 지원</title>
-  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
-  <link rel="stylesheet" href="/style.css" />
-  <link rel="stylesheet" href="/operations.css" />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <meta name="theme-color" content="#112638">
+  <meta name="description" content="해답 — 문서 검색, 운항 정보와 보고서 초안을 한곳에서">
+  <title>해답 · 통합 질문</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/fonts/prototype/fonts.css">
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/ui/ui.css">
 </head>
 <body>
   <a class="skip" href="#main">본문으로 이동</a>
-  <div id="app"></div>
-  <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <dialog id="document-dialog" aria-labelledby="doc-title"></dialog>
-  <dialog id="demo-dialog" aria-labelledby="demo-title"></dialog>
-  <script src="/vendor/leaflet/leaflet.js" defer></script>
-  <script src="/operations.js" defer></script>
-  <script src="/backend-ui.js" defer></script>
-  <script src="/app.js" defer></script>
+  <div id="app"><p class="startup">해답 워크스페이스를 불러오는 중입니다…</p></div>
+  <dialog id="dialog" aria-labelledby="dialog-title"></dialog>
+  <div id="toasts" role="status" aria-live="polite"></div>
+  <noscript>이 프로그램을 사용하려면 브라우저의 JavaScript를 활성화해 주세요.</noscript>
+  <script type="module" src="/app.js"></script>
 </body>
 </html>

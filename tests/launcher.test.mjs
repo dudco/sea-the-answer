@@ -36,13 +36,15 @@ test('Windows launchers: CMD local, PowerShell local, CMD LAN; same-origin API o
         assert.ok(health?.ok, `${config.name}: ${logs}`);
         assert.equal((await fetch(local + '/')).status, 200);
         assert.ok(logs.includes(config.lan ? 'Mode: LAN' : 'Mode: Local'), logs);
+        const setup=await fetch(local+'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json','X-Haedap-Token':health.csrfToken},body:JSON.stringify({username:'admin',name:'관리자',password:'1234'})});
+        assert.equal(setup.status,200);const cookie=setup.headers.getSetCookie().find(c=>c.startsWith('haedap_session=')).split(';')[0];
         if (config.lan) {
           const address = lanInterfaces()[0]?.address;
           if (address) {
             const base = `http://${address}:${port}`;
             assert.ok(logs.includes(base), logs);
             const remoteHealth = await (await fetch(base + '/api/health')).json(); assert.ok(remoteHealth.ok);
-            const ask = await fetch(base + '/api/ask', { method: 'POST', headers: { Origin: base, 'Content-Type': 'application/json', 'X-Haedap-Token': remoteHealth.csrfToken }, body: JSON.stringify({ question: '연료 황 함유량' }) });
+            const ask = await fetch(base + '/api/ask', { method: 'POST', headers: { Cookie:cookie, Origin: base, 'Content-Type': 'application/json', 'X-Haedap-Token': remoteHealth.csrfToken }, body: JSON.stringify({ question: '연료 황 함유량' }) });
             assert.equal(ask.status, 200); assert.ok((await ask.json()).evidence.length > 0);
             const foreign = await fetch(base + '/api/ask', { method: 'POST', headers: { Origin: 'https://evil.example', 'Content-Type': 'application/json', 'X-Haedap-Token': remoteHealth.csrfToken }, body: '{}' });
             assert.equal(foreign.status, 403);
