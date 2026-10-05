@@ -112,8 +112,8 @@ POST 요청은 `Content-Type: application/json`과 health가 돌려주는 `X-Hae
 실제 선박 DB·AIS·기상 데이터, 승인 문서 전문, API 키를 사용하는 모델 품질 검증, 검색/답변 평가 데이터셋과 성능 측정은 아직 남아 있습니다. 현재 위치는 **RAG/DB/Tool의 로컬 MVP 구현 및 주요 UI 연결 완료**이며 운영용 통합·평가 완료는 아닙니다.
 
 
-## 역할4 독립 PostgreSQL Tool (2026-09-30)
+## 해사 데이터 독립 PostgreSQL 도구 (2026-10-05)
 
-`role4/`는 별도 Python API입니다. 기존 Node.js/SQLite 서버의 `/api`와 자동 연결되지 않으며 기본 포트는 8000입니다. 역할4 테이블은 PostgreSQL의 `role4` 스키마에 분리됩니다. 기존 앱 DB를 이전하거나 변경하지 않습니다.
+`tools/maritime_data/`의 독립 API는 포트 8001과 PostgreSQL `maritime_data` 스키마를 사용합니다. Node UI의 SQLite와 별개입니다. 백엔드가 권한을 검사한 후 Bearer 토큰으로 호출하거나 공통 Python 모듈을 직접 사용합니다. 브라우저에 서버 토큰을 노출하지 않습니다.
 
-조회·계산 Tool은 Bearer 토큰이 필요합니다. 브라우저에 토큰을 노출하지 않고 팀 백엔드에서 권한 검사 후 호출하는 방식으로 연결하세요. 설치·적재·검증 명령은 [역할4 README](../role4/README.md), 식별자·결측·blocked 처리 및 미완료 통합 항목은 [연동 안내](../role4/INTEGRATION.md)에 있습니다.
+설치·전처리·적재·테스트는 [도구 안내](../tools/maritime_data/README.md), 입력·단위·blocked 처리와 계산 근거는 [API 계약](maritime-data/API.md)에 있습니다. 중복 PDF와 단계별 작업 기록은 Git 이력에서 확인할 수 있습니다.

@@ -1,0 +1,5 @@
+[project]
+name = "sea-the-answer-maritime-data"
+version = "1.0.0"
+description = "Maritime data preparation, PostgreSQL, query and CO2 tools"
+requires-python = ">=3.12,<3.14"

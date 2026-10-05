@@ -6,3 +6,10 @@ data/
 .env
 .env.*
 !.env.example
+
+# Python maritime tools
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+outputs/

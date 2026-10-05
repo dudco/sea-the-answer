@@ -1,8 +1,0 @@
-[project]
-name = "sea-the-answer-role4"
-version = "1.0.0"
-description = "Maritime data preparation, PostgreSQL, read-only query and CO2 tools"
-requires-python = ">=3.12,<3.14"
-
-[tool.pytest.ini_options]
-testpaths = ["service/tests"]
