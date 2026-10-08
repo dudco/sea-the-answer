@@ -13,23 +13,25 @@ try {
 } catch (e) {
   if (e.code !== 'ENOENT') throw e;
 }
-const args = process.argv.slice(2),
-  dev = args.includes('--dev'),
-  serverArgs = args.filter((x) => x !== '--dev');
+// Production-style local run only. Development runs the two processes directly:
+// `npm run dev:backend` and `npm run dev:frontend` (see README / docs/adr/0005).
+const serverArgs = process.argv.slice(2);
+if (serverArgs.includes('--dev')) {
+  console.error(
+    '개발 모드는 npm run dev:backend 와 npm run dev:frontend 를 각각 실행합니다.',
+  );
+  process.exit(1);
+}
 const config = serverOptions(serverArgs);
 if (config.help) {
-  console.log(
-    'npm start -- [--lan] [--port 5173]\nnpm run dev -- [--lan] [--port 5173]',
-  );
+  console.log('npm start -- [--lan] [--port 5173]');
   process.exit(0);
 }
-if (!dev) {
-  try {
-    await access(resolve(root, 'frontend/.next/BUILD_ID'));
-  } catch {
-    console.error('먼저 npm run build를 실행해 주세요.');
-    process.exit(1);
-  }
+try {
+  await access(resolve(root, 'frontend/.next/BUILD_ID'));
+} catch {
+  console.error('먼저 npm run build를 실행해 주세요.');
+  process.exit(1);
 }
 const probe = createServer();
 probe.listen(0, '127.0.0.1');
@@ -40,7 +42,7 @@ const children = [],
   env = {
     ...process.env,
     NEXT_TELEMETRY_DISABLED: '1',
-    HAEDAP_NEXT_DIST: dev ? '.next-dev' : '.next',
+    HAEDAP_NEXT_DIST: '.next',
   };
 let stopping = false;
 function stop(code = 0) {
@@ -77,9 +79,8 @@ function launch(file, argv, overrides = {}) {
 }
 for (const s of ['SIGINT', 'SIGTERM']) process.on(s, () => stop(0));
 const next = launch(resolve(root, 'node_modules/next/dist/bin/next'), [
-  dev ? 'dev' : 'start',
+  'start',
   'frontend',
-  ...(dev ? ['--webpack'] : []),
   '-H',
   '127.0.0.1',
   '-p',

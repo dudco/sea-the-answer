@@ -35,7 +35,7 @@ export function frontendProxy(origin) {
         if (!res.headersSent)
           res.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8' });
         res.end(
-          'Next.js 화면 서버에 연결할 수 없습니다. 시작 명령을 다시 실행해 주세요.',
+          'Next.js 화면 서버에 연결할 수 없습니다. 개발 중이면 npm run dev:frontend가 실행 중인지 확인하고, 일반 실행이면 npm start를 다시 실행해 주세요.',
         );
       });
       req.on('aborted', () => upstream.destroy());

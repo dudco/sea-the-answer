@@ -2,17 +2,20 @@ import { networkInterfaces } from 'node:os';
 import { BlockList, isIPv4 } from 'node:net';
 
 export function serverOptions(args = process.argv.slice(2), env = process.env) {
-  let lan = false, port = env.PORT || '5173', help = false;
+  let lan = false, port = env.PORT || '5173', help = false, frontend = env.HAEDAP_FRONTEND_ORIGIN || null;
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--lan') lan = true;
     else if (args[i] === '--port') {
       if (!args[i + 1] || args[i + 1].startsWith('--')) throw new Error('--port requires a port number.');
       port = args[++i];
+    } else if (args[i] === '--frontend') {
+      if (!args[i + 1] || args[i + 1].startsWith('--')) throw new Error('--frontend requires a Next.js origin such as http://127.0.0.1:3000.');
+      frontend = args[++i];
     } else if (args[i] === '--help') help = true;
     else throw new Error(`Unknown option: ${args[i]}. Use --help.`);
   }
   if (!/^\d+$/.test(String(port)) || Number(port) < 1 || Number(port) > 65535) throw new Error('Port must be an integer from 1 to 65535.');
-  return { lan, port: Number(port), host: lan ? '0.0.0.0' : '127.0.0.1', help };
+  return { lan, port: Number(port), host: lan ? '0.0.0.0' : '127.0.0.1', help, frontend };
 }
 
 export function lanInterfaces(interfaces = networkInterfaces()) {

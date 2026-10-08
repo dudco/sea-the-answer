@@ -15,31 +15,40 @@ probe.listen(0, '127.0.0.1');
 await once(probe, 'listening');
 const port = probe.address().port;
 await new Promise((r) => probe.close(r));
-const server = spawn(
-  process.execPath,
-  [
-    'scripts/run.mjs',
-    ...(process.env.HAEDAP_TEST_DEV ? ['--dev'] : []),
-    '--port',
-    String(port),
-  ],
-  {
-    cwd: root,
-    env: {
-      ...process.env,
-      HAEDAP_DB_PATH: join(run, 'test.sqlite'),
-      OPENAI_API_KEY: '',
-      OPENAI_MODEL: '',
-      NEXT_TELEMETRY_DISABLED: '1',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  },
-);
+const dev = !!process.env.HAEDAP_TEST_DEV;
+const env = {
+  ...process.env,
+  HAEDAP_DB_PATH: join(run, 'test.sqlite'),
+  OPENAI_API_KEY: '',
+  OPENAI_MODEL: '',
+  NEXT_TELEMETRY_DISABLED: '1',
+};
 let serverLog = '',
   browser,
   lastPage;
-server.stdout.on('data', (d) => (serverLog += d));
-server.stderr.on('data', (d) => (serverLog += d));
+const processes = [];
+function start(args, extraEnv = {}) {
+  const child = spawn(process.execPath, args, {
+    cwd: root,
+    env: { ...env, ...extraEnv },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  child.stdout.on('data', (d) => (serverLog += d));
+  child.stderr.on('data', (d) => (serverLog += d));
+  processes.push(child);
+  return child;
+}
+if (dev) {
+  // Same as `npm run dev:frontend` + `npm run dev:backend`, on free ports.
+  const nextProbe = createServer();
+  nextProbe.listen(0, '127.0.0.1');
+  await once(nextProbe, 'listening');
+  const nextPort = nextProbe.address().port;
+  await new Promise((r) => nextProbe.close(r));
+  start(['node_modules/next/dist/bin/next', 'dev', 'frontend', '--webpack', '-H', '127.0.0.1', '-p', String(nextPort)]);
+  start(['backend/server.mjs', '--port', String(port), '--frontend', `http://127.0.0.1:${nextPort}`]);
+} else start(['scripts/run.mjs', '--port', String(port)]);
+const server = { get exitCode() { return processes.some((c) => c.exitCode !== null) ? 1 : null; } };
 const checks = [],
   errors = [],
   warnings = [];
@@ -52,7 +61,10 @@ try {
   let ready = false;
   for (let i = 0; i < 400; i++) {
     try {
-      ready = (await fetch(base + '/api/health')).ok;
+      // API first, then the proxied Next.js screen (dev compiles on first request).
+      ready =
+        (await fetch(base + '/api/health')).ok &&
+        (await fetch(base + '/chat', { signal: AbortSignal.timeout(60000) })).status < 500;
       if (ready) break;
     } catch {}
     if (server.exitCode !== null) break;
@@ -474,10 +486,12 @@ try {
   );
   await writeFile(join(run, 'server.log'), serverLog);
   await browser?.close();
-  if (server.exitCode === null) {
-    const ended = once(server, 'exit');
-    server.kill('SIGTERM');
-    await ended;
+  for (const child of processes) {
+    if (child.exitCode === null && child.signalCode === null) {
+      const ended = once(child, 'exit');
+      child.kill('SIGTERM');
+      await ended;
+    }
   }
   console.log('QA files:', run);
 }

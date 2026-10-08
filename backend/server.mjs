@@ -13,22 +13,23 @@ import {
 } from './network.mjs';
 
 const root = projectRoot;
-const frontend = frontendProxy(process.env.HAEDAP_FRONTEND_ORIGIN);
 try {
   process.loadEnvFile(resolve(root, '.env'));
 } catch (error) {
   if (error.code !== 'ENOENT') throw error;
 }
-let config;
+let config, frontend;
 try {
   config = serverOptions();
+  // Next.js origin: --frontend, or HAEDAP_FRONTEND_ORIGIN (.env / scripts/run.mjs).
+  frontend = frontendProxy(config.frontend);
 } catch (error) {
   console.error(error.message);
   process.exit(1);
 }
 if (config.help) {
   console.log(
-    'Usage: node backend/server.mjs [--lan] [--port 5173]\nDefault: this PC only. --lan: devices on connected IPv4 subnets.',
+    'Usage: node backend/server.mjs [--lan] [--port 5173] [--frontend http://127.0.0.1:3000]\nDefault: this PC only. --lan: devices on connected IPv4 subnets.\n--frontend: Next.js dev/start server to proxy screens to (API only when omitted).',
   );
   process.exit(0);
 }
@@ -94,7 +95,7 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/')
     return send(
       503,
-      'Next.js 화면 서버가 실행되지 않았습니다. npm start 또는 npm run dev로 실행해 주세요.',
+      'Next.js 화면 서버가 연결되지 않았습니다. 개발 중이면 npm run dev:backend와 npm run dev:frontend를 각각 실행하고, 일반 실행은 npm start를 사용해 주세요.',
     );
   return send(404, 'Not found');
 });
@@ -121,6 +122,7 @@ server.on('error', (error) => {
 });
 server.listen(port, config.host, () => {
   console.log(`DB: ${dbPath}`);
+  console.log(`Frontend: ${config.frontend || 'not connected (API only)'}`);
   console.log(
     `SEA THE ANSWER (Next.js): http://127.0.0.1:${port}\nMode: ${config.lan ? 'LAN' : 'Local (this PC only)'}`,
   );

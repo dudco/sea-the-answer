@@ -4,6 +4,7 @@
 
 ## 변경 이력
 
+- **1.3.2 / 2026-10-08**: 개발 모드를 래퍼 스크립트 대신 백엔드·프론트 직접 실행으로 변경([ADR 0005](adr/0005-dev-mode-direct-processes.md)). `npm run dev` → `npm run dev:backend`(`node --watch`, 자동 재시작) + `npm run dev:frontend`(`next dev`). 백엔드에 `--frontend <origin>` 옵션 추가(`HAEDAP_FRONTEND_ORIGIN`보다 우선, `.env`에서도 읽음). `next.config.mjs`가 개발/빌드 출력 폴더를 단계(phase)로 자동 구분. `scripts/run.mjs`와 `start.cmd`는 일반 실행 전용으로 정리(`--dev`, `-Task dev` 제거). 브라우저 검증의 개발 모드도 두 프로세스를 직접 띄우도록 변경.
 - **문서 정리 / 2026-10-08** (코드 변경 없음, 버전 유지): 최상위 `docs/` 체계 도입 — `architecture.md`, `data-model.md`, `user-guide.md`, `changelog.md`, `specs/`, `plans/`, `adr/`. README를 소개·구조·설치·Windows/macOS 실행 중심으로 재작성하고 상세 내용을 docs로 이동. AGENTS.md를 문서 위치·작성 규칙 중심으로 갱신(이전의 "docs 폴더를 만들지 않는다" 규칙 폐기, [ADR 0001](adr/0001-docs-directory.md)).
 - **1.3.1 / 2026-10-06**: 최상위 소스 폴더를 frontend/backend/scripts로 정리. Next.js와 Windows 실행·테스트 경로 수정. 레거시·중복 설명서 제거 및 README에 통합. 기본 DB 위치를 backend/data로 변경하고 옛 경로 호환·충돌 안내 추가. Windows npm 인수 전달을 명시하여 첫 실행 빌드 호출 보완.
 - **1.3.0 / 2026-10-05**: Next.js App Router·React JSX로 UI 이전. 실제 페이지 URL·공통 Provider·컴포넌트·대화상자 적용. 기존 Node API·SQLite·권한 정책 유지. 하나의 시작 명령에서 API 게이트웨이와 Next.js 실행. 설치·빌드·개발·데이터 이전 안내 갱신.
@@ -12,6 +13,20 @@
 - **1.2.0 / 2026-09-30**: PDF/CSV, 다중 보고서, 통합 결과, 계정·권한·로그·백업·복구.
 
 ## 검증 기록
+
+### 2026-10-08 — 1.3.2
+
+환경: Linux, Node.js v24.21.0, Next.js 16.3.8, Playwright + Chromium(사전 설치본).
+
+| 검증 | 결과 |
+|---|---|
+| `npm test` | **33개 통과, 실패 없음, Windows 전용 1개 건너뜀** (`--frontend` 옵션 테스트 1개 추가) |
+| `npm run build` | 성공 |
+| `npm run test:browser` (일반 실행, `scripts/run.mjs`) | **17개 업무 흐름 통과** |
+| `HAEDAP_TEST_DEV=1 npm run test:browser` (백엔드·`next dev` 직접 실행) | **17개 업무 흐름 통과** |
+| `npm run dev:backend` → `npm run dev:frontend` 수동 실행 | 프론트 기동 전 안내 문구, 기동 후 `/chat` 200, 백엔드 파일 수정 시 자동 재시작, 개발 실행 후에도 `frontend/.next/BUILD_ID` 변경 없음 |
+
+검증하지 않은 범위: Windows·macOS에서 두 명령 직접 실행, `start.cmd` 실제 실행.
 
 ### 2026-10-08 — 문서 정리
 

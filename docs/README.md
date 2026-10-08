@@ -45,6 +45,7 @@
 | [0002](adr/0002-single-gateway-next-and-node-api.md) | Node API 게이트웨이 하나 뒤에 Next.js를 루프백으로 둠 | 채택 |
 | [0003](adr/0003-sqlite-fts5-local-storage.md) | 내장 SQLite + FTS5로 로컬 저장·검색 | 채택 |
 | [0004](adr/0004-public-access-admin-only-writes.md) | 로그인 없는 일반 사용 + 관리자만 원본 자료 변경 | 채택 |
+| [0005](adr/0005-dev-mode-direct-processes.md) | 개발 모드는 백엔드·프론트를 각각 직접 실행 | 채택 |
 
 ## 작성 규칙 요약
 

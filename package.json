@@ -1,13 +1,14 @@
 {
   "name": "sea-the-answer-nextjs",
-  "version": "1.3.1",
+  "version": "1.3.2",
   "private": true,
   "type": "module",
   "description": "SEA THE ANSWER Next.js App Router + React UI, existing local Node API and SQLite",
   "scripts": {
     "start": "node scripts/run.mjs",
     "start:lan": "node scripts/run.mjs --lan",
-    "dev": "node scripts/run.mjs --dev",
+    "dev:backend": "node --watch backend/server.mjs --frontend http://127.0.0.1:3000",
+    "dev:frontend": "next dev frontend --webpack -H 127.0.0.1 -p 3000",
     "test": "node --test backend/tests/*.test.mjs frontend/tests/*.test.mjs scripts/tests/*.test.mjs",
     "ingest": "node scripts/ingest.mjs",
     "test:browser": "node scripts/next-browser-smoke.mjs",

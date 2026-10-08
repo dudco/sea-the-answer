@@ -1,6 +1,6 @@
 # 0002. Node API 게이트웨이 하나 뒤에 Next.js를 루프백 프로세스로 둔다
 
-- 상태: 채택 (1.3.0에서 도입, 2026-10-08 소급 기록)
+- 상태: 채택 (1.3.0에서 도입, 2026-10-08 소급 기록) · "`scripts/run.mjs`가 두 프로세스를 함께 띄운다"는 개발 모드에 한해 [0005](0005-dev-mode-direct-processes.md)로 대체
 - 날짜: 2026-10-05
 - 관련: [`../architecture.md`](../architecture.md), [ADR 0004](0004-public-access-admin-only-writes.md)
 

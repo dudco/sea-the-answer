@@ -6,11 +6,16 @@ const interfaces = [{ name: 'Wi-Fi', address: '192.168.10.5', cidr: '192.168.10.
 const req = (host, remoteAddress = '127.0.0.1') => ({ headers: { host }, socket: { remoteAddress } });
 
 test('server CLI defaults local, supports LAN and port overrides, rejects invalid inputs', () => {
-  assert.deepEqual(serverOptions([], {}), { lan: false, port: 5173, host: '127.0.0.1', help: false });
-  assert.deepEqual(serverOptions(['--lan', '--port', '5174'], { PORT: '5178' }), { lan: true, port: 5174, host: '0.0.0.0', help: false });
+  assert.deepEqual(serverOptions([], {}), { lan: false, port: 5173, host: '127.0.0.1', help: false, frontend: null });
+  assert.deepEqual(serverOptions(['--lan', '--port', '5174'], { PORT: '5178' }), { lan: true, port: 5174, host: '0.0.0.0', help: false, frontend: null });
   assert.equal(serverOptions([], { PORT: '5199' }).port, 5199);
   assert.equal(serverOptions(['--help'], {}).help, true);
-  for (const args of [['--port'], ['--port', '0'], ['--port', '65536'], ['--port', '2.5'], ['--port', '-1'], ['--port', '--lan'], ['--unknown']]) assert.throws(() => serverOptions(args, {}));
+  for (const args of [['--port'], ['--port', '0'], ['--port', '65536'], ['--port', '2.5'], ['--port', '-1'], ['--port', '--lan'], ['--frontend'], ['--frontend', '--lan'], ['--unknown']]) assert.throws(() => serverOptions(args, {}));
+});
+test('Next.js origin comes from --frontend, falling back to HAEDAP_FRONTEND_ORIGIN', () => {
+  assert.equal(serverOptions(['--frontend', 'http://127.0.0.1:3000'], {}).frontend, 'http://127.0.0.1:3000');
+  assert.equal(serverOptions([], { HAEDAP_FRONTEND_ORIGIN: 'http://127.0.0.1:4100' }).frontend, 'http://127.0.0.1:4100');
+  assert.equal(serverOptions(['--frontend', 'http://127.0.0.1:3001'], { HAEDAP_FRONTEND_ORIGIN: 'http://127.0.0.1:4100' }).frontend, 'http://127.0.0.1:3001');
 });
 test('local mode denies LAN Host headers and non-local clients', () => {
   const allow = createNetworkPolicy({ lan: false, port: 5173 }, interfaces);

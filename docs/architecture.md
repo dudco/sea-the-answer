@@ -1,6 +1,6 @@
 # 아키텍처
 
-> 대상 버전: 1.3.1 · 최종 확인: 2026-10-08 (코드 대조)
+> 대상 버전: 1.3.2 · 최종 확인: 2026-10-08 (코드 대조)
 > 이 문서는 **현재 구현**을 설명합니다. 앞으로 바꿀 계획은 [`plans/`](plans/), 바뀌지 않을 결정의 이유는 [`adr/`](adr/)에 있습니다.
 
 ## 1. 한눈에 보기
@@ -11,7 +11,7 @@
 flowchart LR
   B[브라우저<br/>React UI] -->|HTTP :5173| G
   subgraph PC[실행 PC]
-    R[scripts/run.mjs<br/>프로세스 관리자]
+    R[npm start: scripts/run.mjs<br/>개발: 터미널 2개에서 직접 실행]
     G[backend/server.mjs<br/>게이트웨이 + API]
     N[Next.js<br/>127.0.0.1:임시포트]
     D[(SQLite<br/>backend/data/haedap.sqlite)]
@@ -26,8 +26,10 @@ flowchart LR
   A -. 선택: OPENAI_API_KEY 설정 시 .-> O[(외부 LLM API)]
 ```
 
-- `npm start` / `npm run dev` → `scripts/run.mjs`가 Next.js를 루프백 임시 포트로 먼저 띄우고, 준비되면 `backend/server.mjs`를 `HAEDAP_FRONTEND_ORIGIN`과 함께 띄웁니다. 둘 중 하나가 죽으면 둘 다 종료합니다.
-- Windows의 `start.cmd` → `scripts/start.ps1` → (필요 시 `npm ci`, `npm run build`) → `scripts/run.mjs`.
+- **일반 실행** `npm start` → `scripts/run.mjs`가 `next start`를 루프백 임시 포트로 먼저 띄우고, 준비되면 `backend/server.mjs`를 `HAEDAP_FRONTEND_ORIGIN`과 함께 띄웁니다. 둘 중 하나가 죽으면 둘 다 종료합니다. Windows의 `start.cmd` → `scripts/start.ps1` → (필요 시 `npm ci`, `npm run build`) → `scripts/run.mjs`.
+- **개발 실행**은 래퍼 없이 두 프로세스를 각각 띄웁니다([ADR 0005](adr/0005-dev-mode-direct-processes.md)). `npm run dev:frontend` = `next dev frontend --webpack -H 127.0.0.1 -p 3000`, `npm run dev:backend` = `node --watch backend/server.mjs --frontend http://127.0.0.1:3000`. 접속 주소와 요청 흐름(게이트웨이 → Next.js)은 일반 실행과 같습니다.
+- 백엔드가 Next.js 주소를 받는 방법: `--frontend <origin>` → 없으면 `HAEDAP_FRONTEND_ORIGIN`(`.env` 포함) → 둘 다 없으면 API만 동작. 주소는 `http://127.0.0.1:<port>`만 허용(`frontend-proxy.mjs`).
+- `frontend/next.config.mjs`는 `next dev` 단계에서 `frontend/.next-dev`, 그 외에는 `frontend/.next`를 출력 폴더로 씁니다(`HAEDAP_NEXT_DIST`로 덮어쓰기 가능).
 - 외부 네트워크는 선택적 LLM 호출에서만 사용합니다. 나머지는 모두 오프라인으로 동작합니다.
 
 ## 2. 요청 흐름
@@ -98,7 +100,7 @@ sequenceDiagram
 | `tools.mjs` | 계산 도구(`calculate_emissions`, `voyage_time`)와 실행 기록 | db |
 | `validation.mjs` | 입력 검증 도우미, `AppError` | — |
 
-`scripts/`: `run.mjs`(두 프로세스 실행), `build.mjs`(Next 빌드), `start.ps1`·`start.cmd`(Windows), `setup-lan-firewall.ps1`, `ingest.mjs`(JSON 문서 수집), `check-runtime.cjs`(SQLite·FTS5 점검), `next-browser-smoke.mjs`(Playwright 업무 흐름 검증).
+`scripts/`: `run.mjs`(일반 실행 시 두 프로세스 관리), `build.mjs`(Next 빌드), `start.ps1`·`start.cmd`(Windows), `setup-lan-firewall.ps1`, `ingest.mjs`(JSON 문서 수집), `check-runtime.cjs`(SQLite·FTS5 점검), `next-browser-smoke.mjs`(Playwright 업무 흐름 검증).
 
 ## 4. 보안 경계
 
@@ -131,7 +133,7 @@ sequenceDiagram
 |---|---|---|
 | `node_modules/` | `npm ci` | 제외 |
 | `frontend/.next/` | `npm run build` | 제외 |
-| `frontend/.next-dev/` | `npm run dev` | 제외 |
+| `frontend/.next-dev/` | `npm run dev:frontend` | 제외 |
 | `backend/data/haedap.sqlite`(+ WAL) | 서버 첫 실행 | 제외 (`data/`) |
 | `backend/data/backups/` | 수동·자동 백업 | 제외 |
 | `.env` | 사용자가 직접 | 제외 |

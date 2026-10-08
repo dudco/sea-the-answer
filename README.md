@@ -1,6 +1,6 @@
 # 해답 — SEA THE ANSWER
 
-현재 버전 **1.3.1** · 마지막 업데이트 **2026-10-08**
+현재 버전 **1.3.2** · 마지막 업데이트 **2026-10-08**
 
 선원의 업무를 돕는 **선박 특화 LLM 시스템**입니다. 선내 매뉴얼·해사 규정 같은 문서를 근거로 질문에 답하고(RAG), 선박의 일별 운항 기록을 조회·분석·계산(Tool Calling)해서 두 결과를 하나의 답변과 보고서 초안으로 묶어 줍니다. 동국대학교 캡스톤 디자인2 팀 프로젝트입니다.
 
@@ -39,7 +39,7 @@ sea-the-answer/
 │  ├─ knowledge/seed.json              최초 실행 시 넣는 기본 문서
 │  ├─ data/             (실행 시 생성) SQLite DB와 backups/
 │  └─ tests/
-├─ scripts/             실행(run.mjs)·빌드·Windows 실행기·문서 수집·브라우저 검증
+├─ scripts/             일반 실행(run.mjs)·빌드·Windows 실행기·문서 수집·브라우저 검증
 ├─ docs/                설계·명세·계획·ADR 등 모든 프로젝트 문서
 ├─ start.cmd            Windows 더블클릭 실행 진입점
 ├─ package.json         의존성과 npm 명령 (설치는 최상위에서 한 번)
@@ -89,7 +89,6 @@ npm --version
 |---|---|
 | `start.cmd -Port 5174` | 다른 포트로 실행 |
 | `start.cmd -Lan` | 같은 네트워크의 팀원 접속 허용 |
-| `start.cmd -Task dev` | 개발 모드(수정 즉시 반영) |
 | `start.cmd -Task build` | 다시 빌드만 |
 | `start.cmd -Task test` | 테스트 |
 
@@ -144,7 +143,7 @@ npm start
 | `npm start` | 빌드된 화면 + API 서버 실행 (기본 5173 포트, 이 PC에서만 접속) |
 | `npm start -- --port 5174` | 다른 포트로 실행 |
 | `npm run start:lan` | 같은 네트워크(연결된 IPv4 서브넷)의 기기 접속 허용 |
-| `npm run dev` | 개발 모드. 코드 수정이 바로 반영됨 (빌드 결과는 `frontend/.next-dev`) |
+| `npm run dev:backend` + `npm run dev:frontend` | 개발 모드. 터미널 두 개에서 각각 실행 (아래 "개발 모드" 참고) |
 | `npm run build` | 배포용 화면 빌드 (`frontend/.next`) |
 | `npm test` | 백엔드·프런트엔드·실행기 단위/회귀 테스트 |
 | `npx playwright install chromium` → `npm run test:browser` | 실제 브라우저 업무 흐름 검증 (임시 DB 사용) |
@@ -154,8 +153,34 @@ npm start
 꼭 기억할 점:
 
 - 접속 주소는 항상 마지막에 출력되는 **`SEA THE ANSWER` 주소(5173 또는 지정 포트)** 입니다. 로그 중간의 Next.js 임시 포트로 접속하면 API가 동작하지 않습니다.
-- `node backend/server.mjs`만 실행하면 API만 켜지고 화면은 나오지 않습니다. `npm start` 또는 `npm run dev`를 사용하세요.
+- `node backend/server.mjs`만 실행하면 API만 켜지고 화면은 나오지 않습니다. 일반 실행은 `npm start`, 개발은 아래처럼 두 프로세스를 함께 띄우세요.
 - DB는 기본적으로 `backend/data/haedap.sqlite`에 생성됩니다. 시작 로그의 `DB:` 줄에서 실제 경로를 확인할 수 있습니다.
+
+## 개발 모드 (Windows·macOS 동일)
+
+개발할 때는 백엔드와 프론트를 **각각 직접** 실행합니다. 빌드(`npm run build`)는 필요 없고, 터미널(또는 VS Code 터미널 탭)을 두 개 엽니다. 둘 다 프로젝트 최상위 폴더에서 실행합니다.
+
+```bash
+# 터미널 1 — 백엔드(API + 게이트웨이), 파일을 고치면 자동 재시작
+npm run dev:backend
+
+# 터미널 2 — 프론트(Next.js 개발 서버), 화면 수정이 바로 반영(HMR)
+npm run dev:frontend
+```
+
+브라우저에서는 **`http://127.0.0.1:5173`** (백엔드 주소)으로 접속합니다. 백엔드가 `/api/*`는 직접 처리하고 화면 요청은 `127.0.0.1:3000`의 Next.js로 전달하므로, 쿠키·CSRF·권한 검사가 운영과 똑같이 동작합니다. `3000` 포트로 직접 접속하면 화면은 보여도 API 호출이 실패합니다.
+
+| 프로세스 | 명령이 실제로 하는 일 | 포트 |
+|---|---|---|
+| 백엔드 | `node --watch backend/server.mjs --frontend http://127.0.0.1:3000` | 5173 (`.env`의 `PORT`) |
+| 프론트 | `next dev frontend --webpack -H 127.0.0.1 -p 3000` | 3000 (이 PC 내부 전용) |
+
+- 실행 순서는 상관없습니다. 프론트가 아직 안 떴으면 화면 대신 "Next.js 화면 서버에 연결할 수 없습니다" 안내가 나오고, 프론트가 뜨면 새로고침으로 정상 화면이 나옵니다.
+- 개발 빌드 결과는 `frontend/.next-dev`에 따로 생겨서 `npm start`용 빌드(`frontend/.next`)를 덮어쓰지 않습니다.
+- LAN 접속을 테스트하려면 `npm run dev:backend -- --lan`.
+- 3000 포트가 이미 쓰이고 있으면 두 쪽을 같이 바꿉니다: `npm run dev:frontend -- -p 3001`, `npm run dev:backend -- --frontend http://127.0.0.1:3001`.
+- Next.js 사용 통계 전송을 끄려면 한 번만 `npx next telemetry disable`.
+- 종료는 각 터미널에서 `Ctrl+C`.
 
 ### 환경설정 (선택)
 
@@ -168,7 +193,8 @@ copy .env.example .env      # Windows CMD
 
 | 변수 | 설명 |
 |---|---|
-| `PORT` | 기본 포트 (기본 5173). `--port`가 우선 |
+| `PORT` | 백엔드 포트 (기본 5173). `--port`가 우선 |
+| `HAEDAP_FRONTEND_ORIGIN` | 백엔드가 화면 요청을 전달할 Next.js 주소. 보통 비워 둠 (`--frontend`·`npm start`가 지정) |
 | `HAEDAP_DB_PATH` | DB 파일 경로. 상대 경로는 프로젝트 최상위 기준 |
 | `OPENAI_API_KEY`, `OPENAI_MODEL` | 둘 다 설정하면 통합 질문에서 **AI 답변** 선택 가능. 키는 브라우저로 보내지 않음 |
 

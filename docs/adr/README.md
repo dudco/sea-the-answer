@@ -22,8 +22,9 @@
 | 번호 | 결정 | 상태 | 날짜 |
 |---|---|---|---|
 | [0001](0001-docs-directory.md) | 문서를 최상위 `docs/`에 모으고 AGENTS.md를 공통 지침으로 사용 | 채택 | 2026-10-08 |
-| [0002](0002-single-gateway-next-and-node-api.md) | Node API 게이트웨이 하나 뒤에 Next.js를 루프백으로 둠 | 채택 | 2026-10-05 |
+| [0002](0002-single-gateway-next-and-node-api.md) | Node API 게이트웨이 하나 뒤에 Next.js를 루프백으로 둠 | 채택 (실행 방식 일부 0005로 대체) | 2026-10-05 |
 | [0003](0003-sqlite-fts5-local-storage.md) | 내장 SQLite + FTS5로 로컬 저장·검색 | 채택 | 2026-09-30 |
 | [0004](0004-public-access-admin-only-writes.md) | 로그인 없는 일반 사용 + 관리자만 원본 자료 변경 | 채택 | 2026-09-30 |
+| [0005](0005-dev-mode-direct-processes.md) | 개발 모드는 백엔드·프론트를 각각 직접 실행 (Docker는 운영·테스트 환경용) | 채택 | 2026-10-08 |
 
 0002~0004는 이미 구현된 결정을 2026-10-08에 소급 기록한 것입니다. 날짜는 해당 결정이 들어간 버전의 날짜입니다.
