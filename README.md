@@ -1,450 +1,198 @@
-# 해답 — SEA THE ANSWER · Next.js
+# 해답 — SEA THE ANSWER
 
-현재 버전 **1.3.1** · 마지막 업데이트 **2026-10-06** · 직전 버전 **1.3.0**
+현재 버전 **1.3.1** · 마지막 업데이트 **2026-10-08**
 
-1.3.1에서는 코드를 `frontend`, `backend`, `scripts`로 정리하고 사용하지 않는 이전 UI를 제거했습니다. 사용 설명은 이 README 하나로 통합했습니다.
+선원의 업무를 돕는 **선박 특화 LLM 시스템**입니다. 선내 매뉴얼·해사 규정 같은 문서를 근거로 질문에 답하고(RAG), 선박의 일별 운항 기록을 조회·분석·계산(Tool Calling)해서 두 결과를 하나의 답변과 보고서 초안으로 묶어 줍니다. 동국대학교 캡스톤 디자인2 팀 프로젝트입니다.
 
-기존 남색 사이드바·청록색 강조색·카드·5개 메뉴와 관리자 권한 정책을 유지하고, 화면을 **Next.js 16.3.8 App Router + React 19.2.7 + JavaScript/JSX**로 이전했습니다. 실제 Node.js API와 SQLite를 사용합니다. Sites 예시 데이터용 프로토타입이 아닙니다.
+## 무엇을 할 수 있나
 
-화면은 `frontend/src/app`의 페이지와 `frontend/src/views`의 JSX로 렌더링하며, 기존 HTML 페이지를 iframe으로 띄우거나 HTML 문자열을 삽입하는 방식이 아닙니다. URL 이동은 Next.js 라우터가 처리합니다. PDF 원문 뷰어만 기존처럼 iframe을 사용합니다.
+| 화면 | 기능 |
+|---|---|
+| 통합 질문 | 문서 근거 + 선택한 선박·기간의 운항 수치·추이를 함께 답변, 근거 페이지·원문 PDF 열기, 입력 기준 비교, 보고서에 담기 |
+| 문서 | 텍스트 PDF 등록·추출 검토, 메타데이터·열람 범위, 개정 버전 관리 |
+| 운항 정보 | 선박·일별 기록 관리, CSV 일괄 등록, 지표 차트·선박 비교, 배출량·항해 시간 계산 |
+| 보고서 | Noon / MRV 검토 초안 자동 생성, 편집·저장, 검토 요청 → 관리자 승인 |
+| 관리 | 계정·역할, 승인, 질의·변경·오류 로그, 백업·복구 |
 
-## 1. 처음 실행하기
+일반 기능은 로그인 없이 쓰고, 등록·수정·삭제·승인·백업은 관리자(기본 **`admin / 1234`**)만 할 수 있습니다.
 
-준비물: SQLite FTS5를 지원하는 **공식 Node.js 24 LTS와 함께 설치되는 npm**, 최근 Chrome 또는 Edge. 최초 패키지 설치에는 인터넷이 필요합니다.
+**현재 구현 범위**: 문서 검색은 SQLite FTS5(BM25) 키워드 검색, 답변은 기본적으로 원문 발췌이며, 외부 LLM은 `.env`로 켜는 선택 기능입니다. 벡터·하이브리드 RAG, Local LLM, 공식 CII 계산, 규정 적용 자동 판정, DOCX·PPT 등록은 아직 연결 전입니다. 자세한 범위와 연결 계획은 [`docs/plans/2026-10-08-team-module-integration.md`](docs/plans/2026-10-08-team-module-integration.md)를 보세요.
 
-### Windows에서 가장 간단한 방법
+## 프로젝트 구조
 
-1. 기존 서버가 켜져 있으면 `Ctrl+C`로 종료합니다.
-2. ZIP을 **새 폴더에 압축 해제**하고 `package.json`과 `start.cmd`가 있는 폴더를 엽니다.
-3. `start.cmd`를 더블클릭합니다. 처음에는 필요한 패키지 설치와 Next.js 빌드를 자동으로 진행합니다. 완료될 때까지 창을 닫지 마세요.
-4. `SEA THE ANSWER (Next.js): http://127.0.0.1:5173`이 나오면 해당 주소를 브라우저에서 엽니다.
-5. 통합 질문 화면이 바로 열립니다. 기본 기능은 로그인 없이 사용합니다.
-6. 관리 기능은 사이드바의 **관리자 로그인**, 아이디 **admin**, 비밀번호 **1234**를 사용합니다. 로그아웃하면 일반 화면으로 돌아갑니다.
+```text
+sea-the-answer/
+├─ frontend/            Next.js 16 App Router + React 19 화면 (JSX)
+│  ├─ src/app/          페이지 라우트: /chat, /documents, /operations, /reports, /admin
+│  ├─ src/views/        화면 JSX
+│  ├─ src/workspace/    상태 Provider·컨트롤러(이벤트, API 호출)
+│  ├─ src/lib/          API 클라이언트, CSV·PDF 처리, 상태 모델
+│  ├─ src/styles/       CSS
+│  ├─ public/           글꼴, PDF.js, Leaflet 등 오프라인 정적 리소스
+│  └─ tests/
+├─ backend/             Node.js HTTP API + SQLite
+│  ├─ server.mjs        단일 접속점(게이트웨이): /api는 직접 처리, 나머지는 Next.js로 전달
+│  ├─ api.mjs           라우팅·인증·CSRF
+│  ├─ workspace.mjs     권한·CRUD·승인·보고서·백업
+│  ├─ db.mjs, knowledge.mjs, rag.mjs   DB·문서 인덱싱·검색·답변
+│  ├─ analysis.mjs, tools.mjs          운항 집계·통합 답변·계산 도구
+│  ├─ knowledge/seed.json              최초 실행 시 넣는 기본 문서
+│  ├─ data/             (실행 시 생성) SQLite DB와 backups/
+│  └─ tests/
+├─ scripts/             실행(run.mjs)·빌드·Windows 실행기·문서 수집·브라우저 검증
+├─ docs/                설계·명세·계획·ADR 등 모든 프로젝트 문서
+├─ start.cmd            Windows 더블클릭 실행 진입점
+├─ package.json         의존성과 npm 명령 (설치는 최상위에서 한 번)
+├─ .env.example         환경설정 예시
+└─ AGENTS.md            사람·에이전트 공통 작업 지침
+```
 
-두 번째부터는 설치된 패키지와 빌드를 사용합니다. 코드 수정 후에는 `npm run build`로 다시 빌드하거나 `npm run dev`로 개발 실행하세요. 실행 창을 닫거나 `Ctrl+C`를 누르면 서버가 종료됩니다.
+구조와 요청 흐름은 [`docs/architecture.md`](docs/architecture.md)에 자세히 정리했습니다.
 
-### 터미널에서 직접 실행하기 — Windows/macOS/Linux
+## 설치해야 하는 것
 
-`package.json`이 있는 프로젝트 폴더에서 다음 순서로 실행합니다.
+| 항목 | 버전 / 비고 |
+|---|---|
+| **Node.js** | **24 LTS 이상** (공식 배포판 권장, npm 포함). 내장 `node:sqlite`의 FTS5를 사용하므로 다른 런타임으로는 실행되지 않습니다 |
+| 브라우저 | 최신 Chrome 또는 Edge (macOS는 Safari도 열리지만 검증 범위 밖) |
+| 인터넷 | 최초 `npm ci`(패키지 설치) 때만 필요. 설치·빌드 후에는 오프라인 실행 |
+| Git | 저장소를 클론할 때만 필요 (ZIP으로 받으면 불필요) |
+| (선택) Playwright Chromium | 브라우저 자동 검증(`npm run test:browser`)을 돌릴 때만 |
+| (선택) OpenAI 호환 API 키 | 통합 질문의 **AI 답변** 옵션을 쓸 때만 |
 
-```bash
+별도의 DB 서버, Python, Docker는 필요 없습니다. npm 패키지는 `next`, `react`, `react-dom`과 개발용 `playwright`뿐이며 `npm ci`가 자동 설치합니다.
+
+## Windows에서 실행하기
+
+### 1) Node.js 설치
+
+1. <https://nodejs.org> 에서 **24 LTS Windows Installer(.msi)** 를 받아 기본 옵션으로 설치합니다.
+2. 열려 있던 터미널을 모두 닫고 새로 연 뒤 확인합니다.
+
+```bat
 node --version
-node scripts/check-runtime.cjs
-npm ci
-npm run build
+npm --version
+```
+
+`v24.`으로 시작하면 됩니다.
+
+### 2) 가장 간단한 방법 — `start.cmd`
+
+1. 프로젝트 폴더(`package.json`과 `start.cmd`가 있는 곳)를 엽니다.
+2. **`start.cmd`를 더블클릭**합니다. 처음에는 패키지 설치와 Next.js 빌드를 자동으로 하므로 몇 분 걸립니다. 창을 닫지 마세요.
+3. `SEA THE ANSWER (Next.js): http://127.0.0.1:5173` 이 보이면 브라우저에서 그 주소를 엽니다.
+4. 끌 때는 창에서 `Ctrl+C`를 누르거나 창을 닫습니다.
+
+옵션은 CMD 창에서 프로젝트 폴더로 이동한 뒤 붙여서 실행합니다.
+
+| 명령 | 하는 일 |
+|---|---|
+| `start.cmd -Port 5174` | 다른 포트로 실행 |
+| `start.cmd -Lan` | 같은 네트워크의 팀원 접속 허용 |
+| `start.cmd -Task dev` | 개발 모드(수정 즉시 반영) |
+| `start.cmd -Task build` | 다시 빌드만 |
+| `start.cmd -Task test` | 테스트 |
+
+### 3) 터미널에서 직접 실행
+
+PowerShell 또는 CMD에서 프로젝트 폴더로 이동한 뒤:
+
+```powershell
+node scripts/check-runtime.cjs   # SQLite + FTS5 ready 가 나와야 함
+npm ci                           # 최초 1회(또는 package-lock.json 변경 시)
+npm run build                    # 최초 1회(또는 코드 변경 후)
 npm start
 ```
 
-`npm ci`는 ZIP의 잠금 파일(`package-lock.json`)과 같은 패키지 버전을 설치합니다. `npm run build`는 배포용 화면을 생성합니다. `npm start`는 화면 서버와 API 서버를 함께 실행합니다.
+PowerShell에서 `npm` 실행이 "스크립트를 실행할 수 없습니다"로 막히면 `npm` 대신 `npm.cmd`를 쓰거나 CMD 창에서 실행하세요.
 
-개발 중 수정 내용을 바로 보려면:
+## macOS에서 실행하기
 
-```bash
-npm run dev
-```
+### 1) Node.js 설치
 
-개발 결과는 `frontend/.next-dev`, 배포용 빌드는 `frontend/.next`에 분리됩니다. 설치와 빌드가 끝난 뒤에는 문서 검색·운항 관리·계산·보고서를 인터넷 없이 로컬에서 사용할 수 있습니다. 글꼴·PDF.js도 `frontend/public`에 포함되어 있습니다.
+다음 중 하나를 사용합니다.
 
-포트 변경 예시:
+- **공식 설치 파일(권장)**: <https://nodejs.org> 에서 24 LTS macOS Installer(.pkg)를 받아 설치
+- **Homebrew**: `brew install node@24` 후 안내에 따라 PATH 추가
+- **nvm**: `nvm install 24 && nvm use 24`
 
-```bash
-npm start -- --port 5174
-```
-
-개발·일반 실행 모두 **사용자가 접속하는 주소는 5173(또는 지정한 포트)**입니다. Next.js 시작 로그의 임시 포트는 내부 연결용이므로 API·로그인을 사용할 때는 마지막에 출력되는 `SEA THE ANSWER` 주소를 엽니다. `node backend/server.mjs`만 실행하면 API만 켜지고 화면은 열리지 않습니다.
-
-## 2. 기존 프로젝트의 데이터를 유지하면서 바꾸기
-
-**기존 서버를 정상 종료한 후, 새 ZIP은 다른 폴더에 풀어 주세요.** 기존 폴더 전체를 보관하면 코드를 되돌릴 때도 사용할 수 있습니다.
-
-1. 기존 실행 창에서 `Ctrl+C`로 서버를 종료합니다.
-2. 새 ZIP을 별도 폴더에 풉니다. 옛 폴더 위에 덮어쓰기만 하면 삭제 대상 레거시 파일이 남습니다.
-3. 기존 최상위의 `data` 폴더를 새 프로젝트의 **`backend/data`**로 복사합니다. DB와 백업을 포함한 폴더 전체를 옮깁니다. 이미 새 구조를 쓰고 있었다면 기존 `backend/data`를 복사합니다.
-4. `.env`를 사용했다면 최상위로 복사합니다. 예전 설정이 `HAEDAP_DB_PATH=data/haedap.sqlite`라면 **`HAEDAP_DB_PATH=backend/data/haedap.sqlite`**로 바꿉니다. 다른 위치를 쓰는 사용자 지정 경로는 해당 자료의 위치에 맞춰 유지합니다.
-5. `npm ci` → `npm run build` → `npm start` 순서로 실행합니다. 이전 `node_modules`, `.next`, `.next-dev`는 복사하지 않습니다.
-
-DB 형식과 계정·문서·운항·보고서 저장 방식은 바뀌지 않았습니다. 서버 시작 시 표시되는 `DB:` 경로로 실제 사용하는 파일을 확인할 수 있습니다.
-
-### DB 경로 선택 규칙
-
-- `.env`에 `HAEDAP_DB_PATH`가 있으면 그 값을 우선합니다. 상대 경로의 기준은 항상 **프로젝트 최상위**입니다. 절대 경로도 사용할 수 있습니다.
-- 별도 설정이 없으면 새 DB를 `backend/data/haedap.sqlite`에 만듭니다.
-- 설정이 없고 옛 `data/haedap.sqlite`만 남아 있으면 그 파일을 계속 사용합니다. 이 경우 자동 이동·삭제하지 않으며 빈 DB로 바꾸지 않습니다. 서버를 종료하고 위 순서로 수동 이동할 수 있습니다.
-- 새 경로와 옛 경로 양쪽에 DB가 있으면 임의로 선택하지 않고 경로 지정 안내를 표시합니다. 사용할 DB를 `.env`의 `HAEDAP_DB_PATH`에 지정하세요.
-- 백업은 선택한 DB와 같은 폴더의 `backups/`에 저장합니다. 설치 ZIP에는 개인 DB·계정·API 키·검증 자료가 없습니다.
-
-1.2.2 이후 계정 설정은 유지합니다. 더 오래된 버전은 기존 `admin`의 사용자 ID·자료 소유권을 유지하면서 비밀번호를 `1234`, 역할을 관리자로 한 번 갱신하는 기존 이전 로직을 적용합니다. 기본 관리자가 없으면 생성합니다. 소유자가 없는 이전 공용 초안 `current`와 기존 질의 이력은 이 관리자에게 연결하며 다른 자료는 삭제하지 않습니다.
-
-브라우저에만 남아 있던 미저장 초안은 이전 버전에서 JSON으로 내보낸 뒤 **보고서 → 초안 JSON 가져오기**로 옮길 수 있습니다. 주소·포트·쿠키가 바뀌면 일반 사용자 작업공간도 달라집니다.
-
-## 3. 화면별 사용 방법
-
-| 화면 | 할 수 있는 일 |
-|---|---|
-| 통합 질문 | 문서 질문, 선박·기간 지정, 운항 수치·추이·출처 확인, 근거 페이지 열기, 입력 기준 비교, 당시 답변 이력 열기, 보고서에 담기 |
-| 문서 | 텍스트 PDF 등록, 추출 내용 검토, 메타데이터·열람 범위 설정, 개정 등록, 사용 중·이전·폐기 구분, 저장 원문 PDF 보기, 삭제 |
-| 운항 정보 | 선박 등록·수정, 일별 기록 등록·수정·삭제, CSV 검증·일괄 등록, 지표별 차트, 여러 선박 비교, 배출량·집약도·시간 계산 |
-| 보고서 | 여러 초안 저장·검색·다시 열기, DB 기록으로 Noon/MRV 검토 초안 생성, 편집·미리보기·Markdown 출력, JSON 가져오기, 검토 요청·승인 상태 표시 |
-| 관리 | 계정·역할 관리, 변경 및 보고서 승인·반려, 질의·변경·오류·계산 로그, 전체 백업·복구·파일 보관·가져오기·자동 백업 설정 |
-
-### 가장 빠른 체험 순서
-
-1. 일반 화면은 바로 사용할 수 있습니다. 가상 예시를 넣으려면 **관리자 로그인 → admin / 1234**로 로그인합니다.
-2. **운항 정보 → 가상 예시로 둘러보기**를 누릅니다. 선박·기록이 없는 작업공간에서만 사용할 수 있습니다. 가상 선박 3척·2026-09-22~28의 21개 기록이 DB에 등록됩니다.
-3. **통합 질문**에서 선박·기간을 확인하고 `선택한 선박의 연료 추이를 분석해줘`를 질문합니다.
-4. 수치와 그래프를 확인하고 **보고서에 담기 → 저장**합니다.
-5. **보고서 → 운항 기록으로 초안 만들기**에서 Noon과 MRV를 각각 생성합니다. 별도 항목으로 보관됩니다.
-6. 초안의 누락 항목을 채우고 **검토 요청**합니다. 관리자는 **관리 → 승인 → 검토 내용 → 승인·반영**으로 확정합니다.
-7. **관리 → 백업·복구**에서 백업을 만듭니다.
-
-가상 예시는 자동으로 실제 자료와 섞어 넣지 않습니다. 새 작업공간에서 직접 기록을 넣는 경우 먼저 선박을 등록하세요.
-
-### 문서 등록
-
-- PDF는 최대 25MB, 1,000페이지를 지원합니다. 브라우저 안의 PDF.js로 추출하고 원본과 페이지 번호를 함께 저장합니다. 업로드 문서는 외부 서비스로 전송하지 않습니다.
-- 문서 등록·개정·삭제는 관리자 전용입니다. 추출 진행·실패를 표시하고, 확인 체크 후 **저장**하면 승인 대기 없이 바로 반영됩니다. 실제 인덱싱이 성공해야 목록에 반영됩니다. 삭제 확인창은 유지합니다.
-- 스캔 PDF의 OCR은 포함하지 않습니다. 텍스트 없는 페이지를 안내합니다. OCR 처리된 PDF를 사용하거나 페이지별 본문을 입력하세요.
-- 본문의 `--- PAGE 7 ---`은 원본 PDF의 물리적인 7번째 페이지입니다. 인쇄된 쪽번호와 다를 수 있습니다.
-- 문서명, 버전, 발행기관, 발행일, 개정일, 조항, 적용 조건, 열람 범위를 입력합니다. 표 구조와 조항의 자동 인식은 보장하지 않으므로 추출 내용을 원본과 대조합니다.
-- 개정은 문서 상세의 **개정·정보 수정**으로 등록합니다. 이전 인용을 보존하고 새 버전을 검색에 사용합니다. 기존과 다른 원문이면 버전 이름도 바꾸세요.
-- ‘사용 중’은 내부에서 지정한 적용 버전입니다. 외부 최신 규정 자동 확인 기능은 아닙니다.
-
-### 역할과 승인
-
-| 사용 방식 | 권한 |
-|---|---|
-| 일반 사용자 · 로그인 없음 | 공개 문서 조회·질문, 운항 조회·분석·계산, 자기 브라우저의 보고서 작성·저장·검토 요청 |
-| 관리자 · 로그인 필요 | 위 기능과 함께 제한 문서 열람, 문서·선박·기록 등록·수정·삭제 즉시 반영, 보고서 승인, 사용자 관리, 전체 로그·백업·복구 |
-
-기본 관리자는 **`admin / 1234`**로 고정하며 사용자 관리 화면에서 수정하지 않습니다. 필요하면 관리 화면에서 별도의 관리자 계정을 추가할 수 있습니다. 기존 담당자·열람 계정 정보는 보존하지만 로그인은 관리자 계정에만 허용합니다.
-
-문서 열람 범위는 `누구나 열람 / 담당자·관리자 / 관리자만`입니다. 로그인 없는 사용자는 `누구나 열람` 문서만 볼 수 있습니다. 등록·개정·정보 수정·삭제 버튼은 관리자에게만 보입니다. 예전의 제한 문서는 자동 공개하지 않습니다. 관리자가 범위를 바꾸면 해당 문서의 이전 버전에도 적용됩니다. 서버에서 검색·인용·원본 PDF·보고서 접근까지 검사합니다.
-
-문서와 운항 원본 자료는 관리자만 변경할 수 있습니다. 운항 정보의 **선박 등록·선박 정보 수정·CSV 불러오기·기록 등록·기록 수정·삭제**도 관리자에게만 표시합니다. **저장·등록·삭제**는 별도의 승인 대기 없이 즉시 반영하고, 서버에서도 일반 사용자의 직접 변경 요청을 거부합니다. 조회·상세 보기·분석·계산·CSV 내보내기는 그대로 이용할 수 있습니다.
-
-보고서는 관리자 작성분도 기존의 **검토 요청 → 승인** 단계를 거칩니다. 검토·승인된 보고서는 새 초안으로 복사해 수정합니다. 이전 버전에서 이미 제출한 문서·운항 변경 요청은 보존하며 관리 → 승인에서 처리할 수 있지만, 새 일반 사용자 요청은 생성되지 않습니다.
-
-일반 사용자의 초안과 질문 이력은 브라우저의 무작위 식별 쿠키로 구분하며 관리자 로그인·로그아웃 후에도 같은 브라우저에서 이어집니다. 쿠키를 삭제하거나 다른 브라우저·주소로 접속하면 다른 일반 사용자로 취급합니다. 같은 브라우저 프로필을 공유하는 사람은 동일한 일반 작업공간을 사용합니다. 중요한 초안은 JSON으로 보관하세요. 다른 일반 사용자의 미승인 초안이나 관리자의 비공개 내용은 공유하지 않습니다.
-
-관리자 세션은 12시간입니다. 서버 재시작·로그아웃·전체 복구 후에도 일반 기능은 계속 사용할 수 있고, 관리 기능만 다시 로그인합니다. 로그인 전환 시 화면과 초안 상태를 분리하며, 로그아웃한 세션으로는 관리 API에 접근할 수 없습니다.
-
-### 운항 CSV
-
-관리자로 로그인한 뒤 **운항 정보 → CSV 불러오기 → CSV 서식 받기**를 사용하세요. 파일에는 `ship`에 화면에 안내된 선박 ID를 넣습니다.
-
-필수 열: `ship,date,fuel,factor,distance,speed,fuelType`
-
-선택 열: `position,voyage,draft,weather,engineHours,note`
-
-단위는 연료 t, 거리 nm, 속력 kn, 흘수 m, 시간 h입니다. 날짜는 `YYYY-MM-DD`입니다. CO₂는 각 기록의 연료 × 입력 배출계수입니다. 배출계수는 실제 연료에 맞게 확인하세요.
-
-최대 1MB·1,000개 기록을 검증하며 누락·숫자 범위·일자·중복을 행별로 표시합니다. 동일 선박·일자의 기록은 한 건만 등록합니다. 이전 기록보다 연료가 2배 이상이면 점검 사유가 필요합니다. 검증에 실패하면 일괄 등록 전체를 반영하지 않습니다.
-
-### 보고서와 기준 비교
-
-- Noon 초안: 선택한 기간의 마지막 기록 하루. MRV 검토 초안: 선택 기간 전체.
-- 선박·기간·항차·연료 종류·계수·수치·위치·흘수·기상·기관 운전시간 등을 표시합니다. 없는 항목은 `[미입력 · 확인 필요]`로 표시합니다.
-- 팀이 검토하는 기본 서식입니다. 공식 Noon/MRV 제출 서식 충족을 인증하지 않습니다.
-- 저장 충돌 시 내 편집 내용은 유지됩니다. 서버 내용을 확인하고 JSON으로 보관하거나 최신 버전을 확인한 후 대체 저장할 수 있습니다.
-- 통합 답변의 **적용 기준 확인**은 근거 구절, 비교 지표, 조건과 기준값을 사용자가 직접 검토·지정하는 기능입니다. `입력 기준 충족 / 미충족 / 판단 불가`를 표시합니다. 자동으로 모든 규정의 적용 여부를 판정하지 않습니다.
-
-## 4. 실제 구현과 팀 모듈 연결 범위
-
-1.3.0에서 1.2.2의 화면을 Next.js App Router와 React JSX로 옮기고 기존 로컬 API·SQLite를 연결했습니다. 이번 1.3.1은 그 기능을 유지하며 파일 구조를 정리한 버전입니다. 다음 전문 모듈까지 완료한 최종 시스템은 아닙니다.
-
-| 항목 | 현재 동작 / 남은 연결 |
-|---|---|
-| 문서 검색 | SQLite FTS5·BM25·한영 용어 확장. 팀의 벡터·하이브리드 RAG로 교체할 수 있음 |
-| 자연어 처리 | 질문 유형은 간단한 단어 규칙으로 분기. UI의 작업 선택으로 명시 가능. 대상 선박·기간은 선택한 값 사용. 질문 속 임의 날짜·선박명 자동 추출이나 범용 Agent는 미구현 |
-| 다국어 | 한글 유무에 따른 한·영 자동 선택과 수동 선택. 원문 발췌는 원문 언어 유지. 번역 답변은 선택적 외부 모델 연결 필요 |
-| CII | 기본 계산은 CO₂와 단순 DWT 집약도. 공식 CII 산식·보정·제외·연간 완전성·등급 계산은 미구현. 산출 불가와 필요한 조건 표시; 향후 결과 표시 구조 준비 |
-| 규정 부합 | 사용자가 검토한 단일 기준 수치 비교. 규정 적용 자동 판정은 팀 모듈 필요 |
-| 보고서 | 실제 DB 자료로 기본 검토용 초안 생성·저장. 팀이 정한 최종 필수 항목과 제출 서식 확정 필요 |
-| Local LLM·Python | 이번 기본 서버는 Node.js 계산이며 Python Tool·Local LLM은 연결하지 않음 |
-| 오프라인 | 최초 의존성 설치에는 인터넷 필요. 설치·빌드 후 문서 검색·기록 관리·계산·초안·백업은 로컬. 선택적 외부 AI 답변은 인터넷 필요 |
-
-외부 AI를 사용하려면 `.env.example`을 `.env`로 복사하고 `OPENAI_API_KEY`, `OPENAI_MODEL`을 설정한 후 서버를 재시작합니다. 두 값이 모두 있으면 통합 질문에서 **AI 답변**을 선택할 수 있습니다. API 키는 브라우저로 보내지 않습니다. 모델 실패 시 원문 근거 표시로 돌아갑니다. 실제 외부 모델 호출은 이 작업에서 검증하지 않았습니다.
-
-## 5. 백업과 복구
-
-- **백업 만들기**: 문서·PDF·운항·보고서·계정 및 권한·질의·로그·승인·앱 설정을 JSON으로 보관합니다. DB 옆 `backups` 폴더에 생성됩니다.
-- **파일 보관**: 다른 저장장치에 보관할 파일을 내려받습니다. **파일 가져오기**는 100MB 이하의 전체 백업을 목록에 추가하고 형식·체크섬을 검증합니다.
-- **복구**: 선택한 시점으로 현재 데이터를 교체합니다. 복구 직전 자동 백업, 트랜잭션 복구, 검색 인덱스 재생성, 모든 세션 무효화를 수행합니다. 일반 사용 상태로 돌아오며 관리 기능은 `admin / 1234`로 다시 로그인합니다. 1.2.0 백업을 복구해도 기본 관리자 설정을 적용합니다.
-- **자동 백업**: 기본 하루 1회. 서버가 실행 중일 때 1분마다 확인하며 UTC 날짜 기준입니다. 관리 화면에서 끌 수 있습니다. 자동 삭제는 하지 않습니다.
-- 서버 환경 비밀키 `.env`는 포함하지 않습니다. 기존 폴더에서 별도 보관합니다.
-- 서버가 켜지지 않으면 정상 종료된 상태의 DB 폴더(기본 `backend/data`) 복사본을 복원하는 방법도 있습니다. 실행 중인 DB를 임의로 교체하지 마세요.
-
-## 6. 같은 네트워크의 팀원이 접속하기
-
-`npm run start:lan` 또는 Windows CMD의 `start.cmd -Lan`으로 실행합니다. 출력된 `LAN (...)` 주소를 같은 네트워크의 팀원에게 알려줍니다. 팀원은 로그인 없이 기본 기능을 사용합니다. 관리가 필요할 때만 관리자 로그인합니다.
-
-기본 실행은 이 PC에서만 접속합니다. LAN 실행도 연결된 IPv4 서브넷만 허용하며 임의 Host·다른 출처 요청은 거부합니다. 학교·공용 인터넷에 공개하는 배포 구성이 아닙니다. `scripts/setup-lan-firewall.ps1`은 필요할 때 Windows 방화벽 설정을 돕는 기존 스크립트입니다.
-
-## 7. 코드 구조와 수정 시작점
-
-최상위 소스 폴더는 **`frontend`, `backend`, `scripts`** 세 개입니다. 설명서는 이 README 하나만 유지합니다.
-
-| 최상위 항목 | 역할 |
-|---|---|
-| `frontend/` | 화면 코드·CSS·정적 리소스·Next.js 설정·프런트엔드 테스트 |
-| `backend/` | API·DB·검색·계산·기본 문서·백엔드 테스트·실행 중 데이터 |
-| `scripts/` | 전체 실행·빌드·Windows 지원·문서 수집·통합 검증 |
-| `package.json`, `package-lock.json` | 전체 의존성과 실행 명령. 설치도 최상위에서 한 번 수행 |
-| `start.cmd` | 최상위에 남긴 Windows 실행 진입점 |
-| `.env.example`, `.gitignore` | 환경설정 예시와 Git 제외 규칙 |
-| `README.md`, `AGENTS.md` | 사용자 안내와 기존 프로젝트 작업 지침 |
-
-설치 시 최상위에 `node_modules/`가 생성됩니다. Next.js 빌드 결과는 `frontend/.next`, 개발 결과는 `frontend/.next-dev`입니다. 기본 DB와 백업은 실행 시 `backend/data/`에 생성됩니다. `.env`는 필요한 경우 직접 만듭니다.
-
-| 경로 | 수정·확인할 내용 |
-|---|---|
-| `frontend/src/app/` | 통합 질문·문서·운항·보고서·관리 페이지, 문서/보고서 상세 URL |
-| `frontend/src/components/common.jsx` | 공통 버튼·제목·안내·배지·숫자 표시 |
-| `frontend/src/views/` | 공통 셸·문서·운항·보고서·관리 화면과 입력 폼 JSX |
-| `frontend/src/workspace/` | React Provider·화면 상태 구독·이벤트·API 연결·대화상자·초안 보존 |
-| `frontend/src/lib/` | 상태 모델, API 클라이언트, CSV·PDF 처리, 아이콘 |
-| `frontend/src/styles/` | 기존 디자인·반응형 CSS |
-| `frontend/public/` | 글꼴·아이콘·PDF.js와 해당 라이선스 |
-| `frontend/next.config.mjs` | Next.js 설정. 의존성 추적 기준은 프로젝트 최상위 |
-| `frontend/tests/` | CSV·PDF 등 브라우저 처리 함수 테스트 |
-| `backend/server.mjs`, `frontend-proxy.mjs` | 공개 접속점·네트워크 검사·API 처리·Next 화면 전달 |
-| `backend/api.mjs`, `workspace.mjs` | 인증·권한·CRUD·승인·이력·백업 |
-| `backend/analysis.mjs`, `db.mjs`, `knowledge.mjs`, `rag.mjs`, `tools.mjs` | 운항 집계·검색·보고서 생성·DB·선택적 AI·계산 |
-| `backend/paths.mjs` | DB 기본 위치·이전 위치 호환·사용자 지정 경로 해석 |
-| `backend/knowledge/seed.json` | 처음 실행할 때 넣는 기본 문서 |
-| `backend/tests/` | API·DB·권한·네트워크·경로 이전 회귀 테스트 |
-| `scripts/run.mjs`, `build.mjs` | 두 서버 실행·종료, Next.js 빌드 |
-| `scripts/start.ps1`, `setup-lan-firewall.ps1` | Windows 실행 지원·선택적 LAN 방화벽 설정 |
-| `scripts/ingest.mjs` | 운영자용 JSON 문서 수집 |
-| `scripts/next-browser-smoke.mjs`, `scripts/tests/` | 실제 브라우저 업무 흐름·런타임·Windows 실행기 검증 |
-
-`legacy-ui/`, 과거 설명서, 중복 실행용 CMD 파일은 제거했습니다. 이전 참고 코드나 빌드 캐시는 현재 소스에 포함하지 않습니다. `.gitignore`는 DB·백업·환경 비밀값·빌드 결과·설치 패키지를 Git에서 제외합니다.
-
-### 화면과 서버의 연결 방식
-
-사용자는 하나의 주소로 접속합니다. `backend/server.mjs`가 먼저 접속 주소·접속자 네트워크를 검사하고, `/api/*`는 기존 API에서 처리하고, 화면·Next 리소스는 로컬 Next.js 프로세스에 전달합니다. API는 다른 포트로 우회하지 않으므로 기존 쿠키, 요청 출처 검사, CSRF, 관리자 권한 검사와 38MB/100MB API 본문 제한을 유지합니다. Next.js는 임시 포트의 `127.0.0.1`에서만 수신합니다.
-
-React는 `WorkspaceProvider`가 소유한 작업공간을 `useSyncExternalStore`로 구독합니다. 사용자 동작은 루트의 React 이벤트 처리기를 통해 컨트롤러에 전달되고, 상태 변경이 JSX에 반영됩니다. 전역 서버 변수에 사용자 UI 상태를 저장하지 않습니다. 등록 폼과 PDF 추출 입력칸은 비제어 입력을 사용하고, 질문·보고서 편집기는 제어 입력으로 작성 내용을 보존합니다.
-
-화면 수정은 해당 JSX 파일, 색상·간격은 `frontend/src/styles`, 팀 API 교체는 `frontend/src/lib/api.js`부터 시작하면 됩니다. 별도의 상태관리·UI·차트 패키지는 추가하지 않았습니다. Next.js/React와 개발 검증용 Playwright를 사용합니다.
-
-문서 추가는 웹 화면을 우선 사용하세요. 서버 운영자의 JSON 수집은 다음처럼 실행합니다.
+터미널(Terminal.app)을 새로 열고 확인합니다.
 
 ```bash
-npm run ingest -- backend/knowledge/seed.json
+node --version   # v24.x
+npm --version
 ```
 
-CLI 수집 JSON은 문서 객체의 배열입니다. `backend/knowledge/seed.json`을 형식 예시로 사용하세요. 웹 등록 API의 형식과 팀 모듈 연결은 아래 9절에 정리했습니다.
+### 2) 실행
 
-## 8. 검증과 문제 해결
-
-설치 후 서버·DB·프런트엔드·실행 지원 테스트:
+macOS에는 `start.cmd`가 없으므로 터미널에서 실행합니다.
 
 ```bash
-npm test
+cd ~/경로/sea-the-answer
+node scripts/check-runtime.cjs   # SQLite + FTS5 ready 확인
+npm ci                           # 최초 1회
+npm run build                    # 최초 1회(또는 코드 변경 후)
+npm start
 ```
 
-Next.js 빌드:
+`SEA THE ANSWER (Next.js): http://127.0.0.1:5173` 이 나오면 브라우저에서 엽니다. 종료는 `Ctrl+C`입니다. LAN 접속을 켜면 macOS가 "들어오는 네트워크 연결 허용" 창을 띄울 수 있으니 **허용**을 누르세요.
+
+## 공통 명령 (Windows·macOS 동일)
+
+| 명령 | 하는 일 |
+|---|---|
+| `npm start` | 빌드된 화면 + API 서버 실행 (기본 5173 포트, 이 PC에서만 접속) |
+| `npm start -- --port 5174` | 다른 포트로 실행 |
+| `npm run start:lan` | 같은 네트워크(연결된 IPv4 서브넷)의 기기 접속 허용 |
+| `npm run dev` | 개발 모드. 코드 수정이 바로 반영됨 (빌드 결과는 `frontend/.next-dev`) |
+| `npm run build` | 배포용 화면 빌드 (`frontend/.next`) |
+| `npm test` | 백엔드·프런트엔드·실행기 단위/회귀 테스트 |
+| `npx playwright install chromium` → `npm run test:browser` | 실제 브라우저 업무 흐름 검증 (임시 DB 사용) |
+| `npm run ingest -- backend/knowledge/seed.json` | JSON 문서 일괄 수집 (운영자용) |
+| `npm run check` | Node.js 런타임(SQLite·FTS5) 점검 |
+
+꼭 기억할 점:
+
+- 접속 주소는 항상 마지막에 출력되는 **`SEA THE ANSWER` 주소(5173 또는 지정 포트)** 입니다. 로그 중간의 Next.js 임시 포트로 접속하면 API가 동작하지 않습니다.
+- `node backend/server.mjs`만 실행하면 API만 켜지고 화면은 나오지 않습니다. `npm start` 또는 `npm run dev`를 사용하세요.
+- DB는 기본적으로 `backend/data/haedap.sqlite`에 생성됩니다. 시작 로그의 `DB:` 줄에서 실제 경로를 확인할 수 있습니다.
+
+### 환경설정 (선택)
+
+`.env.example`을 `.env`로 복사해 사용합니다. `.env`는 Git에 올리지 않습니다.
 
 ```bash
-npm run build
+cp .env.example .env        # macOS
+copy .env.example .env      # Windows CMD
 ```
 
-실제 브라우저 검증(`npm run build` 완료 후, 최초 한 번 Chromium 설치):
-
-```bash
-npx playwright install chromium
-npm run test:browser
-```
-
-`npm run test:ui`도 같은 브라우저 검증을 실행합니다. 별도 임시 DB와 임의 포트를 사용하므로 사용자 데이터 폴더를 수정하지 않습니다. 다른 Chrome 실행 파일을 사용하려면 `CHROME_PATH` 환경변수에 그 경로를 지정합니다. 개발 실행 검증은 `HAEDAP_TEST_DEV=1`로 선택할 수 있습니다. 구체적인 수행 결과와 한계는 아래 11절에 기록했습니다.
-
-| 증상 | 확인할 내용 |
+| 변수 | 설명 |
 |---|---|
-| node/npm 명령을 찾지 못함 | 공식 Node.js 24 LTS를 npm과 함께 설치하고 터미널을 새로 열기 |
-| SQLite/FTS5 오류 | `node scripts/check-runtime.cjs` 확인. VS Code 내장 런타임 대신 공식 Node.js 사용 |
-| 패키지 설치 실패 | 인터넷·프록시를 확인하고 프로젝트 폴더에서 `npm ci` 재실행 |
-| 빌드가 없다는 안내 | `npm run build` 실행 |
-| API 연결 실패 | Next.js 임시 포트 대신 `SEA THE ANSWER`에 표시된 5173 주소로 접속 |
-| 포트 사용 중 | 기존 실행 창을 종료하거나 `npm start -- --port 5174` 실행 |
-| 수정한 화면이 반영되지 않음 | 일반 실행이면 재빌드 후 재시작. 개발 중이면 `npm run dev` 사용 |
-| 관리자 로그인 실패 | `admin / 1234` 확인. 기존 서버 종료 후 새 폴더에서 실행 |
-| 등록·수정·삭제 버튼이 안 보임 | 관리자 로그인 여부 확인 |
-| 문서가 안 보임 | 열람 범위·사용 중/이전/폐기 필터 확인 |
-| 운항 화면이 비어 있음 | 선박·기록 등록 및 기간 확인. 가상 예시는 관리자 버튼으로 등록 |
-| PDF 추출 실패 | 암호·손상·스캔 여부 확인. 텍스트 PDF 또는 페이지별 본문 입력 |
-| 보고서 수정 불가 | 검토 중/승인 완료 상태는 복사 후 새 초안으로 작성 |
-| 검토 대기 상태 | 관리자 계정으로 관리 → 승인에서 처리 |
+| `PORT` | 기본 포트 (기본 5173). `--port`가 우선 |
+| `HAEDAP_DB_PATH` | DB 파일 경로. 상대 경로는 프로젝트 최상위 기준 |
+| `OPENAI_API_KEY`, `OPENAI_MODEL` | 둘 다 설정하면 통합 질문에서 **AI 답변** 선택 가능. 키는 브라우저로 보내지 않음 |
 
-## 9. 서버 API와 팀 모듈 연결
+## 처음 써 보기
 
-화면은 `frontend/src/lib/api.js`를 통해 같은 주소의 Node HTTP API에 요청합니다. SQLite 테이블은 기존과 같고 PDF 원본은 Base64 형태로 DB에 저장합니다. 이 절은 이전 상세 문서의 유효한 API 계약을 통합한 것입니다.
+1. 사이드바 **관리자 로그인** → `admin / 1234`
+2. **운항 정보 → 가상 예시로 둘러보기** (가상 선박 3척, 7일치 기록 등록)
+3. **통합 질문**에서 선박·기간을 고르고 `선택한 선박의 연료 추이를 분석해줘` 질문
+4. **보고서에 담기 → 저장**, 또는 **보고서 → 운항 기록으로 초안 만들기**에서 Noon·MRV 초안 생성
 
-### 인증과 쓰기 보호
+화면별 자세한 사용법, 권한, CSV 형식, 백업·복구, 기존 데이터 이전, 문제 해결은 [`docs/user-guide.md`](docs/user-guide.md)에 있습니다.
 
-- `GET /api/health`: 연결 상태, 현재 관리자 또는 일반 사용자(`role:guest`), `authenticated`, `publicAccess:true`, CSRF 토큰. `setupRequired:false`. 일반 접근에도 공개 문서 수를 반환합니다.
-- 시작 시 기본 관리자 `admin / 1234`를 자동 설정합니다. 기존 사용자 ID와 자료 소유권을 유지하는 일회성 이전이며 `settings.publicAccessV1`로 표시합니다. 기본 계정은 사용자 변경 API에서 고정합니다.
-- `POST /api/auth/setup`: 사용하지 않으며 410을 반환합니다. 최초 계정 입력 과정이 없습니다.
-- `POST /api/auth/login`, `/api/auth/logout`: 관리자만 로그인. HttpOnly, SameSite=Strict 세션 쿠키를 발급·폐기합니다. 비밀번호는 salt+scrypt로 저장합니다. 기본 관리자만 요청된 4자리 비밀번호를 사용하며 추가 관리자 비밀번호는 10자 이상입니다.
-- 일반 사용자는 32바이트 난수 `haedap_guest` 쿠키로 구분합니다. DB 소유자 ID는 `guest_` + 쿠키 SHA-256이며 쿠키는 HttpOnly/SameSite=Strict, 최대 1년입니다. 관리자 로그인·로그아웃과 서버 재시작 후에도 같은 식별자를 유지합니다. 쿠키가 없으면 새 일반 사용자이며, 실제 사람의 인증 수단은 아닙니다.
-- UI 요청의 `X-Haedap-Identity`가 현재 쿠키의 사용자와 다르면 401을 반환해 다른 탭·세션 만료로 바뀐 상태에서 이전 사용자의 내용이 저장되는 일을 막습니다. 권한 부여는 이 헤더가 아니라 서버의 사용자·역할 검사로 합니다.
-- 세션 12시간, 로그인 실패 횟수 제한, 계정 버전 변경 시 기존 세션 무효화. 서버 재시작·전체 복구는 재로그인 필요.
-- 모든 POST는 JSON과 `X-Haedap-Token`이 필요합니다. 같은 출처·Host·LAN 범위 검사도 유지합니다.
-- `admin`: 승인·사용자·백업·전체 로그. `guest`: 공개 문서·운항 조회, 질문·계산, 자기 초안 작성·저장·검토 요청. 이전 `operator/viewer` 레코드는 보존하지만 이 계정의 로그인은 허용하지 않습니다.
-- 제한 문서는 검색 입력 단계부터 제외합니다. 원본 PDF, 이전 버전, 보고서 근거, 질문 이력 재열람에도 문서 범위를 검사합니다.
+## 문서
 
-### API
-
-| 경로 | 동작 |
+| 문서 | 내용 |
 |---|---|
-| GET `/api/documents` | 허용 문서 목록·메타데이터·페이지별 본문 |
-| GET `/api/documents/:id/pdf` | 허용된 저장 원본 PDF |
-| GET `/api/operations` | 저장 선박과 일별 운항 기록 |
-| POST `/api/operations/validate` | 관리자 전용 CSV 행 검증. `{rows:[...]}` |
-| POST `/api/operations/example` | 빈 작업공간에 명시적으로 가상 예시 등록, 관리자 전용 |
-| POST `/api/changes` | 관리자 전용 `{kind,payload}` 변경 즉시 반영. 일반 사용자는 403 |
-| GET `/api/changes` | 관리자 승인 목록 |
-| POST `/api/changes/review` | `{id,decision:"approve" 또는 "reject",note}` |
-| GET/POST `/api/users` | 관리자 계정 목록·생성·수정 |
-| POST `/api/ask` | 근거+운항 데이터+기준 비교 통합 결과 |
-| POST `/api/search` | 열람 범위가 적용된 검색 결과 |
-| GET `/api/history` | 현재 사용자의 당시 질문·답변·근거 |
-| GET `/api/logs` | 관리자 로그 최근 500건 |
-| GET/POST `/api/reports` | 보고서 목록·저장. 새 초안은 새 UUID |
-| GET `/api/reports/:id` | 개별 보고서 |
-| GET/POST `/api/reports/current` | 이전 공용 초안 ID 호환 경로. 인증·권한 적용 |
-| POST `/api/reports/generate` | `{template:"noon" 또는 "mrv",ship,from,to}` |
-| POST `/api/reports/submit` | `{id,version}` 검토 요청 |
-| POST `/api/tools/calculate_emissions` | `{fuel,factor,dwt,distance}` |
-| POST `/api/tools/voyage_time` | `{start,end,before,after}` UTC 시간 계산 |
-| GET/POST `/api/backups` | 전체 백업 목록 / 생성 |
-| GET `/api/backups/:id` | 백업 파일 다운로드 |
-| POST `/api/backups/import` | 전체 백업 JSON 형식·체크섬 검증 후 목록에 추가 |
-| POST `/api/backups/restore` | `{id,confirm:"복구"}`. 복구 전 자동 보관·재로그인 |
-| POST `/api/backups/settings` | `{autoBackup:"daily" 또는 "off"}` |
+| [`docs/README.md`](docs/README.md) | 전체 문서 목록과 작성 규칙 |
+| [`docs/architecture.md`](docs/architecture.md) | 시스템 구조, 요청 흐름, 모듈 경계, 보안 경계 |
+| [`docs/data-model.md`](docs/data-model.md) | SQLite 테이블과 JSON 필드, 상태 값, 백업 형식 |
+| [`docs/user-guide.md`](docs/user-guide.md) | 사용·운영 안내, 문제 해결 |
+| [`docs/specs/`](docs/specs/) | API·통합 답변 등 구현 계약 |
+| [`docs/plans/`](docs/plans/) | 작업 계획과 진행 상태 |
+| [`docs/adr/`](docs/adr/) | 주요 설계 결정 기록 |
+| [`docs/changelog.md`](docs/changelog.md) | 변경 이력과 검증 기록 |
+| [`AGENTS.md`](AGENTS.md) | 사람·코딩 에이전트 공통 작업 지침 |
 
-변경 `kind`: `document.save`, `document.delete`, `ship.save`, `operation.save`, `operation.import`, `operation.delete`.
-
-문서·선박·운항 자료의 변경은 관리자만 가능하며 한 트랜잭션에서 즉시 반영합니다. 이력 호환을 위해 완료된 변경의 `status`는 `approved`로 기록하지만 별도의 승인 요청이나 대기는 없습니다. 일반 사용자의 직접 변경·CSV 검증 요청은 403이며 승인 대기 항목도 생성하지 않습니다. 문서·기록·보고서의 낡은 버전으로 변경하면 409입니다. CSV 여러 행은 하나의 트랜잭션으로 반영합니다. 일반 사용자의 질문·수치 계산·자기 초안 저장 및 보고서 검토 요청은 유지합니다. 보고서 검토 요청과 이전 버전에서 생성한 대기 항목은 기존 검토 API로 처리합니다.
-
-### 문서 계약
-
-문서 등록 payload:
-
-```json
-{
-  "document": {
-    "id": "manual-001",
-    "title": "시험 매뉴얼",
-    "kind": "onboard",
-    "version": "1",
-    "reviewedAt": "2026-09-30",
-    "reference": "제1조",
-    "language": "ko",
-    "sections": [{"page": 7, "heading": "제1조", "text": "검토할 실제 원문을 입력합니다."}]
-  },
-  "expectedId": "",
-  "meta": {
-    "scope": "all",
-    "status": "active",
-    "issuer": "발행기관",
-    "issuedAt": "2026-01-01",
-    "revisedAt": "2026-09-01",
-    "applicability": "적용 대상과 조건"
-  }
-}
-```
-
-새 문서는 `expectedId:""`, 개정 시 현재 revision ID와 `expectedMetaRevision`을 사용합니다. PDF를 포함하면 `file:{name,base64}`를 추가합니다. `kind`는 `onboard/official-summary/sample`, `scope`는 `all/operator/admin`, `status`는 `active/retired`입니다. 공식 안내 요약에는 HTTPS 원문 URL이 필요합니다.
-
-권한 변경은 같은 논리 문서의 이전 버전에도 적용합니다. 문서 삭제는 검색·열람 제외로 처리하여 기록과 복구 가능성을 보존합니다. 페이지 번호 없는 기존 자료는 `페이지 미지정`으로 정직하게 표시합니다.
-
-### 통합 답변을 팀 Agent로 교체할 때
-
-UI의 입력 형태:
-
-```json
-{
-  "question": "선택 선박의 운항 현황과 관련 규정을 확인해줘",
-  "task": "integrated",
-  "language": "auto",
-  "mode": "extractive",
-  "filter": "all",
-  "context": {"ship": "등록된 선박 ID", "from": "2026-09-01", "to": "2026-09-30"},
-  "criterion": null
-}
-```
-
-현재 `auto`는 단어 규칙 기반이며 UI에서 작업을 명시할 수 있습니다. 임의의 질문에서 선박·기간·규정을 해석하는 범용 Agent는 아닙니다. 팀의 의도 분류·RAG·Tool 호출 결과를 아래 형태로 맞추면 화면은 재사용할 수 있습니다.
-
-- `question, language, generation, status, notice, warnings`
-- `statements:[{text,chunkId,quote}]`
-- `evidence:[{id,document_id,title,version,reference,heading,text,page,meta}]`
-- `toolRuns:[]`
-- `operations:{ship,from,to,rows,count,fuel,emission,distance,speed,intensity,sample,cii}`
-- `compliance:{status:"met"|"unmet"|"unknown",label,actual,limit,rule,reason}`
-- `reportSuggested:boolean`
-
-CII 표시 계약은 `cii:{status:"available",value,unit,rating,year,method}` 또는 `cii:{status:"unavailable",reason}`입니다. 현재 기본 서버는 항상 공식 CII에 대해 `unavailable`을 반환합니다. **값이나 등급을 임의로 만들어 넣지 마세요.** 입력값·산식·선종·연도·검증된 기준을 전문 모듈에서 확보해야 합니다.
-
-현재 기준 비교는 사용자가 직접 확인한 근거 구절과 수치를 비교합니다. `criterion`은 `documentId,chunkId,quote,metric,operator,limit,confirmed`를 받습니다. 원문 구절 포함 여부·문서 권한·현재 적용 버전을 확인합니다. 수치 기준의 규정상 의미·선박 적용 여부는 사용자의 검토를 전제로 하며 LLM이 자동 인증하지 않습니다.
-
-브라우저의 입력·상태·결과 UI를 유지한 채 `backend/analysis.mjs`, `backend/rag.mjs`, `frontend/src/lib/api.js` 경계를 교체하면 됩니다. 인증과 인용 권한 검사를 우회하지 마세요.
-
-### 백업과 한계
-
-백업 JSON은 명시한 테이블과 원본 PDF를 포함하며 API 키는 포함하지 않습니다. SHA-256 체크섬으로 우발적 손상을 검사합니다. 서명된 외부 백업의 진위를 보장하는 기능은 아닙니다. 가져온 백업은 형식 v2만 허용합니다. 복구 시 FTS를 재구축하고 SQL 트랜잭션 실패는 되돌립니다. 이전 백업에도 기본 관리자 이전을 적용하고 관리자 세션을 해제합니다. 일반 식별 쿠키는 유지합니다. 자동 백업은 서버 실행 중 UTC 날짜 기준 하루 한 번입니다.
-
-지금 규모의 캡스톤 데모에 맞춰 문서·운항·보고서 목록을 메모리에 읽습니다. 대규모 실운항 배포에는 페이징, 파일 저장소, TLS, 로그 보존 정책 등 별도 운영 설계가 필요합니다.
-
-
-## 10. 핵심 기능과 화면 연결
-
-| 요구 | 보완 위치 |
-|---|---|
-| 인증·권한 | 로그인 없는 일반 화면, admin / 1234 관리자 로그인·로그아웃, 역할별 버튼과 서버 검사 |
-| 문서 관리 | 문서 등록·개정 창, PDF 추출·진행·오류, 메타데이터·열람 범위, 관리자만 등록·수정·삭제 즉시 반영 |
-| 검색·RAG | 출처 페이지·조항·버전, PDF 원문, 근거 부족·담당자 확인·실패·15초 이상 진행 안내 |
-| 운항 등록·관리 | 관리자 전용 선박·기록 입력·수정·삭제·CSV 등록, 일반 사용자의 상세·분석 조회 |
-| KPI | 입력값·결과·산식, 여러 지표 추이, CII 산출 불가 사유와 향후 결과 표시 구조 |
-| 분석 | 선박·기간·지표 선택, 비교 차트와 원본 기록 표 |
-| 통합 질의 | 질문 화면의 대상 선택, 운항 수치·추이·규정 근거·입력 기준 비교 결과 |
-| 시각화·요약 | 연료·CO₂·거리·속력·단순 집약도 차트, 질문 내 기록과 수치 요약 |
-| 보고서 | 여러 보고서 목록·개별 저장, Noon/MRV 검토 초안, 검토 요청·승인 상태 |
-| 다국어 | 자동·한국어·영어 선택, 영어 운영 요약, 원문 언어 유지 안내 |
-| 버전·최신성 | 사용 중·이전·폐기, 발행·개정·적용 정보, 권한을 유지한 버전 열람 |
-| 이력·로그 | 당시 답변 재열람, 관리자 질의·변경·오류·계산 로그와 필터 |
-| 백업·복구 | 전체 백업 목록·일시·버전, 다운로드·가져오기, 복구 확인·직전 보관·자동 백업 |
-
-UI만 있는 가짜 계정이나 가짜 저장 버튼을 넣지 않았습니다. 계정·데이터·보고서·승인·백업은 로컬 서버에서 처리합니다. 운항 예시는 명시적으로 등록한 경우에만 가상 자료로 표시합니다.
-
-CII 전문 계산, Local LLM, 교차 언어 RAG 품질, 규정 적용 자동 판정, 공식 제출 서식은 별도 팀 구현 영역입니다. 현재 화면은 데이터 부족과 미연결 결과를 구분해서 표시합니다. 기능의 정확도·응답 시간 목표 달성은 최종 팀 데이터와 모듈로 평가해야 합니다.
-
-
-## 11. 이번 버전 검증 기록
-
-수행일: **2026-10-06**. Linux, Node.js v24.19.0, Next.js 16.3.8, React 19.2.7, Playwright와 Chromium 153.
-
-| 검증 | 결과 |
-|---|---|
-| `npm run build` | `frontend/.next`에 배포용 빌드 성공 |
-| `npm test` | **32개 통과, 실패 없음, Windows 전용 1개 건너뜀** |
-| 일반 실행의 실제 브라우저 검증 | **17개 업무 흐름 통과**, 브라우저 예외·React 경고 없음 |
-| 개발 실행의 실제 브라우저 검증 | **동일한 17개 흐름 통과**, 개발 빌드 경로 분리 확인 |
-| DB 경로 호환 | 새 위치·옛 위치·사용자 지정 경로·양쪽 DB 존재 시 명시적 선택 검증 |
-
-브라우저에서 공개 접근, 질문·검색·출처, 문서 상세 URL·새로고침, 일반 사용자의 변경 차단, 실패한 로그인 재시도, 관리자 로그인·로그아웃, 문서 등록·개정·삭제, 실제 PDF 추출·원문 저장, 선박·기록 등록·수정·삭제, 계산, CSV 검증·등록, 보고서 생성·저장·뒤로가기·검토 요청·승인, 백업·복구·세션 무효화, 모바일 메뉴를 확인했습니다. PDF는 테스트용 1페이지 텍스트 PDF의 원문 바이트까지 대조했습니다.
-
-기존 문서 인덱싱·검색·권한, 보고서 저장 충돌, 트랜잭션, 계정 이전, 백업 무결성 등 회귀 테스트도 통과했습니다. 모든 업무 검증은 임시 DB·임시 포트로 진행했으며 사용자 데이터 폴더를 사용하지 않았습니다. 권한 거부(403)와 잘못된 비밀번호(401)는 의도한 검사 결과입니다.
-
-Windows 실행기의 npm 인수 전달과 새 경로는 수정했지만 **Windows에서 직접 실행하지는 않았습니다**. 실제 다른 기기의 LAN 접속, 휴대폰·Safari·Edge 전체 호환성, 모든 PDF 형식은 이번 검증 범위가 아닙니다. 모바일 검증은 Chromium 화면 크기 390px 기준입니다.
-
-실제 외부 LLM 호출은 수행하지 않았고, 모델 실패·인용 검사는 모의 응답을 사용했습니다. 공식 CII 계산·규정 적용 자동 판정·검색 Recall·응답 시간 목표·번역 품질·공식 보고서 서식은 최종 팀 모듈과 데이터로 별도 평가해야 합니다.
-
-## 변경 이력
-
-- **1.3.1 / 2026-10-06**: 최상위 소스 폴더를 frontend/backend/scripts로 정리. Next.js와 Windows 실행·테스트 경로 수정. 레거시·중복 설명서 제거 및 기존 README에 통합. 기본 DB 위치를 backend/data로 변경하고 옛 경로 호환·충돌 안내 추가. Windows npm 인수 전달을 명시하여 첫 실행 빌드 호출 보완.
-- **1.3.0 / 2026-10-05**: Next.js App Router·React JSX로 UI 이전. 실제 페이지 URL·공통 Provider·컴포넌트·대화상자 적용. 기존 Node API·SQLite·권한 정책 유지. 하나의 시작 명령에서 API 게이트웨이와 Next.js 실행. 설치·빌드·개발·데이터 이전 안내 갱신.
-- **1.2.2 / 2026-09-30**: SEA THE ANSWER 표기와 관리자 전용 문서·운항 변경, 즉시 반영.
-- **1.2.1 / 2026-09-30**: 로그인 없는 일반 기능과 관리자 admin / 1234, 일반 사용자별 초안·이력 분리.
-- **1.2.0 / 2026-09-30**: PDF/CSV, 다중 보고서, 통합 결과, 계정·권한·로그·백업·복구.
+팀 보고서는 Notion에서 관리합니다: <https://app.notion.com/p/dudco/3dc1cb63e55380e98972eda1ce1040b5>

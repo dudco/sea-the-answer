@@ -5,3 +5,5 @@ data/
 .env
 .verification/
 *.log
+frontend/AGENTS.md
+frontend/CLAUDE.md

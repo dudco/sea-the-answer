@@ -1,23 +1,75 @@
 # 프로젝트 작업 지침
 
-## README를 계속 업데이트하기
+이 파일은 사람과 코딩 에이전트(Claude Code, Codex, Cursor 등)가 공통으로 따르는 작업 규칙입니다. Claude Code는 저장소에 `CLAUDE.md`가 없으면 이 `AGENTS.md`를 프로젝트 지침으로 읽으므로 `CLAUDE.md`를 따로 두지 않습니다. 개인용 `CLAUDE.md`·`CLAUDE.local.md`를 만들면 Claude Code가 이 파일 대신 그쪽을 읽으니, 만들어야 한다면 첫 줄에 `@AGENTS.md`를 넣어 이 파일을 불러오세요.
 
-사용자는 누구나 README만 보고 실행·구현할 수 있도록 설명하고, 이후에도 이 파일을 계속 갱신해 달라고 요청했다. `README.md`를 프로젝트의 기본 안내서로 유지한다.
+## 1. 작업 전에 읽을 것
 
-- 기능, 실행 방법, 의존성, 설정, 파일 구조, 문서 형식, DB, API 또는 테스트가 바뀌면 같은 작업에서 README의 관련 본문을 함께 수정한다.
-- 처음 참여한 사람 기준으로 준비물 → 명령 실행 위치 → 복사 가능한 예제 → 기대 결과 → 문제 해결 순서로 설명한다. 전문 용어는 처음 등장할 때 풀어 쓴다.
-- 실제 구현된 범위, 샘플 데이터, 선택적 설정, 미구현·미검증 범위를 구분한다. 모의 모델 응답 검증을 실제 외부 모델 호출 검증으로 기록하지 않는다.
-- 마지막 업데이트 날짜와 변경 이력을 갱신한다. 변경 이력만 추가하고 본문을 오래된 상태로 두지 않는다.
-- 테스트 결과는 실제 수행한 내용과 날짜로 기록한다. 문서만 바꾼 작업에서는 관련 없는 전체 테스트 대신 파일 경로·예제·설정을 현재 코드와 대조한다.
-- 사용 설명서는 최상위의 기존 `README.md` 하나로 유지한다. 별도 README나 docs 폴더를 만들지 않고 설치, 실행, 문서 수집, 코드 구조, API, 검증 기록을 이 파일에 통합한다.
-- 예제에 실제 API 키를 넣지 않는다. 기존 데이터나 설정을 덮어쓰는 절차는 영향을 명시하고 보존 방법을 함께 설명한다.
+1. `README.md` — 프로젝트 개요, 구조, 설치·실행
+2. `docs/README.md` — 문서 목록과 작성 규칙
+3. 작업 영역에 맞는 문서
+   - 구조·모듈 경계를 건드림 → `docs/architecture.md`
+   - DB 테이블·JSON 필드를 건드림 → `docs/data-model.md`
+   - API·응답 형식을 건드림 → `docs/specs/`의 해당 명세
+   - 진행 중인 작업 → `docs/plans/`의 해당 계획
+   - "왜 이렇게 되어 있지?" → `docs/adr/`
 
-<!-- BEGIN:nextjs-agent-rules -->
+문서와 코드가 다르면 **코드가 현재 사실**입니다. 차이를 발견하면 같은 작업에서 문서를 고치거나, 고칠 수 없으면 작업 결과에 차이를 보고합니다.
 
-# This is NOT the Next.js you know
+## 2. 문서 위치 규칙 — 모든 문서는 최상위 `docs/`에
 
-This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+- 프로젝트 문서는 **저장소 최상위의 `docs/` 폴더 하나**에 모읍니다. `frontend/docs`, `backend/docs`처럼 하위 폴더에 문서 폴더를 만들지 않습니다.
+- 최상위에 남기는 Markdown은 `README.md`(입구 안내)와 `AGENTS.md`(작업 지침) 두 개뿐입니다.
+- **작업 지침은 이 최상위 `AGENTS.md` 하나만 따릅니다.** 하위 폴더에 `AGENTS.md`·`CLAUDE.md`를 만들지 않습니다. `next dev`가 `frontend/AGENTS.md`·`frontend/CLAUDE.md`를 자동으로 만들 수 있지만 `.gitignore`로 제외되어 있으며, 그 내용(Next.js 16 주의)은 아래 6절에 이미 들어 있으니 무시하고 커밋하지 않습니다.
+- 새 문서를 만들기 전에 기존 문서에 넣을 수 있는지 먼저 확인합니다. 같은 내용을 두 곳에 쓰지 말고 한 곳에 쓰고 링크합니다.
 
-This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+| 위치 | 넣을 내용 | 넣지 않을 내용 |
+|---|---|---|
+| `README.md` | 프로젝트 소개, 폴더 구조 요약, 설치할 것, Windows·macOS 실행 방법, 문서 안내 링크 | API 상세, DB 스키마, 변경 이력 전체 |
+| `docs/architecture.md` | 실행 구조, 요청 흐름, 모듈 책임과 경계, 보안 경계, 교체 지점 | 개별 API 필드 |
+| `docs/data-model.md` | SQLite 테이블, JSON `body` 필드, 상태 값, 버전·낙관적 잠금, 백업 형식 | 화면 사용법 |
+| `docs/user-guide.md` | 화면별 사용법, 역할·권한, CSV, 백업·복구, LAN, 문제 해결, 데이터 이전 | 내부 구현 |
+| `docs/changelog.md` | 버전별 변경 이력과 실제 수행한 검증 기록 | 계획 |
+| `docs/specs/` | 구현해야 할 동작의 계약(API, 입력·출력 형식, 제약) | 일정·담당 |
+| `docs/plans/` | 작업 계획: 목표, 범위, 단계, 담당, 진행 상태 | 확정된 계약(→ specs) |
+| `docs/adr/` | 되돌리기 어려운 설계 결정과 그 이유·대안 | 단순 작업 기록 |
 
-<!-- END:nextjs-agent-rules -->
+## 3. 문서 종류별 작성 규칙
+
+공통 형식은 각 폴더의 `_template.md`를 복사해서 사용합니다.
+
+- **파일 이름**: 영문 소문자와 하이픈(`kebab-case`). 한글 제목은 문서 안의 `#` 제목에 씁니다.
+- **plans**: `docs/plans/YYYY-MM-DD-주제.md`. 상태는 `초안 → 진행 중 → 완료 / 보류 / 취소`. 단계마다 체크박스를 두고 작업하면서 갱신합니다. 완료된 계획은 지우지 않고 상태만 바꿉니다.
+- **specs**: `docs/specs/주제.md`. 상태는 `초안 → 확정 → 구현됨 → 폐기`. 구현됨 이후 코드가 바뀌면 명세도 같은 작업에서 고칩니다. 확정 전에는 구현을 시작하지 않는 것을 원칙으로 하되, 프로토타입은 `초안` 상태로 표시합니다.
+- **adr**: `docs/adr/NNNN-주제.md`(번호는 4자리, 이전 번호 + 1). 상태는 `제안 → 채택 → 대체됨(NNNN) / 폐기`. 채택된 ADR의 본문은 고치지 않습니다. 결정을 바꾸려면 새 ADR을 쓰고 이전 ADR의 상태만 `대체됨`으로 바꿉니다.
+- 새 문서를 만들거나 상태가 바뀌면 `docs/README.md`의 목록과 해당 폴더 `README.md`의 색인을 함께 갱신합니다.
+
+### 언제 무엇을 쓰는가
+
+- 여러 단계·여러 사람이 걸리는 기능 → 시작 전에 `plans/` 작성
+- 다른 모듈·팀원이 기대는 인터페이스(API, Tool 입력·출력, 응답 JSON)를 새로 만들거나 바꿈 → `specs/` 작성·갱신
+- 기술 스택, 저장소, 인증 방식, 모듈 경계처럼 나중에 바꾸기 어려운 선택 → `adr/` 작성
+- 구조가 바뀜 → `architecture.md`, 테이블·필드가 바뀜 → `data-model.md`, 사용법이 바뀜 → `user-guide.md`, 실행 방법·설치물이 바뀜 → `README.md`
+
+## 4. 문서 내용 원칙
+
+- 처음 참여한 사람 기준으로 준비물 → 명령 실행 위치 → 복사 가능한 예제 → 기대 결과 → 문제 해결 순서로 설명합니다. 전문 용어는 처음 등장할 때 풀어 씁니다.
+- 실제 구현된 범위, 샘플 데이터, 선택적 설정, 미구현·미검증 범위를 구분해서 씁니다. 계획은 계획으로, 구현은 구현으로 적습니다. 모의 모델 응답 검증을 실제 외부 모델 호출 검증으로 기록하지 않습니다.
+- 테스트 결과는 실제 수행한 내용과 날짜로 `docs/changelog.md`에 기록합니다. 문서만 바꾼 작업에서는 관련 없는 전체 테스트 대신 파일 경로·예제·설정을 현재 코드와 대조합니다.
+- 버전을 올리면 `README.md` 상단의 버전·날짜와 `docs/changelog.md`를 함께 갱신합니다. 변경 이력만 추가하고 본문을 오래된 상태로 두지 않습니다.
+- 예제에 실제 API 키·비밀번호·개인 데이터를 넣지 않습니다. 기존 데이터나 설정을 덮어쓰는 절차는 영향을 명시하고 보존 방법을 함께 설명합니다.
+- 다이어그램은 Markdown 안의 Mermaid 코드 블록으로 작성해 GitHub에서 바로 보이게 합니다.
+
+## 5. 코드 작업 규칙
+
+- 최상위 소스 폴더는 `frontend/`, `backend/`, `scripts/` 세 개입니다. 새 최상위 폴더는 `docs/` 외에 만들지 않습니다(필요하면 ADR로 결정).
+- 인증·문서 열람 범위·인용 권한 검사를 우회하는 코드를 넣지 않습니다(`docs/architecture.md`의 보안 경계 참고).
+- CII 값·등급, 규정 적용 판정처럼 근거 없는 수치를 화면에 임의로 채우지 않습니다. 산출할 수 없으면 `unavailable`과 사유를 반환합니다.
+- 변경 후 `npm test`를 실행하고, 화면 흐름에 영향이 있으면 `npm run build` 후 `npm run test:browser`를 실행합니다.
+
+## 6. Next.js 16 버전 주의 (에이전트용)
+
+**이 프로젝트의 Next.js는 학습 데이터로 알고 있는 Next.js와 다릅니다.** 16.x 버전에는 이전과 호환되지 않는 변경이 있어 API, 규칙, 파일 구조가 학습 데이터와 다를 수 있습니다.
+
+- 화면 코드를 쓰기 전에 설치된 버전의 안내 문서 `node_modules/next/dist/docs/`에서 관련 부분을 먼저 읽습니다.
+- 사용 중단(deprecated) 경고가 나오면 따릅니다.
+- 이 절은 `next dev`가 `frontend/AGENTS.md`에 자동으로 넣는 영어 안내(`nextjs-agent-rules` 블록)를 한국어로 옮긴 것입니다. 그 자동 생성 파일은 저장소에서 제외했으므로(`.gitignore`) 로컬에 생겨도 이 절을 기준으로 삼습니다. 생성 로직은 `node_modules/next/dist/server/lib/generate-agent-files.js`에서 확인할 수 있습니다.
