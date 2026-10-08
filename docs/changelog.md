@@ -4,6 +4,9 @@
 
 ## 변경 이력
 
+- **역할4 PR 최신 main 반영 / 2026-10-08**: 팀 PR #5(main `18831cb`, 기본 앱 1.4.0)를 병합하고 역할4 문서 충돌 해결. Next.js 공개 진입점(5173)·내부 API(8000)·선택 Python Tool(8001)의 경계에 맞춰 문서를 갱신. 팀의 채택 ADR 0005~0007을 보존하고 역할4 연결 제안은 [ADR 0008](adr/0008-maritime-data-tool-boundary.md)로 이동. 역할4 핵심 로직·DB 정의와 최신 팀 Node/Next.js 코드는 그대로 유지.
+- **역할4 PR 구조 정리 / 2026-10-08** (기본 앱 버전 유지): 팀 main의 문서·소스 구조를 반영. Python 해사 Tool을 `backend/maritime_data/`로 옮기고 import·실행·적재 경로를 갱신. 역할4 API·데이터 계약은 `specs/`, PostgreSQL 테이블·ERD는 `data-model.md`, 설치·원본 확보·이전 안내는 `user-guide.md`에 통합. 생성기는 DDL·dictionary만 출력하도록 수정하여 설명 문서를 덮어쓰지 않음. 문서 목록·정리 계획·[ADR 0008 제안](adr/0008-maritime-data-tool-boundary.md) 추가. 조회·계산 로직·DB 스키마·기존 Node 앱 코드는 변경하지 않음.
+
 - **1.4.0 정리 / 2026-10-08**: `/api/*` 전달을 `next.config.mjs`의 `rewrites`(빌드 때 주소 고정)에서 `frontend/src/proxy.js`(요청마다 결정)로 변경 — `.env`의 `HAEDAP_API_ORIGIN`을 바꾼 뒤 재시작만 하면 반영, 다시 빌드할 필요 없음([ADR 0007](adr/0007-runtime-api-origin-via-proxy.md)).
 - **1.4.0 정리 / 2026-10-08**: `start.cmd`를 `scripts/start.cmd`로 이동(최상위에서 실행하도록 경로 보정). Ubuntu 서버 운영 기준으로 Windows 전용 `scripts/setup-lan-firewall.ps1` 제거(방화벽은 OS 설정으로 안내).
 - **1.4.0 정리 / 2026-10-08**: 래퍼였던 `scripts/build.mjs` 제거(`npm run build`가 `next build frontend --webpack`을 직접 실행, 출력 폴더는 `next.config.mjs`가 결정), `test:browser`와 중복이던 `npm run test:ui` 제거.
@@ -17,6 +20,42 @@
 - **1.2.0 / 2026-09-30**: PDF/CSV, 다중 보고서, 통합 결과, 계정·권한·로그·백업·복구.
 
 ## 검증 기록
+
+### 2026-10-08 — 역할4 PR 최신 main 반영
+
+환경: Windows, Python 3.12.14, Node.js v24.16.0, 기본 앱 1.4.0 및 Next.js 16.3.8. 로컬 정리 커밋 `fef7e20`에 최신 팀 main `18831cb`를 반영한 결과입니다.
+
+| 검증 | 결과 |
+|---|---|
+| `npm run build` | 최신 `proxy.js`를 포함한 배포용 빌드 성공 |
+| `npm test` | **33개 통과**, Windows CMD·PowerShell·LAN 실행 및 Next.js 경유 API 확인 |
+| `python -m pytest -q backend/maritime_data/tests` | **47개 통과, 실 DB 4개 건너뜀** |
+| 전처리 테스트 | **3개 통과** |
+| 문서·코드 경계 | DB 필드 70개·DDL·dictionary 일치, 로컬 링크·앵커 확인, 팀 채택 ADR 0001~0007과 Node/Next.js 코드 및 역할4 핵심 로직 보존 |
+| 파일 검사 | 병합 충돌·이전 역할4 ADR 경로 제거, `git diff --check` 통과 |
+
+Node 테스트는 이 PC의 중복 Node PATH를 제외하고 `HAEDAP_NODE`를 공식 Node 실행 파일로 지정한 별도 프로세스에서 실행했습니다. Python은 동일한 Starlette TestClient/httpx deprecation 경고 1개를 출력했습니다. 실 PostgreSQL·원본 전체 재전처리·팀 Python 어댑터·LLM·공식 CII 및 전체 브라우저 업무 흐름은 이번 검증에 포함하지 않았습니다. DB·원본·개인 설정은 변경하지 않았습니다.
+
+제출 결과: 같은 날 `feature/operation-db` 일반 푸시와 [기존 PR #3](https://github.com/dudco/sea-the-answer/pull/3)의 본문 갱신을 완료했습니다. 새 PR 생성·강제 푸시·PR 병합은 수행하지 않았습니다.
+
+### 2026-10-08 — 역할4 PR 구조 정리
+
+환경: Windows, Python 3.12.14, Node.js v24.16.0. 최신 팀 main `6608f6c`와 역할4 원격 head `cefd557`을 기존 작업용 체크아웃에서 로컬 병합하여 검증했습니다.
+
+| 검증 | 결과 |
+|---|---|
+| `python -m pytest -q backend/maritime_data/tests` | **47개 통과, 실 PostgreSQL 대상 4개 건너뜀** |
+| `python backend/maritime_data/scripts/test_prepare_maritime_data.py` | **3개 통과** |
+| `npm test` | **33개 통과**, Windows CMD·PowerShell·LAN 실행 및 게이트웨이 응답 포함 |
+| Windows 실행기에서 첫 실행 설치·Next.js 빌드 | 성공, `frontend/.next/BUILD_ID` 생성 및 세 실행 방식 확인 |
+| 설명 생성기 `--out` 산출물 비교 | 기존 SQL·dictionary와 일치, 설명 Markdown을 생성하지 않음 |
+| DB 필드·문서·경로 검사 | 6개 테이블의 필드 **70개** 대조, 로컬 문서 링크·앵커 확인, 이전 import·경로 제거 |
+| 변경 경계·구문 검사 | 핵심 Python 조회·계산·전처리·마이그레이션 및 DB 스키마 보존, Node 코드·채택 ADR 0001~0004 보존, 적재 PowerShell 구문 및 `git diff --check` 통과 |
+
+처음 `npm test` 실행은 이 PC의 Node 설치 두 개를 PowerShell 실행기가 하나의 경로 문자열로 읽어 Windows 실행기 1개가 실패했습니다. 별도 프로세스의 PATH에서 중복 설치 경로를 제외하고 `HAEDAP_NODE`를 공식 Node 실행 파일로 지정해 재실행한 결과 33개가 통과했습니다. 기존 팀 실행기 코드는 이 PR에서 수정하지 않았습니다. Python 테스트는 Starlette TestClient/httpx의 deprecation 경고 1개를 출력했습니다.
+
+이번에 검증하지 않은 범위: 실제 PostgreSQL 조회·재적재·스키마 이름 변경(`MARITIME_DATA_TEST_DATABASE_URL` 미설정), 원본 데이터 전체의 재전처리, 팀 앱과 Python Tool의 연결·LLM·공식 CII 및 전체 브라우저 업무 흐름. 원격 푸시·PR 본문 변경·댓글은 수행하지 않았습니다.
+
 
 ### 2026-10-08 — 1.4.0
 

@@ -153,3 +153,94 @@ DB 경로 선택 규칙:
 | PDF 추출 실패 | 암호·손상·스캔 여부 확인. 텍스트 PDF 또는 페이지별 본문 입력 |
 | 보고서 수정 불가 | 검토 중/승인 완료 상태는 복사 후 새 초안으로 작성 |
 | 검토 대기 상태 | 관리자 계정으로 관리 → 승인에서 처리 |
+
+## 10. 해사 데이터 Tool (선택)
+
+기본 Node/SQLite 앱과 별도로 실행되는 역할4 도구입니다. 코드는 `backend/maritime_data/`, 계약은 [API 명세](specs/maritime-data-api.md)와 [데이터 명세](specs/maritime-data.md), 테이블·ERD는 [데이터 모델](data-model.md#9-postgresql-해사-데이터-tool-선택)에 있습니다. 아래 명령은 저장소 루트에서 실행합니다.
+
+### 설치와 실행
+
+Python 3.12 또는 3.13, 별도 PostgreSQL 및 준비된 해사 데이터 스키마가 필요합니다. 기존 `.venv`가 있으면 재사용합니다.
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r backend/maritime_data/requirements.lock.txt
+if (-not (Test-Path -LiteralPath .env.local)) {
+    Copy-Item backend/maritime_data/.env.example .env.local
+}
+```
+
+루트 `.env.local`에 `DATABASE_URL`(PostgreSQL 연결 주소)과 `MARITIME_DATA_API_TOKEN`(직접 생성한 32자 이상 토큰)을 설정합니다. 기존 파일에는 필요한 키만 추가하고 덮어쓰지 않습니다. 기본 앱의 `.env`와는 별도 설정입니다. 원본·CSV·DB·비밀번호·토큰은 Git에 넣지 않습니다.
+
+```powershell
+.\.venv\Scripts\python.exe -m uvicorn backend.maritime_data.api:create_app --factory --host 127.0.0.1 --port 8001
+```
+
+개발용 API 명세는 <http://127.0.0.1:8001/docs>에서 열고 Authorize에 API 토큰을 입력합니다. `/api/health`의 `database_checked=false`는 프로세스만 확인했으며 DB를 검증하지 않았다는 뜻입니다. 실제 DB 조회는 토큰을 포함한 `/api/maritime-data/query`로 확인합니다. 503이면 PostgreSQL 실행·연결·스키마 적재 상태를 확인하세요. 이 도구는 독립 루프백 서비스이며 팀 화면에 자동 연결되지 않습니다.
+
+### 전처리·적재·생성·검증
+
+```powershell
+.\.venv\Scripts\python.exe backend/maritime_data/scripts/prepare_maritime_data.py --source D:/Data --out data/maritime-data/new-run
+./backend/maritime_data/scripts/load-maritime-data.ps1 -DataDir data/maritime-data/new-run
+.\.venv\Scripts\python.exe backend/maritime_data/scripts/describe_maritime_data.py
+.\.venv\Scripts\python.exe -m pytest -q backend/maritime_data/tests
+.\.venv\Scripts\python.exe backend/maritime_data/scripts/test_prepare_maritime_data.py
+```
+
+이미 전처리한 CSV가 있으면 첫 명령을 생략합니다. 적재 스크립트는 Windows의 `psql.exe`를 사용하며 기본 PostgreSQL 경로가 다르면 `-PgBin`을 지정합니다. 로컬 DB만 지원하고 기존 `maritime_data` 스키마가 있으면 중단합니다. 실패 시 단일 적재 트랜잭션을 롤백합니다. 새 데이터 버전은 `schema/verify_load.sql`의 기대 건수를 먼저 검토합니다.
+
+설명 생성기는 기본적으로 `schema/schema.sql`·`dictionary.json`만 다시 생성합니다. 다른 출력 폴더는 `--out`으로 지정합니다. 이전 `--docs` 옵션과 `DATA_CONTRACT.md` 자동 생성은 제거했으며, 설명·ERD는 최상위 docs에서 직접 관리합니다.
+
+`MARITIME_DATA_TEST_DATABASE_URL`을 지정해야 기존 PostgreSQL 적재 데이터를 사용하는 읽기 전용 테스트가 실행됩니다. 미설정 시 이 테스트는 건너뛰며 단위 테스트 통과만으로 실 DB 검증을 주장하지 않습니다. API가 조회할 DB 사용자는 승인 뷰·출처 테이블에 필요한 읽기 권한만 갖도록 설정하는 것을 권장합니다. 도구의 READ ONLY 트랜잭션은 DB 사용자의 권한 자체를 바꾸지 않습니다.
+
+### 이전 역할4 환경의 이름 전환
+
+이전 `role4/.env.local`을 사용한 환경은 필요한 설정을 저장소 루트 `.env.local`로 옮깁니다. 기존 `role4` 스키마·설정이 있으면 Tool을 중지하고 아래 미리보기를 확인한 뒤 이름 전환이 필요한 경우에만 `--apply`를 사용합니다.
+
+```powershell
+.\.venv\Scripts\python.exe backend/maritime_data/scripts/migrate_maritime_data.py
+# 미리보기 확인 후 적용이 필요한 경우에만:
+.\.venv\Scripts\python.exe backend/maritime_data/scripts/migrate_maritime_data.py --apply
+```
+
+양쪽 스키마나 충돌하는 설정이 있으면 중단합니다. 변경된 설정은 `.env.local.before-maritime-data`에 백업하고 데이터 레코드·원본 폴더는 다시 쓰거나 이동하지 않습니다. DB 이름 전환은 SQLite와의 통합이나 공식 입력 검증을 의미하지 않습니다.
+
+### 팀 앱 연결 시 참고
+
+Python 호출자는 `from backend.maritime_data import query, calculations, agent`로 공통 로직을 사용할 수 있습니다. 내부 API(현재 Node)의 HTTP 어댑터·키 매핑·권한·감사 구현은 후속 작업입니다. 독립 API의 토큰은 서버에 보관하고 브라우저로 보내지 않습니다. 현재 구현 범위와 경계 제안은 [아키텍처](architecture.md#8-해사-데이터-tool의-경계-선택), [ADR 0008](adr/0008-maritime-data-tool-boundary.md)를 참고하세요.
+
+### 원본 확보·공개 참조 자료·기존 데이터 버전
+
+이 저장소에는 코드, 데이터 정의, SQL, API 계약만 포함합니다. 원본·전처리 CSV, PostgreSQL 데이터 디렉터리, 로그인 정보는 포함하지 않습니다. 공개 열람 가능과 재배포 허용은 다르므로 이용조건이 확인되지 않은 원본을 GitHub에 재게시하지 않았습니다.
+
+#### 전처리 원본 6종
+
+`backend/maritime_data/scripts/prepare_maritime_data.py`는 아래 파일명을 기준으로 원본 폴더를 재귀 검색합니다. 팀 보유본 또는 출처에서 해당 버전을 확보해야 하며 최신 웹 다운로드가 동일 파일·동일 건수를 보장하지는 않습니다.
+
+| ID | 원본 파일 | 용도 |
+|---|---|---|
+| DS-001 | `eu_mrv_vessel_annual_2018_2022.csv` | 실제 MRV 과거 보고기간 자료 |
+| DS-002 | `해양수산부_선박_AIS_동적정보_20220101.csv` | 마스킹 AIS 참고자료, 선박 자동 연결 제외 |
+| DS-003 | `UpdatedPub150.csv` | WPI 항구 참조 |
+| DS-004 | `Smart-Maritime-Council-Standardised-Vessel-Dataset-SVD-for-Noon-Reports-and-Emissions-Reporting-V2-May-2025.xlsx` | SVD 컬럼 설계 참고 |
+| DS-005 | `2025-v57-12092026-EU_MRV_Publication_of_information.xlsx` | 실제 MRV 보고 자료 |
+| DS-006 | `synthetic_noon_daily_2025.csv` | 개발·검증용 합성 Noon |
+
+실제 MRV 두 자료와 합성 Noon을 조회 대상으로 선정했고 AIS·항구·SVD는 참고 자료로만 보존합니다. 원본별 URL·SHA256은 전처리 출력 `source_files.csv`와 `summary.json`에 보존됩니다. 팀에서 데이터 전달 시 이 두 파일, CSV 6개 및 원본 추적에 필요한 `raw_records.jsonl`을 함께 전달하세요. 정확한 기존 버전의 재확보가 안 되면 새 자료를 기존 정답 건수에 맞추지 말고 새 데이터 버전으로 검증해야 합니다.
+
+#### 공개 참조 자료
+
+| 자료 | 보유 결과 및 제한 | 처리 코드 |
+|---|---|---|
+| GISIS EEDI | 11,244행, 익명·반올림, IMO 번호 없음 | `prepare_gisis_eedi.py` |
+| IMO DCS 연차 보고서 | 2019~2024 공개 집계, 선박 단위 결합 불가 | `prepare_open_cii_references.py` |
+| Wikidata / MarineVessels | MRV 25,240척 중 15,956척에 DWT 후보, 법정 검증값 아님 | `prepare_open_cii_references.py` |
+
+GISIS 정규화는 `python backend/maritime_data/scripts/prepare_gisis_eedi.py INPUT.xlsx OUTPUT_DIR`로 실행합니다. 공개 CII 참조 처리 스크립트는 `data/maritime-data/2026-09-30-v2/reference/`의 수집 완료 파일을 입력으로 요구하며 자동 수집기가 아닙니다. 입력 구조: `reference/marine-vessels-2015/marine_vessels.csv`, `reference/wikidata-vessel-particulars/wikidata_ships_with_deadweight.csv`, `reference/imo-dcs-public-reports/`입니다. GISIS EEDI 원본 갱신일은 2025-12-02이며 익명 자료이므로 실제 MRV와 연결하지 않습니다. DWT 후보 출처 간 5% 초과 충돌은 검토 대상으로 남깁니다.
+
+공식 CII 산정에 필요한 동일 선박·동일 연도의 검증된 연료별 사용량, 항해거리, 적용 선종·용량 및 보정 조건은 아직 충분히 확보되지 않았습니다. 공개 집계와 제원 후보를 공식 입력으로 자동 승격하지 않습니다.
+
+#### 기존 데이터 버전
+
+2026-09-30 로컬 적재 기록: MRV 80,552행 중 조회 대상 79,032행, Partial 1,520행은 보존하되 기본 조회에서 제외. 합성 Noon 4,380행·238항차이며 거리 0인 기록 557행은 연료량을 보존합니다. 이 수치는 저장소에 데이터가 포함되거나 이번 작업에서 DB를 재검증했다는 의미가 아닙니다. 다른 데이터 버전에서는 `backend/maritime_data/schema/verify_load.sql`의 기대값을 검토하세요.

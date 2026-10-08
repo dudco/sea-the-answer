@@ -38,6 +38,7 @@ sea-the-answer/
 │  ├─ analysis.mjs, tools.mjs          운항 집계·통합 답변·계산 도구
 │  ├─ knowledge/seed.json              최초 실행 시 넣는 기본 문서
 │  ├─ data/             (실행 시 생성) SQLite DB와 backups/
+│  ├─ maritime_data/    (선택) Python 조회·계산 Tool + PostgreSQL 전처리·SQL·테스트
 │  └─ tests/
 ├─ scripts/             일반 실행(run.mjs)·Windows 실행기(start.cmd, start.ps1)·문서 수집·브라우저 검증
 ├─ docs/                설계·명세·계획·ADR 등 모든 프로젝트 문서
@@ -59,7 +60,7 @@ sea-the-answer/
 | (선택) Playwright Chromium | 브라우저 자동 검증(`npm run test:browser`)을 돌릴 때만 |
 | (선택) OpenAI 호환 API 키 | 통합 질문의 **AI 답변** 옵션을 쓸 때만 |
 
-별도의 DB 서버, Python, Docker는 필요 없습니다. npm 패키지는 `next`, `react`, `react-dom`과 개발용 `playwright`뿐이며 `npm ci`가 자동 설치합니다.
+기본 앱에는 별도의 DB 서버, Python, Docker가 필요 없습니다. 선택 기능인 해사 데이터 Tool은 Python 3.12/3.13과 별도 PostgreSQL을 사용합니다. npm 패키지는 `next`, `react`, `react-dom`과 개발용 `playwright`뿐이며 `npm ci`가 자동 설치합니다.
 
 ## Windows에서 실행하기
 
@@ -207,13 +208,19 @@ copy .env.example .env      # Windows CMD
 
 화면별 자세한 사용법, 권한, CSV 형식, 백업·복구, 기존 데이터 이전, 문제 해결은 [`docs/user-guide.md`](docs/user-guide.md)에 있습니다.
 
+## 해사 데이터 Tool (선택)
+
+역할4의 실제 MRV·합성 Noon 전처리, PostgreSQL 적재, 읽기 전용 조회 및 CO₂ 계산 도구는 [`backend/maritime_data/`](backend/maritime_data/)에 있습니다. 기본 Node/SQLite 앱과 별도로 실행하며, 현재 화면·내부 API가 이 도구를 자동 호출하지 않습니다. 원본 데이터·DB·비밀번호는 저장소에 포함하지 않습니다.
+
+설치·실행·데이터 확보·기존 `role4` 환경의 이전은 [운영 안내](docs/user-guide.md#10-해사-데이터-tool-선택)를 따르세요. 호출 형식은 [해사 데이터 API 명세](docs/specs/maritime-data-api.md), 데이터 선택·품질 규칙은 [데이터 명세](docs/specs/maritime-data.md), 테이블·ERD는 [데이터 모델](docs/data-model.md#9-postgresql-해사-데이터-tool-선택)에 있습니다.
+
 ## 문서
 
 | 문서 | 내용 |
 |---|---|
 | [`docs/README.md`](docs/README.md) | 전체 문서 목록과 작성 규칙 |
 | [`docs/architecture.md`](docs/architecture.md) | 시스템 구조, 요청 흐름, 모듈 경계, 보안 경계 |
-| [`docs/data-model.md`](docs/data-model.md) | SQLite 테이블과 JSON 필드, 상태 값, 백업 형식 |
+| [`docs/data-model.md`](docs/data-model.md) | SQLite 및 선택 PostgreSQL 테이블, 상태 값, 백업 범위 |
 | [`docs/user-guide.md`](docs/user-guide.md) | 사용·운영 안내, 문제 해결 |
 | [`docs/specs/`](docs/specs/) | API·통합 답변 등 구현 계약 |
 | [`docs/plans/`](docs/plans/) | 작업 계획과 진행 상태 |

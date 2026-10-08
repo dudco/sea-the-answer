@@ -1,6 +1,6 @@
 # 데이터 모델
 
-> 대상 버전: 1.4.0 · 최종 확인: 2026-10-08 (`backend/db.mjs`, `backend/workspace.mjs` 대조)
+> 대상: 기본 앱 1.4.0 + 선택 해사 데이터 Tool 계약 v1 · 최종 확인: 2026-10-08 (`backend/db.mjs`, `backend/workspace.mjs`, `backend/maritime_data/schema/schema.sql` 대조)
 > 테이블·필드·상태 값을 바꾸면 같은 작업에서 이 문서를 고치고, 되돌리기 어려운 변경이면 ADR을 남깁니다.
 
 ## 1. 저장소 개요
@@ -167,3 +167,146 @@ DB 옆 `backups/{uuid}.json`.
 2. 백업 대상이면 `workspace.mjs`의 `backupTables`에 추가하고, 이전 백업 복구 시의 동작을 정합니다(백업 `version`을 올릴지 결정 → ADR).
 3. `settings.schema` 또는 `user_version`을 올리고 이 문서의 해당 절을 갱신합니다.
 4. `backend/tests/`에 기존 DB 이전 회귀 테스트를 추가합니다.
+
+
+## 9. PostgreSQL 해사 데이터 Tool (선택)
+
+기본 앱의 SQLite와 독립적인 PostgreSQL `maritime_data` 스키마입니다. Node 서버 시작 시 생성되지 않으며, 별도 전처리·적재를 거친 자료만 조회합니다. 아래 여섯 테이블과 두 조회 View가 역할4 Tool의 저장 모델입니다. 실제 MRV와 Synthetic Noon의 구분·품질·단위 정책은 [데이터 명세](specs/maritime-data.md), 조회·계산 입력은 [API 명세](specs/maritime-data-api.md)에 정의합니다.
+
+구현 정의는 [`schema.sql`](../backend/maritime_data/schema/schema.sql)이며, 컬럼 원본은 `scripts/prepare_maritime_data.py`의 `FIELDS`와 `schema/dictionary.json`입니다. SQL의 NOT NULL·CHECK·외래키는 아래 표의 필드 규칙에 추가 적용됩니다. 기존 앱의 SQLite 테이블을 이 구조로 교체하거나 두 저장소를 자동 결합하지 않습니다.
+
+### ERD
+
+```mermaid
+erDiagram
+  source_files ||--o{ annual_reports : provenance
+  source_files ||--o{ synthetic_noon : provenance
+  source_files ||--o{ quality_issues : records
+  vessels ||--o{ annual_reports : real
+  vessels ||--o{ synthetic_voyages : synthetic
+  vessels ||--o{ synthetic_noon : synthetic
+  synthetic_voyages ||--o{ synthetic_noon : contains
+```
+
+`quality_issues.record_id`는 연간/일별 레코드 중 하나를 가리키는 논리 참조입니다. SQL의 외래키는 source_id에만 적용합니다. 원본 조회는 record_id 및 출처 키로 수행합니다.
+
+### 컬럼 정의
+
+#### source_files — 원본 파일·출처
+
+| 컬럼 | PostgreSQL 타입 | 제약 | 의미·단위 |
+|---|---|---|---|
+| source_id | text | PK | Dataset ID + SHA256 |
+| dataset_id | text | required | DS-001..006 |
+| filename | text | required | Original basename |
+| sha256 | text | required | Original byte checksum |
+| source_url | text | nullable | Source recorded in assessment; not license approval |
+| data_origin | text | required | REAL / SYNTHETIC / REFERENCE / SCHEMA |
+| granularity | text | required | report / daily / position / port / schema |
+| selection | text | required | Selected use for this preparation |
+| row_count | integer | required | Count read from original |
+| header_json | jsonb | required | Original ordered headers; duplicate XLSX names preserved |
+
+#### vessels — 실제·합성 선박 식별
+
+| 컬럼 | PostgreSQL 타입 | 제약 | 의미·단위 |
+|---|---|---|---|
+| vessel_id | text | PK | REAL:IMO:<number> or SYN:<source vessel ID> |
+| data_origin | text | required | REAL or SYNTHETIC; never joined across origins |
+| imo_number | text | nullable | Seven-digit source IMO; synthetic remains NULL |
+| source_vessel_id | text | required | Original IMO or synthetic vessel ID |
+
+#### annual_reports — 실제 MRV 보고기간 집계
+
+| 컬럼 | PostgreSQL 타입 | 제약 | 의미·단위 |
+|---|---|---|---|
+| record_id | text | PK | Stable source/sheet/row hash |
+| source_id | text | FK source_files | Source version |
+| source_sheet | text | required | CSV or original XLSX sheet |
+| source_row | integer | required | Original row number; CSV is logical record number |
+| vessel_id | text | FK vessels | Real vessel only |
+| vessel_name | text | nullable | Name at reporting time |
+| ship_type | text | nullable | Source classification, unmodified |
+| reporting_year | integer | required | Reporting year |
+| report_type | text | required | FULL / PARTIAL / ARCHIVE_ANNUAL |
+| period_label | text | required | Original reporting period |
+| period_start | date | nullable | Reported partial bounds or nominal annual boundary; not observation date |
+| period_end | date | nullable | Reported partial bounds or nominal annual boundary |
+| fuel_t | numeric | nullable | Source total fuel, tonnes; no fuel split invented |
+| co2_t | numeric | nullable | Reported CO2 tonnes; not CO2-equivalent |
+| sea_hours | numeric | nullable | Reported sea hours, aliases checked for agreement |
+| fuel_kg_per_nm | numeric | nullable | Reported distance intensity |
+| distance_nm_estimate | numeric | nullable | fuel_t * 1000 / intensity; scope not verified |
+| dwt_t | numeric | nullable | Source value only; missing stays NULL |
+| fuel_type | text | nullable | Not provided in MRV inputs |
+| quality_status | text | required | VALID / REVIEW / REJECT |
+| aggregate_eligible | boolean | required | False for partial, duplicate keys, invalid core numbers |
+| provenance_json | jsonb | required | Per-field original columns, missing reasons, distance method |
+
+#### synthetic_noon — 개발용 합성 일별 기록
+
+| 컬럼 | PostgreSQL 타입 | 제약 | 의미·단위 |
+|---|---|---|---|
+| record_id | text | PK | Stable source/row hash |
+| source_id | text | FK source_files | Source version |
+| source_row | integer | required | Original CSV logical row |
+| vessel_id | text | FK vessels | Synthetic vessel only |
+| voyage_id | text | FK synthetic_voyages | Synthetic voyage key |
+| report_date | date | required | Noon reporting date; observation period may straddle years |
+| period_start_utc | timestamptz | required | Original interval start UTC |
+| observed_at_utc | timestamptz | required | Original interval end UTC |
+| vessel_name | text | required | Fictional source name |
+| ship_type | text | required | Fictional source type |
+| dwt_t | numeric | required | Fictional DWT tonnes |
+| operating_status | text | required | Source SEA/PORT classification |
+| distance_nm | numeric | required | Fictional daily distance; zero in port allowed |
+| fuel_t | numeric | required | Fictional daily fuel tonnes |
+| fuel_type | text | required | Source fuel label; not an official factor mapping |
+| speed_kn | numeric | required | Fictional speed |
+| engine_hours | numeric | required | 0..24 hours |
+| quality_status | text | required | VALID / REVIEW / REJECT |
+| provenance_json | jsonb | required | Simulation flags/version/seed and original missing reasons |
+
+#### synthetic_voyages — 개발용 합성 항차
+
+| 컬럼 | PostgreSQL 타입 | 제약 | 의미·단위 |
+|---|---|---|---|
+| voyage_id | text | PK | SYN:<source voyage ID> |
+| vessel_id | text | FK vessels | Synthetic vessel |
+| departure_port_label | text | nullable | Source label; no unverified WPI match |
+| arrival_port_label | text | nullable | Source label; no unverified WPI match |
+| first_report_date | date | required | First included report date, NOT departure time |
+| last_report_date | date | required | Last included report date, NOT arrival time |
+| mapping_status | text | required | UNMAPPED_PORT_LABELS / CONFLICT |
+
+#### quality_issues — 전처리 품질 이슈
+
+| 컬럼 | PostgreSQL 타입 | 제약 | 의미·단위 |
+|---|---|---|---|
+| issue_id | integer | PK | Sequence within deterministic run |
+| record_id | text | nullable | Logical reference to annual/noon row |
+| source_id | text | FK source_files | Input source version |
+| source_row | integer | required | Original record row |
+| severity | text | required | INFO / REVIEW / REJECT |
+| field | text | required | Affected field |
+| code | text | required | Machine-readable issue code |
+| detail | text | required | Evidence without replacing original value |
+
+### 조회 View와 추가 제약
+
+| 객체 | 정의·목적 |
+|---|---|
+| `real_annual_query` | `annual_reports` 중 `aggregate_eligible=true`만 노출 |
+| `development_noon_query` | `synthetic_noon` 중 `quality_status='VALID'`만 노출 |
+| 인덱스 | MRV `vessel_id/reporting_year`, Noon `vessel_id/report_date`, Noon `voyage_id` |
+
+- 연간·일별 레코드의 품질 값은 VALID/REVIEW/REJECT로 제한하며 선박 ID 접두어를 검사합니다.
+- MRV의 보고 유형은 FULL/PARTIAL/ARCHIVE_ANNUAL이며 집계 적격이면 VALID 및 비PARTIAL이어야 합니다. 기간 경계가 모두 있으면 종료 ≥ 시작입니다.
+- Noon은 DWT > 0, 거리·연료·속도 ≥ 0, 기관 운전시간 0~24시간, 종료시각 > 시작시각 및 최대 24시간을 검사합니다.
+- 모든 실제 외래키는 `ON DELETE RESTRICT`입니다. 원본·품질 레코드를 연쇄 삭제하지 않습니다.
+
+### 버전·적재·백업 경계
+
+DDL은 새 스키마 생성용이며 반복 적재 마이그레이션이 아닙니다. 적재 스크립트는 기존 스키마가 있으면 중단하고, 새 적재는 단일 트랜잭션 안에서 검증 후 커밋합니다. CSV·원본·출처 해시는 별도 데이터 버전으로 보존합니다. 이전 `role4` 스키마의 이름 변경 절차는 [운영 안내](user-guide.md#10-해사-데이터-tool-선택)에 있습니다.
+
+기본 앱의 SQLite JSON 백업에는 이 PostgreSQL 데이터와 원본 파일이 포함되지 않습니다. 별도로 PostgreSQL 백업과 원본·전처리 산출물을 보관해야 합니다. 공개 제원·환경성능 참조 자료는 별도 데이터 폴더에 관리하며, 현재 위 여섯 운영 테이블에 자동 적재하거나 공식 CII 입력으로 사용하지 않습니다.

@@ -141,3 +141,26 @@ sequenceDiagram
 - 문서·운항·보고서 목록을 매 요청 메모리로 읽는 캡스톤 데모 규모 설계. 대규모 운영에는 페이징·파일 저장소·TLS·로그 보존 정책이 필요.
 - 검색은 어휘(키워드) 기반이라 의미가 같고 단어가 다른 질문, 교차 언어 질문에 약함.
 - 질문 유형 분기는 단어 규칙 기반. 질문 속 날짜·선박명 자동 추출은 미구현.
+
+
+## 8. 해사 데이터 Tool의 경계 (선택)
+
+`backend/maritime_data/`는 별도 Python/FastAPI 서비스와 PostgreSQL `maritime_data` 스키마를 사용하는 역할4 모듈입니다. 기본 앱의 Node/SQLite 저장소와 독립적이며 현재 내부 API·화면에서 자동 호출하지 않습니다. 소스는 backend에 배치하고 설명 문서는 최상위 docs에서 관리합니다.
+
+```mermaid
+flowchart LR
+  R[별도 원본·참조 자료] --> P[전처리·품질·출처 보존]
+  P --> DB[(PostgreSQL maritime_data)]
+  T[Python 조회·계산 Tool] -->|승인 View 읽기 전용| DB
+  F[FastAPI 루프백 8001] -->|서버 Bearer 토큰| T
+  B[브라우저] --> N[Next.js 공개 진입점 5173]
+  N -->|/api/* proxy.js| G[내부 API 127.0.0.1:8000]
+  G --> S[(기본 앱 SQLite)]
+  G -.->|후속 HTTP 어댑터: 미구현| F
+```
+
+조회·계산은 검증된 입력 계약, 바인딩 매개변수 및 READ ONLY 트랜잭션으로 동작합니다. 실제 MRV·합성 Noon·공개 참조의 용도를 분리하며 공식 CII 등급은 생성하지 않습니다. `/ask`는 선택한 scope를 고정한 조회 도우미이며 독립 API에서 실제 LLM 호출은 비활성입니다.
+
+향후 HTTP 어댑터가 내부 API에서 Tool을 호출할 때 서버 토큰을 숨기고 팀 접근 정책·POST CSRF·사용자별 감사 및 오류 처리를 적용해야 합니다. 팀 `ships.id`와 `REAL:IMO:*`/`SYN:*`의 명시적 매핑도 필요합니다. 연결 완료로 간주하거나 브라우저에 8001 직접 호출을 추가하지 않습니다.
+
+입출력은 [API 명세](specs/maritime-data-api.md), 저장 구조는 [데이터 모델](data-model.md#9-postgresql-해사-데이터-tool-선택), 설치·원본 확보는 [운영 안내](user-guide.md#10-해사-데이터-tool-선택)에 정의합니다. 연결 방식은 [ADR 0008 제안](adr/0008-maritime-data-tool-boundary.md)과 [팀 연결 계획](plans/2026-10-08-team-module-integration.md)을 참고하세요.

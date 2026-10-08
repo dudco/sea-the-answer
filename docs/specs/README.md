@@ -21,3 +21,5 @@
 |---|---|---|
 | [`api.md`](api.md) | HTTP API 전체, 인증·쓰기 보호, 문서 등록 payload | 구현됨 (1.3.1) |
 | [`integrated-answer.md`](integrated-answer.md) | `POST /api/ask` 입력·출력, CII 표시, 기준 비교 | 구현됨 (1.3.1) |
+| [`maritime-data-api.md`](maritime-data-api.md) | 독립 Python/PostgreSQL 조회·계산·조회 도우미 | 구현됨 (Tool 계약 v1) |
+| [`maritime-data.md`](maritime-data.md) | 실제·합성 구분, 출처·품질·집계 적격성 | 구현됨 (데이터 계약 v1) |

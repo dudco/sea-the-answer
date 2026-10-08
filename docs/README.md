@@ -12,6 +12,7 @@
 | DB·저장 형식 변경 | [`data-model.md`](data-model.md) |
 | API 호출·응답 형식 구현 | [`specs/`](specs/) |
 | 지금 진행 중인 작업 확인 | [`plans/`](plans/) |
+| 해사 데이터 Tool 호출·품질 규칙 | [`specs/maritime-data-api.md`](specs/maritime-data-api.md), [`specs/maritime-data.md`](specs/maritime-data.md) |
 | 설계가 왜 이런지 확인 | [`adr/`](adr/) |
 | 무엇이 언제 바뀌었고 무엇을 검증했는지 | [`changelog.md`](changelog.md) |
 
@@ -20,7 +21,7 @@
 ### 기본 문서
 
 - [`architecture.md`](architecture.md) — 실행 구조, 요청 흐름, 모듈 책임, 보안 경계, 교체 지점
-- [`data-model.md`](data-model.md) — SQLite 테이블, JSON 필드, 상태 전이, 백업 형식
+- [`data-model.md`](data-model.md) — SQLite 및 선택 PostgreSQL 테이블·ERD, JSON 필드, 상태 전이, 백업 범위
 - [`user-guide.md`](user-guide.md) — 화면별 사용법, 역할·권한, CSV, 백업·복구, LAN, 데이터 이전, 문제 해결
 - [`changelog.md`](changelog.md) — 변경 이력, 검증 기록
 
@@ -30,12 +31,16 @@
 |---|---|
 | [`specs/api.md`](specs/api.md) — HTTP API, 인증·쓰기 보호, 문서 등록 payload | 구현됨 |
 | [`specs/integrated-answer.md`](specs/integrated-answer.md) — `/api/ask` 입력·출력, CII·기준 비교 계약 | 구현됨 |
+| [`specs/maritime-data-api.md`](specs/maritime-data-api.md) — 독립 PostgreSQL 조회·계산·조회 도우미 계약 | 구현됨 |
+| [`specs/maritime-data.md`](specs/maritime-data.md) — 데이터 선택·출처·품질·집계 적격성 계약 | 구현됨 |
 
 ### plans — 작업 계획
 
 | 문서 | 상태 |
 |---|---|
 | [`plans/2026-10-08-team-module-integration.md`](plans/2026-10-08-team-module-integration.md) — RAG·LLM·Tool 팀 모듈 연결 로드맵 | 초안 |
+| [`plans/2026-10-08-maritime-data-docs-alignment.md`](plans/2026-10-08-maritime-data-docs-alignment.md) — 역할4 PR 문서·모듈 구조 정리 | 완료 |
+| [`plans/2026-10-08-maritime-data-pr-update.md`](plans/2026-10-08-maritime-data-pr-update.md) — 역할4 PR 최신 main 반영 및 제출 | 완료 |
 
 ### adr — 설계 결정
 
@@ -48,6 +53,7 @@
 | [0005](adr/0005-dev-mode-direct-processes.md) | 개발 모드는 백엔드·프론트를 각각 직접 실행 | 채택 (일부 0006으로 대체) |
 | [0006](adr/0006-nextjs-entry-rewrites-to-api.md) | Next.js를 공개 진입점으로, `/api/*`는 rewrites로 내부 API에 전달 | 채택 (일부 0007로 대체) |
 | [0007](adr/0007-runtime-api-origin-via-proxy.md) | `/api/*` 전달 주소를 실행 시점에 결정(`proxy.js`) | 채택 |
+| [0008](adr/0008-maritime-data-tool-boundary.md) | 해사 데이터 Tool의 독립 실행과 내부 API 연결 경계 | 제안 |
 
 ## 작성 규칙 요약
 
