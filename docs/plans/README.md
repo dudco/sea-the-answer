@@ -16,4 +16,4 @@
 |---|---|---|
 | [`2026-10-08-team-module-integration.md`](2026-10-08-team-module-integration.md) | RAG·LLM·Tool·문서 형식 등 팀 모듈 연결 로드맵 | 초안 |
 | [`2026-10-08-maritime-data-docs-alignment.md`](2026-10-08-maritime-data-docs-alignment.md) | 역할4 PR 문서·모듈 구조 정리 | 완료 |
-| [`2026-10-08-maritime-data-pr-update.md`](2026-10-08-maritime-data-pr-update.md) | 역할4 PR 최신 main 반영 및 제출 | 진행 중 |
+| [`2026-10-08-maritime-data-pr-update.md`](2026-10-08-maritime-data-pr-update.md) | 역할4 PR 최신 main 반영 및 제출 | 완료 |
