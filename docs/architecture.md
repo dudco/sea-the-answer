@@ -24,7 +24,7 @@ flowchart LR
   A -. 선택: OPENAI_API_KEY 설정 시 .-> O[(외부 LLM API)]
 ```
 
-- **일반 실행** `npm start` → `scripts/run.mjs`가 API 서버(`--port 8000 --public-port 5173`)와 `next start frontend -p 5173`을 함께 띄우고, 하나가 죽으면 둘 다 종료합니다. Windows의 `start.cmd` → `scripts/start.ps1` → (필요 시 `npm ci`, `npm run build`) → `scripts/run.mjs`.
+- **일반 실행** `npm start` → `scripts/run.mjs`가 API 서버(`--port 8000 --public-port 5173`)와 `next start frontend -p 5173`을 함께 띄우고, 하나가 죽으면 둘 다 종료합니다. Windows의 `scripts/start.cmd` → `scripts/start.ps1` → (필요 시 `npm ci`, `npm run build`) → `scripts/run.mjs`.
 - **개발 실행**은 두 프로세스를 각각 띄웁니다([ADR 0005](adr/0005-dev-mode-direct-processes.md)). `npm run dev:backend` = `node --watch backend/server.mjs`, `npm run dev:frontend` = `next dev frontend --webpack -H 127.0.0.1 -p 5173`.
 - **API 주소**: `HAEDAP_API_ORIGIN`(기본 `http://127.0.0.1:8000`). `next.config.mjs`가 환경변수 또는 최상위 `.env`에서 이 값 하나만 읽어 rewrite 대상으로 씁니다. **`next build` 때 빌드 결과에 고정**되므로 바꾸면 다시 빌드해야 합니다. API 서버는 이 값의 포트로 수신합니다.
 - **공개 포트**: `PORT`(기본 5173). Next.js가 이 포트로 수신하고, API 서버는 `--public-port`로 이 값을 알아 Host 검사에 씁니다.
@@ -96,14 +96,14 @@ sequenceDiagram
 | `tools.mjs` | 계산 도구(`calculate_emissions`, `voyage_time`)와 실행 기록 | db |
 | `validation.mjs` | 입력 검증 도우미, `AppError` | — |
 
-`scripts/`: `run.mjs`(일반 실행 시 두 프로세스 관리), `start.ps1`·`start.cmd`(Windows), `setup-lan-firewall.ps1`, `ingest.mjs`(JSON 문서 수집), `check-runtime.cjs`(SQLite·FTS5 점검), `next-browser-smoke.mjs`(Playwright 업무 흐름 검증).
+`scripts/`: `run.mjs`(일반 실행 시 두 프로세스 관리), `start.cmd`·`start.ps1`(Windows 실행기), `ingest.mjs`(JSON 문서 수집), `check-runtime.cjs`(SQLite·FTS5 점검), `next-browser-smoke.mjs`(Playwright 업무 흐름 검증).
 
 ## 4. 보안 경계
 
 모듈을 교체하더라도 아래 경계는 유지해야 합니다.
 
 - **접속 범위**: 기본은 Next.js가 `127.0.0.1`에서만 수신(이 PC만). LAN 모드는 Next.js가 `0.0.0.0`에서 수신하고, API 서버는 이 PC의 LAN 주소를 Host로 허용. 인터넷 공개 배포 구성이 아님(TLS 없음).
-- **LAN 접속자 범위**: Next.js 프록시는 실제 접속자 IP를 API 서버에 전달하지 않고 클라이언트가 보낸 `X-Forwarded-For`를 그대로 넘기므로, **API 서버는 접속자 IP·서브넷을 검사하지 않습니다**(이전 게이트웨이 구조와의 차이). 같은 서브넷으로 제한하려면 OS 방화벽을 씁니다(Windows: `scripts/setup-lan-firewall.ps1`은 LocalSubnet만 허용).
+- **LAN 접속자 범위**: Next.js 프록시는 실제 접속자 IP를 API 서버에 전달하지 않고 클라이언트가 보낸 `X-Forwarded-For`를 그대로 넘기므로, **API 서버는 접속자 IP·서브넷을 검사하지 않습니다**(이전 게이트웨이 구조와의 차이). 같은 서브넷으로 제한하려면 OS 방화벽을 씁니다(Ubuntu: `ufw allow from 192.168.0.0/24 to any port 5173` 형태, Windows: 인바운드 규칙의 원격 주소를 "로컬 서브넷"으로).
 - **내부 API**: API 서버는 항상 `127.0.0.1`에만 바인딩하고 루프백 상대만 허용. `X-Forwarded-Host`는 루프백 상대에게서만 신뢰. `X-Forwarded-For`는 신뢰하지 않음.
 - **단일 출처**: 브라우저는 Next.js 주소 하나만 사용. Origin 검사는 실제 호스트(`X-Forwarded-Host`) 기준.
 - **인증**: 관리자만 로그인(salt + scrypt, HttpOnly·SameSite=Strict 세션 쿠키, 12시간). 일반 사용자는 무작위 `haedap_guest` 쿠키로 작업공간만 구분(인증 수단 아님).

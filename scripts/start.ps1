@@ -10,7 +10,7 @@ Set-Location -LiteralPath (Split-Path -Parent $PSScriptRoot)
 $nodeCommand = Get-Command node -CommandType Application -ErrorAction SilentlyContinue
 if (-not $NodePath -and $env:HAEDAP_NODE) { $NodePath = $env:HAEDAP_NODE }
 if (-not $NodePath -and $nodeCommand) { $NodePath = $nodeCommand.Source }
-if (-not $NodePath) { Write-Host 'Install official Node.js 24 LTS, reopen the terminal, and run start.cmd.'; exit 1 }
+if (-not $NodePath) { Write-Host 'Install official Node.js 24 LTS, reopen the terminal, and run scripts\start.cmd.'; exit 1 }
 $env:PATH = (Split-Path -Parent $NodePath) + ';' + $env:PATH
 $env:NEXT_TELEMETRY_DISABLED = '1'
 & $NodePath 'scripts/check-runtime.cjs'

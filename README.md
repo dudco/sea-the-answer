@@ -39,9 +39,8 @@ sea-the-answer/
 │  ├─ knowledge/seed.json              최초 실행 시 넣는 기본 문서
 │  ├─ data/             (실행 시 생성) SQLite DB와 backups/
 │  └─ tests/
-├─ scripts/             일반 실행(run.mjs)·빌드·Windows 실행기·문서 수집·브라우저 검증
+├─ scripts/             일반 실행(run.mjs)·Windows 실행기(start.cmd, start.ps1)·문서 수집·브라우저 검증
 ├─ docs/                설계·명세·계획·ADR 등 모든 프로젝트 문서
-├─ start.cmd            Windows 더블클릭 실행 진입점
 ├─ package.json         의존성과 npm 명령 (설치는 최상위에서 한 번)
 ├─ .env.example         환경설정 예시
 └─ AGENTS.md            사람·에이전트 공통 작업 지침
@@ -76,21 +75,21 @@ npm --version
 
 `v24.`으로 시작하면 됩니다.
 
-### 2) 가장 간단한 방법 — `start.cmd`
+### 2) 가장 간단한 방법 — `scripts\start.cmd`
 
-1. 프로젝트 폴더(`package.json`과 `start.cmd`가 있는 곳)를 엽니다.
+1. 프로젝트 폴더 안의 `scripts` 폴더를 엽니다.
 2. **`start.cmd`를 더블클릭**합니다. 처음에는 패키지 설치와 Next.js 빌드를 자동으로 하므로 몇 분 걸립니다. 창을 닫지 마세요.
 3. `SEA THE ANSWER (Next.js): http://127.0.0.1:5173` 이 보이면 브라우저에서 그 주소를 엽니다.
 4. 끌 때는 창에서 `Ctrl+C`를 누르거나 창을 닫습니다.
 
-옵션은 CMD 창에서 프로젝트 폴더로 이동한 뒤 붙여서 실행합니다.
+옵션은 CMD 창에서 프로젝트 최상위 폴더로 이동한 뒤 붙여서 실행합니다. `start.cmd`가 하는 일은 [`docs/user-guide.md`](docs/user-guide.md#8-windows-실행기-startcmd--startps1)에 정리했습니다.
 
 | 명령 | 하는 일 |
 |---|---|
-| `start.cmd -Port 5174` | 다른 포트로 실행 |
-| `start.cmd -Lan` | 같은 네트워크의 팀원 접속 허용 |
-| `start.cmd -Task build` | 다시 빌드만 |
-| `start.cmd -Task test` | 테스트 |
+| `scripts\start.cmd -Port 5174` | 다른 포트로 실행 |
+| `scripts\start.cmd -Lan` | 같은 네트워크의 팀원 접속 허용 |
+| `scripts\start.cmd -Task build` | 다시 빌드만 |
+| `scripts\start.cmd -Task test` | 테스트 |
 
 ### 3) 터미널에서 직접 실행
 
@@ -124,7 +123,7 @@ npm --version
 
 ### 2) 실행
 
-macOS에는 `start.cmd`가 없으므로 터미널에서 실행합니다.
+`start.cmd`는 Windows 전용이므로 macOS에서는 터미널에서 실행합니다.
 
 ```bash
 cd ~/경로/sea-the-answer

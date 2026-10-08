@@ -90,11 +90,28 @@ npm run ingest -- backend/knowledge/seed.json
 
 ## 7. 같은 네트워크의 팀원이 접속하기
 
-`npm run start:lan` 또는 Windows CMD의 `start.cmd -Lan`으로 실행하고, 출력된 `LAN (...)` 주소를 같은 네트워크의 팀원에게 알려줍니다. 팀원은 로그인 없이 기본 기능을 사용합니다.
+`npm run start:lan` 또는 Windows CMD의 `scripts\start.cmd -Lan`으로 실행하고, 출력된 `LAN (...)` 주소를 같은 네트워크의 팀원에게 알려줍니다. 팀원은 로그인 없이 기본 기능을 사용합니다.
 
-기본 실행은 이 PC에서만 접속됩니다. LAN 실행은 이 PC의 LAN 주소로 들어온 요청만 받고 임의 Host·다른 출처 요청은 거부하지만, **접속자 IP를 같은 서브넷으로 제한하지는 않습니다**(1.4.0부터). 신뢰할 수 있는 사설 네트워크에서만 켜고, 같은 서브넷으로 제한하려면 OS 방화벽을 쓰세요. Windows는 `scripts/setup-lan-firewall.ps1`(LocalSubnet만 허용), macOS는 처음 실행 시 뜨는 네트워크 연결 허용 창에서 허용합니다. 학교·공용 인터넷에 공개하는 배포 구성이 아닙니다.
+기본 실행은 이 PC에서만 접속됩니다. LAN 실행은 이 PC의 LAN 주소로 들어온 요청만 받고 임의 Host·다른 출처 요청은 거부하지만, **접속자 IP를 같은 서브넷으로 제한하지는 않습니다**(1.4.0부터). 신뢰할 수 있는 사설 네트워크에서만 켜고, 같은 서브넷으로 제한하려면 OS 방화벽을 쓰세요. Ubuntu는 `ufw`(예: `sudo ufw allow from 192.168.0.0/24 to any port 5173`), Windows는 인바운드 규칙의 원격 주소를 "로컬 서브넷"으로 제한하고, macOS는 처음 실행 시 뜨는 네트워크 연결 허용 창에서 허용합니다. 학교·공용 인터넷에 공개하는 배포 구성이 아닙니다.
 
-## 8. 기존 프로젝트의 데이터를 유지하면서 새 버전으로 바꾸기
+## 8. Windows 실행기 (`start.cmd` / `start.ps1`)
+
+Windows에서 더블클릭 한 번으로 설치·빌드·실행까지 하게 해 주는 편의 도구입니다. Ubuntu 서버·macOS에서는 쓰지 않고 `npm` 명령을 직접 실행합니다.
+
+`scripts\start.cmd`는 프로젝트 최상위로 이동한 뒤, 실행 정책 제한 없이(`-ExecutionPolicy Bypass`) `scripts\start.ps1`을 호출하고 받은 옵션을 그대로 넘깁니다. 실패하면 창이 바로 닫히지 않도록 `pause`합니다(`HAEDAP_NO_PAUSE=1`이면 생략).
+
+`scripts\start.ps1`이 하는 일:
+
+1. **Node.js 찾기**: `-NodePath` 옵션 → `HAEDAP_NODE` 환경변수 → PATH의 `node` 순서. 없으면 Node.js 24 LTS 설치 안내 후 종료. 찾은 Node 폴더를 PATH 맨 앞에 넣어 `npm`도 같은 Node를 쓰게 함.
+2. **런타임 점검**: `scripts/check-runtime.cjs`로 SQLite·FTS5 지원 확인, Node 주 버전이 24 이상인지 확인.
+3. **패키지 설치**: `node_modules/next`가 없으면 `npm ci`.
+4. **작업 실행** (`-Task`, 기본 `serve`)
+   - `serve`: 빌드(`frontend/.next/BUILD_ID`)가 없으면 `npm run build` 후 `node scripts/run.mjs` 실행. `-Port`, `-Lan`을 `--port`, `--lan`으로 전달.
+   - `build`: `npm run build` / `test`: `npm test` / `check`: 1~2단계만
+   - `ingest`: `node scripts/ingest.mjs <-Document 경로>` (기본 `backend/knowledge/seed.json`)
+5. Next.js 사용 통계 전송을 끔(`NEXT_TELEMETRY_DISABLED=1`).
+
+## 9. 기존 프로젝트의 데이터를 유지하면서 새 버전으로 바꾸기
 
 **기존 서버를 정상 종료한 후, 새 버전은 다른 폴더에 풀거나 클론하세요.**
 
@@ -113,7 +130,7 @@ DB 경로 선택 규칙:
 
 1.2.2 이전 버전의 DB는 기존 `admin`의 사용자 ID·자료 소유권을 유지하면서 비밀번호를 `1234`, 역할을 관리자로 한 번 갱신합니다. 브라우저에만 남아 있던 미저장 초안은 이전 버전에서 JSON으로 내보낸 뒤 **보고서 → 초안 JSON 가져오기**로 옮길 수 있습니다.
 
-## 9. 문제 해결
+## 10. 문제 해결
 
 | 증상 | 확인할 내용 |
 |---|---|
