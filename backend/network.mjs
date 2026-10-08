@@ -2,9 +2,9 @@ import { networkInterfaces } from 'node:os';
 import { isIPv4 } from 'node:net';
 
 // The API server is internal: it always listens on 127.0.0.1 and is reached
-// through the Next.js rewrite (`/api/*`). Users open the Next.js public port.
+// through the Next.js proxy (`/api/*`, frontend/src/proxy.js). Users open the Next.js public port.
 export function serverOptions(args = process.argv.slice(2), env = process.env) {
-  // API port defaults to the port of HAEDAP_API_ORIGIN (the Next.js rewrite target), else 8000.
+  // API port defaults to the port of HAEDAP_API_ORIGIN (the Next.js proxy target), else 8000.
   let apiPort = '8000';
   if (env.HAEDAP_API_ORIGIN) {
     const origin = new URL(env.HAEDAP_API_ORIGIN);

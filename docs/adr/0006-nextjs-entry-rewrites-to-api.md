@@ -1,6 +1,6 @@
 # 0006. Next.js를 공개 진입점으로 두고 `/api/*`는 rewrites로 내부 API 서버에 전달한다
 
-- 상태: 채택
+- 상태: 채택 — 전달 수단(`next.config.mjs` rewrites, 빌드 때 주소 고정)은 [0007](0007-runtime-api-origin-via-proxy.md)로 대체
 - 날짜: 2026-10-08
 - 관련: [ADR 0002](0002-single-gateway-next-and-node-api.md)(대체), [ADR 0005](0005-dev-mode-direct-processes.md)(일부 대체), [`../architecture.md`](../architecture.md), [`../specs/api.md`](../specs/api.md)
 

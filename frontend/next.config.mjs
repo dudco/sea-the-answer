@@ -5,8 +5,7 @@ import { parseEnv } from 'node:util';
 import { PHASE_DEVELOPMENT_SERVER } from 'next/constants.js';
 
 // Next.js is the public entry point. `/api/*` is proxied to the internal API
-// server (docs/adr/0006). For `next build` the destination is fixed into the
-// build output, so set HAEDAP_API_ORIGIN before building if it is not the default.
+// server by src/proxy.js at request time (docs/adr/0006, 0007).
 // Only HAEDAP_API_ORIGIN is read from the project-root .env (no secrets enter Next.js).
 function rootEnv(name) {
   try {
@@ -15,9 +14,9 @@ function rootEnv(name) {
     return undefined;
   }
 }
-const apiOrigin = (
-  process.env.HAEDAP_API_ORIGIN || rootEnv('HAEDAP_API_ORIGIN') || 'http://127.0.0.1:8000'
-).replace(/\/$/, '');
+// This file runs whenever `next dev` / `next start` starts, so a change in .env
+// takes effect on restart without rebuilding. src/proxy.js reads process.env.
+process.env.HAEDAP_API_ORIGIN ||= rootEnv('HAEDAP_API_ORIGIN') || 'http://127.0.0.1:8000';
 
 // LAN addresses of this PC, so `next dev -H 0.0.0.0` accepts them for dev assets/HMR.
 const lanHosts = () =>
@@ -37,9 +36,6 @@ export default function config(phase) {
     // Development and production builds use separate output folders.
     distDir: process.env.HAEDAP_NEXT_DIST || (dev ? '.next-dev' : '.next'),
     ...(dev ? { allowedDevOrigins: lanHosts() } : {}),
-    async rewrites() {
-      return [{ source: '/api/:path*', destination: `${apiOrigin}/api/:path*` }];
-    },
     experimental: {
       cpus: 2,
       // Proxied request bodies: PDF document saves (≤38MB) and backup imports (≤100MB).

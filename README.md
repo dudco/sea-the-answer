@@ -178,7 +178,7 @@ npm run dev:frontend
 - 개발 빌드 결과는 `frontend/.next-dev`에 따로 생겨서 `npm start`용 빌드(`frontend/.next`)를 덮어쓰지 않습니다.
 - LAN 접속 테스트: `npm run dev:backend -- --lan` 과 `npm run dev:frontend -- -H 0.0.0.0`.
 - 5173 포트를 바꾸려면 두 쪽을 같이: `npm run dev:frontend -- -p 5174`, `npm run dev:backend -- --public-port 5174` (또는 `.env`의 `PORT=5174`).
-- 8000 포트가 이미 쓰이고 있으면 `.env`에 `HAEDAP_API_ORIGIN=http://127.0.0.1:8100` 처럼 지정합니다. 양쪽이 이 값을 함께 읽습니다(`npm start`용은 다시 빌드).
+- 8000 포트가 이미 쓰이고 있으면 `.env`에 `HAEDAP_API_ORIGIN=http://127.0.0.1:8100` 처럼 지정합니다. 양쪽이 시작할 때 이 값을 함께 읽으므로 재시작만 하면 됩니다.
 - Next.js 사용 통계 전송을 끄려면 한 번만 `npx next telemetry disable`.
 - 종료는 각 터미널에서 `Ctrl+C`.
 
@@ -194,7 +194,7 @@ copy .env.example .env      # Windows CMD
 | 변수 | 설명 |
 |---|---|
 | `PORT` | 사용자가 여는 Next.js 포트 (기본 5173). `--port`가 우선 |
-| `HAEDAP_API_ORIGIN` | 내부 API 서버 주소 (기본 `http://127.0.0.1:8000`). Next.js rewrite 대상이며 **빌드 때 고정**되므로 바꾸면 `npm run build` 다시 실행 |
+| `HAEDAP_API_ORIGIN` | 내부 API 서버 주소 (기본 `http://127.0.0.1:8000`). API 서버와 Next.js가 **실행할 때** 함께 읽음 — 바꾸면 재시작만 하면 되고 다시 빌드할 필요 없음 |
 | `HAEDAP_DB_PATH` | DB 파일 경로. 상대 경로는 프로젝트 최상위 기준 |
 | `OPENAI_API_KEY`, `OPENAI_MODEL` | 둘 다 설정하면 통합 질문에서 **AI 답변** 선택 가능. 키는 브라우저로 보내지 않음 |
 

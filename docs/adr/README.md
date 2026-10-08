@@ -26,6 +26,7 @@
 | [0003](0003-sqlite-fts5-local-storage.md) | 내장 SQLite + FTS5로 로컬 저장·검색 | 채택 | 2026-09-30 |
 | [0004](0004-public-access-admin-only-writes.md) | 로그인 없는 일반 사용 + 관리자만 원본 자료 변경 | 채택 | 2026-09-30 |
 | [0005](0005-dev-mode-direct-processes.md) | 개발 모드는 백엔드·프론트를 각각 직접 실행 (Docker는 운영·테스트 환경용) | 채택 (접속 주소·프록시 방향은 0006으로 대체) | 2026-10-08 |
-| [0006](0006-nextjs-entry-rewrites-to-api.md) | Next.js를 공개 진입점으로, `/api/*`는 rewrites로 내부 API에 전달 | 채택 | 2026-10-08 |
+| [0006](0006-nextjs-entry-rewrites-to-api.md) | Next.js를 공개 진입점으로, `/api/*`는 rewrites로 내부 API에 전달 | 채택 (전달 수단은 0007로 대체) | 2026-10-08 |
+| [0007](0007-runtime-api-origin-via-proxy.md) | `/api/*` 전달 주소를 빌드가 아닌 실행 시점에 결정(`proxy.js`) | 채택 | 2026-10-08 |
 
 0002~0004는 이미 구현된 결정을 2026-10-08에 소급 기록한 것입니다. 날짜는 해당 결정이 들어간 버전의 날짜입니다.

@@ -16,7 +16,7 @@ flowchart LR
     D[(SQLite<br/>backend/data/haedap.sqlite)]
     K[backups/*.json]
     N -->|화면·정적 리소스| N
-    N -->|/api/* rewrite<br/>X-Forwarded-Host 추가| G
+    N -->|/api/* proxy.js<br/>X-Forwarded-Host 추가| G
     G --> A[api.mjs → workspace / analysis / rag / tools]
     A --> D
     A --> K
@@ -26,17 +26,17 @@ flowchart LR
 
 - **일반 실행** `npm start` → `scripts/run.mjs`가 API 서버(`--port 8000 --public-port 5173`)와 `next start frontend -p 5173`을 함께 띄우고, 하나가 죽으면 둘 다 종료합니다. Windows의 `scripts/start.cmd` → `scripts/start.ps1` → (필요 시 `npm ci`, `npm run build`) → `scripts/run.mjs`.
 - **개발 실행**은 두 프로세스를 각각 띄웁니다([ADR 0005](adr/0005-dev-mode-direct-processes.md)). `npm run dev:backend` = `node --watch backend/server.mjs`, `npm run dev:frontend` = `next dev frontend --webpack -H 127.0.0.1 -p 5173`.
-- **API 주소**: `HAEDAP_API_ORIGIN`(기본 `http://127.0.0.1:8000`). `next.config.mjs`가 환경변수 또는 최상위 `.env`에서 이 값 하나만 읽어 rewrite 대상으로 씁니다. **`next build` 때 빌드 결과에 고정**되므로 바꾸면 다시 빌드해야 합니다. API 서버는 이 값의 포트로 수신합니다.
+- **API 주소**: `HAEDAP_API_ORIGIN`(기본 `http://127.0.0.1:8000`). `next dev`/`next start`가 시작할 때 `next.config.mjs`가 환경변수 또는 최상위 `.env`에서 이 값 하나만 읽어 두고, `frontend/src/proxy.js`가 **요청마다** 이 값으로 전달합니다. 바꾸면 두 프로세스만 재시작하면 되고 다시 빌드할 필요는 없습니다([ADR 0007](adr/0007-runtime-api-origin-via-proxy.md)). API 서버는 이 값의 포트로 수신합니다.
 - **공개 포트**: `PORT`(기본 5173). Next.js가 이 포트로 수신하고, API 서버는 `--public-port`로 이 값을 알아 Host 검사에 씁니다.
 - `next.config.mjs`는 `next dev` 단계에서 `frontend/.next-dev`, 그 외에는 `frontend/.next`를 출력 폴더로 씁니다(`HAEDAP_NEXT_DIST`로 덮어쓰기 가능).
 - 외부 네트워크는 선택적 LLM 호출에서만 사용합니다. 나머지는 모두 오프라인으로 동작합니다.
 
 ## 2. 요청 흐름
 
-### 2.1 Next.js → API (`next.config.mjs` rewrites, `backend/server.mjs`)
+### 2.1 Next.js → API (`frontend/src/proxy.js`, `backend/server.mjs`)
 
 1. 브라우저 요청은 모두 Next.js가 받습니다. 화면·`/_next/*`·`frontend/public` 리소스는 Next.js가 직접 응답합니다.
-2. `/api/:path*`는 `HAEDAP_API_ORIGIN/api/:path*`로 프록시됩니다. Next.js는 `Host`를 대상 주소로 바꾸고, 원래 `Host`를 `X-Forwarded-Host`에 넣습니다(클라이언트가 보낸 값은 덮어씀). 쿠키·`Set-Cookie`는 그대로 오갑니다.
+2. `/api/:path*`는 `proxy.js`(Next.js 16의 `middleware` 후속, Node.js 런타임)가 `NextResponse.rewrite`로 `HAEDAP_API_ORIGIN/api/:path*`에 프록시합니다. Next.js는 `Host`를 대상 주소로 바꾸고, 원래 `Host`를 `X-Forwarded-Host`에 넣습니다(클라이언트가 보낸 값은 덮어씀). 쿠키·`Set-Cookie`는 그대로 오갑니다.
 3. 프록시 설정(`experimental`): 요청 본문 최대 **101MB**(`proxyClientMaxBodySize`, 기본 10MB에서 상향 — PDF 포함 문서 등록 38MB, 백업 가져오기 100MB), 응답 대기 **60초**(`proxyTimeout`, 기본 30초).
 4. API 서버의 **네트워크 정책**(`network.mjs`): 접속 상대가 루프백(127.x)인지 확인하고, 실제 호스트(`X-Forwarded-Host`가 있으면 그것, 없으면 `Host`)가 이 PC의 이름·주소인지, 포트가 공개 포트(프록시 경유) 또는 API 포트(직접 호출)인지 검사합니다. 아니면 403.
 5. `/api/*`는 `api.mjs`가 처리하고 그 외 경로는 404입니다(API 서버는 화면을 제공하지 않음).

@@ -139,11 +139,11 @@ DB 경로 선택 규칙:
 | SQLite/FTS5 오류 | `node scripts/check-runtime.cjs` 확인. VS Code 내장 런타임 등 대신 공식 Node.js 사용 |
 | 패키지 설치 실패 | 인터넷·프록시를 확인하고 프로젝트 폴더에서 `npm ci` 재실행 |
 | "먼저 npm run build를 실행해 주세요" | `npm run build` 실행 |
-| API 연결 실패 | 백엔드(API 서버)가 켜져 있는지 확인. 개발 중이면 `npm run dev:backend`. 8000 포트를 바꿨다면 `HAEDAP_API_ORIGIN`과 빌드가 일치하는지 확인 |
+| API 연결 실패 | 백엔드(API 서버)가 켜져 있는지 확인. 개발 중이면 `npm run dev:backend`. 8000 포트를 바꿨다면 `.env`의 `HAEDAP_API_ORIGIN`을 고친 뒤 두 프로세스를 모두 재시작했는지 확인 |
 | 포트 사용 중 | 기존 실행 창을 종료하거나 `npm start -- --port 5174` |
 | 수정한 화면이 반영되지 않음 | 일반 실행이면 재빌드 후 재시작. 개발 중이면 `npm run dev:backend`와 `npm run dev:frontend`를 함께 실행 |
 | 8000 포트로 열었더니 "API server only" | 화면은 Next.js 주소 `http://127.0.0.1:5173`으로 접속 |
-| "API port 8000 is in use" | 다른 프로그램이 8000을 쓰는 중. `.env`에 `HAEDAP_API_ORIGIN=http://127.0.0.1:8100` 지정(일반 실행은 다시 빌드) |
+| "API port 8000 is in use" | 다른 프로그램이 8000을 쓰는 중. `.env`에 `HAEDAP_API_ORIGIN=http://127.0.0.1:8100` 지정 후 두 프로세스 재시작 |
 | 큰 PDF·백업 업로드가 끊김 | 101MB 이하인지 확인(`next.config.mjs`의 `proxyClientMaxBodySize`) |
 | DB가 양쪽에 있다는 오류 | `.env`의 `HAEDAP_DB_PATH`로 사용할 DB 지정 |
 | 관리자 로그인 실패 | `admin / 1234` 확인. 기존 서버 종료 후 새 폴더에서 실행 |

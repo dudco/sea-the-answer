@@ -34,7 +34,7 @@ if (!/^\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535) {
   console.error('Port must be an integer from 1 to 65535.');
   process.exit(1);
 }
-// Must match the API origin the screens were built with (frontend/next.config.mjs).
+// API server address. Next.js (src/proxy.js) reads the same value at request time.
 const apiOrigin = new URL(process.env.HAEDAP_API_ORIGIN || 'http://127.0.0.1:8000');
 if (apiOrigin.hostname !== '127.0.0.1' || !apiOrigin.port) {
   console.error('npm start requires HAEDAP_API_ORIGIN=http://127.0.0.1:<port>.');

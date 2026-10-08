@@ -38,7 +38,7 @@ test('HTTP integration: ingestion, search, tools, persistence, input and origin 
       req.on('error', reject); req.end();
     });
     assert.equal(badHostStatus, 403);
-    // Through the Next.js rewrite: X-Forwarded-Host is the public address.
+    // Through the Next.js proxy: X-Forwarded-Host is the public address.
     const viaNext = await post('/api/ask', { question: '황 함유량 기준' }, { 'X-Forwarded-Host': '127.0.0.1:5173', Origin: 'http://127.0.0.1:5173' });
     assert.equal(viaNext.status, 200);
     assert.equal((await post('/api/ask', { question: 'CII' }, { 'X-Forwarded-Host': '127.0.0.1:5173', Origin: `http://127.0.0.1:${port}` })).status, 403);

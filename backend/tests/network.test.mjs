@@ -24,7 +24,7 @@ test('direct calls: loopback peer and the API port only', () => {
   assert.equal(allow(req('127.0.0.1:8000', '192.168.10.20')), false);
   assert.equal(allow(req('evil.example:8000')), false);
 });
-test('via Next.js rewrite: X-Forwarded-Host must be this PC on the public port; never trusted from non-loopback peers', () => {
+test('via Next.js proxy: X-Forwarded-Host must be this PC on the public port; never trusted from non-loopback peers', () => {
   const local = createNetworkPolicy({ lan: false, port: 8000, publicPort: 5173 }, interfaces);
   assert.ok(local(fwd('127.0.0.1:8000', '127.0.0.1:5173')));
   assert.ok(local(fwd('127.0.0.1:8000', 'localhost:5173')));

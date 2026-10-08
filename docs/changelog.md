@@ -4,6 +4,7 @@
 
 ## 변경 이력
 
+- **1.4.0 정리 / 2026-10-08**: `/api/*` 전달을 `next.config.mjs`의 `rewrites`(빌드 때 주소 고정)에서 `frontend/src/proxy.js`(요청마다 결정)로 변경 — `.env`의 `HAEDAP_API_ORIGIN`을 바꾼 뒤 재시작만 하면 반영, 다시 빌드할 필요 없음([ADR 0007](adr/0007-runtime-api-origin-via-proxy.md)).
 - **1.4.0 정리 / 2026-10-08**: `start.cmd`를 `scripts/start.cmd`로 이동(최상위에서 실행하도록 경로 보정). Ubuntu 서버 운영 기준으로 Windows 전용 `scripts/setup-lan-firewall.ps1` 제거(방화벽은 OS 설정으로 안내).
 - **1.4.0 정리 / 2026-10-08**: 래퍼였던 `scripts/build.mjs` 제거(`npm run build`가 `next build frontend --webpack`을 직접 실행, 출력 폴더는 `next.config.mjs`가 결정), `test:browser`와 중복이던 `npm run test:ui` 제거.
 - **1.4.0 / 2026-10-08**: Next.js를 공개 진입점으로 바꾸고 `/api/*`를 `rewrites`로 내부 API 서버에 전달([ADR 0006](adr/0006-nextjs-entry-rewrites-to-api.md)). API 서버는 `127.0.0.1:8000`(`HAEDAP_API_ORIGIN`)에만 바인딩하고 `X-Forwarded-Host` 기준으로 Host·Origin 검사, 공개 포트는 `--public-port`. `backend/frontend-proxy.mjs`와 `--frontend` 옵션 제거. 개발 모드 접속 주소를 5173(Next.js)으로 통일. 프록시 본문 한도 101MB·대기 60초로 상향. **LAN 모드의 접속자 서브넷 검사 제거**(Next.js가 실제 접속자 IP를 전달하지 않음 → OS 방화벽으로 제한).
@@ -28,6 +29,8 @@
 | `npm run test:browser` (일반 실행) | **17개 업무 흐름 통과** |
 | `HAEDAP_TEST_DEV=1 npm run test:browser` (API 서버 + `next dev` 직접 실행) | **17개 업무 흐름 통과** |
 | `npm start -- --lan` 수동 확인 | 60MB 요청 본문이 프록시를 거쳐 API까지 전달(앱 검증 응답 403 수신), LAN 주소로 화면·API 200, LAN 주소의 8000 포트는 연결 거부, 위조한 `X-Forwarded-For`는 무시 |
+
+`proxy.js` 전환 후(같은 날): `npm test` 32개 통과, 빌드 성공, 브라우저 17개 흐름 일반·개발 모드 모두 통과. `HAEDAP_API_ORIGIN` 없이 빌드한 뒤 최상위 `.env`에만 다른 주소를 넣고 `next start` → 그 주소로 전달됨(재빌드 불필요) 확인.
 
 Next.js 16.3.8 동작 확인(임시 에코 서버): rewrite 대상 주소는 `next build` 시점 값으로 고정, `X-Forwarded-Host`는 실제 Host로 덮어씀, `X-Forwarded-For`는 클라이언트 값을 그대로 전달, 기본 본문 한도 10MB 초과 시 프록시 실패.
 

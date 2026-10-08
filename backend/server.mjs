@@ -1,5 +1,5 @@
-// Internal API server. Browsers open the Next.js public port; Next.js rewrites
-// `/api/*` to this server (frontend/next.config.mjs). See docs/adr/0006.
+// Internal API server. Browsers open the Next.js public port; Next.js forwards
+// `/api/*` to this server (frontend/src/proxy.js). See docs/adr/0006, 0007.
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
@@ -88,7 +88,7 @@ const server = http.createServer(async (req, res) => {
 server.on('error', (error) => {
   console.error(
     error.code === 'EADDRINUSE'
-      ? `API port ${port} is in use. Stop the existing server, or set HAEDAP_API_ORIGIN in .env (then rebuild for npm start).`
+      ? `API port ${port} is in use. Stop the existing server, or set HAEDAP_API_ORIGIN in .env and restart both processes.`
       : error.message,
   );
   clearInterval(autoBackupTimer);
@@ -97,7 +97,7 @@ server.on('error', (error) => {
 });
 server.listen(port, config.host, () => {
   console.log(`DB: ${dbPath}`);
-  console.log(`API: http://127.0.0.1:${port} (internal, Next.js /api/* rewrite)`);
+  console.log(`API: http://127.0.0.1:${port} (internal, Next.js forwards /api/*)`);
   console.log(
     `SEA THE ANSWER (Next.js): http://127.0.0.1:${publicPort}\nMode: ${config.lan ? 'LAN' : 'Local (this PC only)'}`,
   );
