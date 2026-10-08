@@ -28,6 +28,19 @@ if (-not (Test-Path -LiteralPath 'node_modules/next/package.json')) {
     Write-Host 'Installing dependencies (internet is required for the first installation)...'
     Invoke-Npm -NpmArgs @('ci')
 }
+if ($Task -eq 'serve' -or $Task -eq 'test') {
+    $python = Get-Command python -CommandType Application -ErrorAction SilentlyContinue
+    if (-not $python) { Write-Host 'Python 3.11 or newer is required for FastAPI. Install it and reopen the terminal.'; exit 1 }
+    if (-not (Test-Path -LiteralPath '.venv/Scripts/python.exe')) {
+        & $python.Source -m venv .venv
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    }
+    & '.venv/Scripts/python.exe' -c 'import fastapi, psycopg, uvicorn, httpx, pytest'
+    if ($LASTEXITCODE -ne 0) {
+        & '.venv/Scripts/python.exe' -m pip install -r backend/requirements.txt
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    }
+}
 if ($Task -eq 'build') { Invoke-Npm -NpmArgs @('run','build'); exit 0 }
 if ($Task -eq 'test') { Invoke-Npm -NpmArgs @('test'); exit 0 }
 if ($Task -eq 'ingest') { & $NodePath 'scripts/ingest.mjs' $Document; exit $LASTEXITCODE }

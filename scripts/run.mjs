@@ -3,6 +3,7 @@
 // `npm run dev:backend` and `npm run dev:frontend` directly (docs/adr/0005, 0006).
 import { spawn } from 'node:child_process';
 import { access } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import { once } from 'node:events';
@@ -61,8 +62,8 @@ function stop(code = 0) {
     children.map((c) => (c.exitCode === null ? once(c, 'exit').catch(() => {}) : null)),
   ).finally(() => process.exit(code));
 }
-function launch(file, argv) {
-  const child = spawn(process.execPath, [file, ...argv], {
+function launch(program, argv) {
+  const child = spawn(program, argv, {
     cwd: root,
     env: { ...process.env, NEXT_TELEMETRY_DISABLED: '1', HAEDAP_NEXT_DIST: '.next' },
     stdio: 'inherit',
@@ -79,9 +80,14 @@ function launch(file, argv) {
   return child;
 }
 for (const s of ['SIGINT', 'SIGTERM']) process.on(s, () => stop(0));
-launch(resolve(root, 'backend/server.mjs'), [
-  '--port', apiOrigin.port, '--public-port', port, ...(lan ? ['--lan'] : []),
+const python = process.env.HAEDAP_PYTHON || resolve(root, process.platform === 'win32' ? '.venv/Scripts/python.exe' : '.venv/bin/python');
+if (!existsSync(python)) {
+  console.error('Python 가상 환경이 없습니다. README의 FastAPI 설치 명령을 먼저 실행해 주세요.');
+  process.exit(1);
+}
+launch(python, [
+  '-m', 'uvicorn', 'backend.pyapi.workspace_api:app', '--host', '127.0.0.1', '--port', apiOrigin.port,
 ]);
-launch(resolve(root, 'node_modules/next/dist/bin/next'), [
+launch(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'),
   'start', 'frontend', '-H', lan ? '0.0.0.0' : '127.0.0.1', '-p', port,
 ]);
