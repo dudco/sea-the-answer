@@ -4,6 +4,7 @@
 
 ## 변경 이력
 
+- **1.4.0 정리 / 2026-10-08**: 래퍼였던 `scripts/build.mjs` 제거(`npm run build`가 `next build frontend --webpack`을 직접 실행, 출력 폴더는 `next.config.mjs`가 결정), `test:browser`와 중복이던 `npm run test:ui` 제거.
 - **1.4.0 / 2026-10-08**: Next.js를 공개 진입점으로 바꾸고 `/api/*`를 `rewrites`로 내부 API 서버에 전달([ADR 0006](adr/0006-nextjs-entry-rewrites-to-api.md)). API 서버는 `127.0.0.1:8000`(`HAEDAP_API_ORIGIN`)에만 바인딩하고 `X-Forwarded-Host` 기준으로 Host·Origin 검사, 공개 포트는 `--public-port`. `backend/frontend-proxy.mjs`와 `--frontend` 옵션 제거. 개발 모드 접속 주소를 5173(Next.js)으로 통일. 프록시 본문 한도 101MB·대기 60초로 상향. **LAN 모드의 접속자 서브넷 검사 제거**(Next.js가 실제 접속자 IP를 전달하지 않음 → OS 방화벽으로 제한).
 - **1.3.2 / 2026-10-08**: 개발 모드를 래퍼 스크립트 대신 백엔드·프론트 직접 실행으로 변경([ADR 0005](adr/0005-dev-mode-direct-processes.md)). `npm run dev` → `npm run dev:backend`(`node --watch`, 자동 재시작) + `npm run dev:frontend`(`next dev`). 백엔드에 `--frontend <origin>` 옵션 추가(`HAEDAP_FRONTEND_ORIGIN`보다 우선, `.env`에서도 읽음). `next.config.mjs`가 개발/빌드 출력 폴더를 단계(phase)로 자동 구분. `scripts/run.mjs`와 `start.cmd`는 일반 실행 전용으로 정리(`--dev`, `-Task dev` 제거). 브라우저 검증의 개발 모드도 두 프로세스를 직접 띄우도록 변경.
 - **문서 정리 / 2026-10-08** (코드 변경 없음, 버전 유지): 최상위 `docs/` 체계 도입 — `architecture.md`, `data-model.md`, `user-guide.md`, `changelog.md`, `specs/`, `plans/`, `adr/`. README를 소개·구조·설치·Windows/macOS 실행 중심으로 재작성하고 상세 내용을 docs로 이동. AGENTS.md를 문서 위치·작성 규칙 중심으로 갱신(이전의 "docs 폴더를 만들지 않는다" 규칙 폐기, [ADR 0001](adr/0001-docs-directory.md)).

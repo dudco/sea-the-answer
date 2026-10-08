@@ -12,9 +12,8 @@
     "test": "node --test backend/tests/*.test.mjs frontend/tests/*.test.mjs scripts/tests/*.test.mjs",
     "ingest": "node scripts/ingest.mjs",
     "test:browser": "node scripts/next-browser-smoke.mjs",
-    "test:ui": "node scripts/next-browser-smoke.mjs",
     "check": "node scripts/check-runtime.cjs",
-    "build": "node scripts/build.mjs",
+    "build": "next build frontend --webpack",
     "test:backend": "node --test backend/tests/*.test.mjs",
     "test:frontend": "node --test frontend/tests/*.test.mjs"
   },

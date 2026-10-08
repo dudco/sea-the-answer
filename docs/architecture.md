@@ -96,7 +96,7 @@ sequenceDiagram
 | `tools.mjs` | 계산 도구(`calculate_emissions`, `voyage_time`)와 실행 기록 | db |
 | `validation.mjs` | 입력 검증 도우미, `AppError` | — |
 
-`scripts/`: `run.mjs`(일반 실행 시 두 프로세스 관리), `build.mjs`(Next 빌드), `start.ps1`·`start.cmd`(Windows), `setup-lan-firewall.ps1`, `ingest.mjs`(JSON 문서 수집), `check-runtime.cjs`(SQLite·FTS5 점검), `next-browser-smoke.mjs`(Playwright 업무 흐름 검증).
+`scripts/`: `run.mjs`(일반 실행 시 두 프로세스 관리), `start.ps1`·`start.cmd`(Windows), `setup-lan-firewall.ps1`, `ingest.mjs`(JSON 문서 수집), `check-runtime.cjs`(SQLite·FTS5 점검), `next-browser-smoke.mjs`(Playwright 업무 흐름 검증).
 
 ## 4. 보안 경계
 
