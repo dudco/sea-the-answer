@@ -1,17 +1,31 @@
 {
-  "name": "haedap-maritime-demo",
-  "version": "1.0.0",
+  "name": "sea-the-answer-nextjs",
+  "version": "1.3.1",
   "private": true,
   "type": "module",
-  "description": "Haedap local maritime knowledge, reports and tools",
+  "description": "SEA THE ANSWER Next.js App Router + React UI, existing local Node API and SQLite",
   "scripts": {
-    "start": "node server.mjs",
-    "start:lan": "node server.mjs --lan",
-    "dev": "node server.mjs",
-    "test": "node --test tests/*.test.mjs",
-    "ingest": "node scripts/ingest.mjs"
+    "start": "node scripts/run.mjs",
+    "start:lan": "node scripts/run.mjs --lan",
+    "dev": "node scripts/run.mjs --dev",
+    "test": "node --test backend/tests/*.test.mjs frontend/tests/*.test.mjs scripts/tests/*.test.mjs",
+    "ingest": "node scripts/ingest.mjs",
+    "test:browser": "node scripts/next-browser-smoke.mjs",
+    "test:ui": "node scripts/next-browser-smoke.mjs",
+    "check": "node scripts/check-runtime.cjs",
+    "build": "node scripts/build.mjs",
+    "test:backend": "node --test backend/tests/*.test.mjs",
+    "test:frontend": "node --test frontend/tests/*.test.mjs"
   },
   "engines": {
-    "node": ">=22.13.0"
+    "node": ">=24.0.0"
+  },
+  "devDependencies": {
+    "playwright": "1.62.1"
+  },
+  "dependencies": {
+    "next": "16.3.8",
+    "react": "19.2.7",
+    "react-dom": "19.2.7"
   }
 }

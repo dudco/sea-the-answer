@@ -1,8 +1,7 @@
-.backup/
-.replica/
-.verification/
 node_modules/
+.next/
+.next-dev/
 data/
 .env
-.env.*
-!.env.example
+.verification/
+*.log
