@@ -39,15 +39,16 @@ function start(args, extraEnv = {}) {
   return child;
 }
 if (dev) {
-  // Same as `npm run dev:frontend` + `npm run dev:backend`, on free ports.
-  const nextProbe = createServer();
-  nextProbe.listen(0, '127.0.0.1');
-  await once(nextProbe, 'listening');
-  const nextPort = nextProbe.address().port;
-  await new Promise((r) => nextProbe.close(r));
-  start(['node_modules/next/dist/bin/next', 'dev', 'frontend', '--webpack', '-H', '127.0.0.1', '-p', String(nextPort)]);
-  start(['backend/server.mjs', '--port', String(port), '--frontend', `http://127.0.0.1:${nextPort}`]);
-} else start(['scripts/run.mjs', '--port', String(port)]);
+  // Same as `npm run dev:backend` + `npm run dev:frontend`, on free ports.
+  const apiProbe = createServer();
+  apiProbe.listen(0, '127.0.0.1');
+  await once(apiProbe, 'listening');
+  const apiPort = apiProbe.address().port;
+  await new Promise((r) => apiProbe.close(r));
+  const apiEnv = { HAEDAP_API_ORIGIN: `http://127.0.0.1:${apiPort}`, PORT: String(port) };
+  start(['backend/server.mjs'], apiEnv);
+  start(['node_modules/next/dist/bin/next', 'dev', 'frontend', '--webpack', '-H', '127.0.0.1', '-p', String(port)], apiEnv);
+} else start(['scripts/run.mjs', '--port', String(port)]); // API on the built HAEDAP_API_ORIGIN (default 127.0.0.1:8000)
 const server = { get exitCode() { return processes.some((c) => c.exitCode !== null) ? 1 : null; } };
 const checks = [],
   errors = [],

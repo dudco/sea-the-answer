@@ -1,6 +1,6 @@
 # 사용·운영 안내
 
-> 대상 버전: 1.3.2 · 설치와 기본 실행은 [`../README.md`](../README.md)를 먼저 보세요.
+> 대상 버전: 1.4.0 · 설치와 기본 실행은 [`../README.md`](../README.md)를 먼저 보세요.
 
 ## 1. 화면별 사용 방법
 
@@ -92,7 +92,7 @@ npm run ingest -- backend/knowledge/seed.json
 
 `npm run start:lan` 또는 Windows CMD의 `start.cmd -Lan`으로 실행하고, 출력된 `LAN (...)` 주소를 같은 네트워크의 팀원에게 알려줍니다. 팀원은 로그인 없이 기본 기능을 사용합니다.
 
-기본 실행은 이 PC에서만 접속됩니다. LAN 실행도 연결된 IPv4 서브넷만 허용하며 임의 Host·다른 출처 요청은 거부합니다. 학교·공용 인터넷에 공개하는 배포 구성이 아닙니다. Windows 방화벽이 막으면 `scripts/setup-lan-firewall.ps1`을 사용하고, macOS는 처음 실행 시 뜨는 네트워크 연결 허용 창에서 허용합니다.
+기본 실행은 이 PC에서만 접속됩니다. LAN 실행은 이 PC의 LAN 주소로 들어온 요청만 받고 임의 Host·다른 출처 요청은 거부하지만, **접속자 IP를 같은 서브넷으로 제한하지는 않습니다**(1.4.0부터). 신뢰할 수 있는 사설 네트워크에서만 켜고, 같은 서브넷으로 제한하려면 OS 방화벽을 쓰세요. Windows는 `scripts/setup-lan-firewall.ps1`(LocalSubnet만 허용), macOS는 처음 실행 시 뜨는 네트워크 연결 허용 창에서 허용합니다. 학교·공용 인터넷에 공개하는 배포 구성이 아닙니다.
 
 ## 8. 기존 프로젝트의 데이터를 유지하면서 새 버전으로 바꾸기
 
@@ -122,11 +122,12 @@ DB 경로 선택 규칙:
 | SQLite/FTS5 오류 | `node scripts/check-runtime.cjs` 확인. VS Code 내장 런타임 등 대신 공식 Node.js 사용 |
 | 패키지 설치 실패 | 인터넷·프록시를 확인하고 프로젝트 폴더에서 `npm ci` 재실행 |
 | "먼저 npm run build를 실행해 주세요" | `npm run build` 실행 |
-| API 연결 실패 | Next.js 임시 포트 대신 `SEA THE ANSWER`에 표시된 5173 주소로 접속 |
+| API 연결 실패 | 백엔드(API 서버)가 켜져 있는지 확인. 개발 중이면 `npm run dev:backend`. 8000 포트를 바꿨다면 `HAEDAP_API_ORIGIN`과 빌드가 일치하는지 확인 |
 | 포트 사용 중 | 기존 실행 창을 종료하거나 `npm start -- --port 5174` |
 | 수정한 화면이 반영되지 않음 | 일반 실행이면 재빌드 후 재시작. 개발 중이면 `npm run dev:backend`와 `npm run dev:frontend`를 함께 실행 |
-| "Next.js 화면 서버에 연결할 수 없습니다" | 개발 중이면 `npm run dev:frontend`가 켜져 있는지, 포트(기본 3000)가 백엔드의 `--frontend`와 같은지 확인 |
-| 3000 포트로 열었더니 API 오류 | 개발 중에도 접속은 백엔드 주소 `http://127.0.0.1:5173` |
+| 8000 포트로 열었더니 "API server only" | 화면은 Next.js 주소 `http://127.0.0.1:5173`으로 접속 |
+| "API port 8000 is in use" | 다른 프로그램이 8000을 쓰는 중. `.env`에 `HAEDAP_API_ORIGIN=http://127.0.0.1:8100` 지정(일반 실행은 다시 빌드) |
+| 큰 PDF·백업 업로드가 끊김 | 101MB 이하인지 확인(`next.config.mjs`의 `proxyClientMaxBodySize`) |
 | DB가 양쪽에 있다는 오류 | `.env`의 `HAEDAP_DB_PATH`로 사용할 DB 지정 |
 | 관리자 로그인 실패 | `admin / 1234` 확인. 기존 서버 종료 후 새 폴더에서 실행 |
 | 등록·수정·삭제 버튼이 안 보임 | 관리자 로그인 여부 확인 |

@@ -1,6 +1,6 @@
 # 해답 — SEA THE ANSWER
 
-현재 버전 **1.3.2** · 마지막 업데이트 **2026-10-08**
+현재 버전 **1.4.0** · 마지막 업데이트 **2026-10-08**
 
 선원의 업무를 돕는 **선박 특화 LLM 시스템**입니다. 선내 매뉴얼·해사 규정 같은 문서를 근거로 질문에 답하고(RAG), 선박의 일별 운항 기록을 조회·분석·계산(Tool Calling)해서 두 결과를 하나의 답변과 보고서 초안으로 묶어 줍니다. 동국대학교 캡스톤 디자인2 팀 프로젝트입니다.
 
@@ -22,7 +22,7 @@
 
 ```text
 sea-the-answer/
-├─ frontend/            Next.js 16 App Router + React 19 화면 (JSX)
+├─ frontend/            Next.js 16 App Router + React 19 화면 (JSX) — 사용자가 접속하는 공개 진입점
 │  ├─ src/app/          페이지 라우트: /chat, /documents, /operations, /reports, /admin
 │  ├─ src/views/        화면 JSX
 │  ├─ src/workspace/    상태 Provider·컨트롤러(이벤트, API 호출)
@@ -31,7 +31,7 @@ sea-the-answer/
 │  ├─ public/           글꼴, PDF.js, Leaflet 등 오프라인 정적 리소스
 │  └─ tests/
 ├─ backend/             Node.js HTTP API + SQLite
-│  ├─ server.mjs        단일 접속점(게이트웨이): /api는 직접 처리, 나머지는 Next.js로 전달
+│  ├─ server.mjs        내부 API 서버(127.0.0.1:8000). Next.js가 /api/* 를 이리로 전달
 │  ├─ api.mjs           라우팅·인증·CSRF
 │  ├─ workspace.mjs     권한·CRUD·승인·보고서·백업
 │  ├─ db.mjs, knowledge.mjs, rag.mjs   DB·문서 인덱싱·검색·답변
@@ -140,7 +140,7 @@ npm start
 
 | 명령 | 하는 일 |
 |---|---|
-| `npm start` | 빌드된 화면 + API 서버 실행 (기본 5173 포트, 이 PC에서만 접속) |
+| `npm start` | 빌드된 화면(Next.js :5173) + 내부 API 서버(:8000) 실행, 이 PC에서만 접속 |
 | `npm start -- --port 5174` | 다른 포트로 실행 |
 | `npm run start:lan` | 같은 네트워크(연결된 IPv4 서브넷)의 기기 접속 허용 |
 | `npm run dev:backend` + `npm run dev:frontend` | 개발 모드. 터미널 두 개에서 각각 실행 (아래 "개발 모드" 참고) |
@@ -152,7 +152,7 @@ npm start
 
 꼭 기억할 점:
 
-- 접속 주소는 항상 마지막에 출력되는 **`SEA THE ANSWER` 주소(5173 또는 지정 포트)** 입니다. 로그 중간의 Next.js 임시 포트로 접속하면 API가 동작하지 않습니다.
+- 접속 주소는 **Next.js 주소 `http://127.0.0.1:5173`(또는 지정 포트)** 하나입니다. Next.js가 `/api/*` 요청을 내부 API 서버(`127.0.0.1:8000`)로 넘겨 줍니다. 8000 포트는 직접 열 필요가 없습니다.
 - `node backend/server.mjs`만 실행하면 API만 켜지고 화면은 나오지 않습니다. 일반 실행은 `npm start`, 개발은 아래처럼 두 프로세스를 함께 띄우세요.
 - DB는 기본적으로 `backend/data/haedap.sqlite`에 생성됩니다. 시작 로그의 `DB:` 줄에서 실제 경로를 확인할 수 있습니다.
 
@@ -161,24 +161,25 @@ npm start
 개발할 때는 백엔드와 프론트를 **각각 직접** 실행합니다. 빌드(`npm run build`)는 필요 없고, 터미널(또는 VS Code 터미널 탭)을 두 개 엽니다. 둘 다 프로젝트 최상위 폴더에서 실행합니다.
 
 ```bash
-# 터미널 1 — 백엔드(API + 게이트웨이), 파일을 고치면 자동 재시작
+# 터미널 1 — 내부 API 서버(127.0.0.1:8000), 파일을 고치면 자동 재시작
 npm run dev:backend
 
-# 터미널 2 — 프론트(Next.js 개발 서버), 화면 수정이 바로 반영(HMR)
+# 터미널 2 — Next.js 개발 서버(127.0.0.1:5173), 화면 수정이 바로 반영(HMR)
 npm run dev:frontend
 ```
 
-브라우저에서는 **`http://127.0.0.1:5173`** (백엔드 주소)으로 접속합니다. 백엔드가 `/api/*`는 직접 처리하고 화면 요청은 `127.0.0.1:3000`의 Next.js로 전달하므로, 쿠키·CSRF·권한 검사가 운영과 똑같이 동작합니다. `3000` 포트로 직접 접속하면 화면은 보여도 API 호출이 실패합니다.
+브라우저에서는 **`http://127.0.0.1:5173`** (Next.js)으로 접속합니다. 화면은 Next.js가 그리고, `/api/*`는 Next.js가 API 서버로 넘기므로 쿠키·CSRF·권한 검사가 운영과 똑같이 동작합니다.
 
 | 프로세스 | 명령이 실제로 하는 일 | 포트 |
 |---|---|---|
-| 백엔드 | `node --watch backend/server.mjs --frontend http://127.0.0.1:3000` | 5173 (`.env`의 `PORT`) |
-| 프론트 | `next dev frontend --webpack -H 127.0.0.1 -p 3000` | 3000 (이 PC 내부 전용) |
+| 백엔드 | `node --watch backend/server.mjs` | 8000 (`HAEDAP_API_ORIGIN`의 포트, 이 PC 내부 전용) |
+| 프론트 | `next dev frontend --webpack -H 127.0.0.1 -p 5173` | 5173 (사용자가 여는 주소) |
 
-- 실행 순서는 상관없습니다. 프론트가 아직 안 떴으면 화면 대신 "Next.js 화면 서버에 연결할 수 없습니다" 안내가 나오고, 프론트가 뜨면 새로고침으로 정상 화면이 나옵니다.
+- 실행 순서는 상관없습니다. 백엔드가 아직 안 떴으면 화면의 API 호출이 실패하니, 백엔드를 켠 뒤 새로고침하세요.
 - 개발 빌드 결과는 `frontend/.next-dev`에 따로 생겨서 `npm start`용 빌드(`frontend/.next`)를 덮어쓰지 않습니다.
-- LAN 접속을 테스트하려면 `npm run dev:backend -- --lan`.
-- 3000 포트가 이미 쓰이고 있으면 두 쪽을 같이 바꿉니다: `npm run dev:frontend -- -p 3001`, `npm run dev:backend -- --frontend http://127.0.0.1:3001`.
+- LAN 접속 테스트: `npm run dev:backend -- --lan` 과 `npm run dev:frontend -- -H 0.0.0.0`.
+- 5173 포트를 바꾸려면 두 쪽을 같이: `npm run dev:frontend -- -p 5174`, `npm run dev:backend -- --public-port 5174` (또는 `.env`의 `PORT=5174`).
+- 8000 포트가 이미 쓰이고 있으면 `.env`에 `HAEDAP_API_ORIGIN=http://127.0.0.1:8100` 처럼 지정합니다. 양쪽이 이 값을 함께 읽습니다(`npm start`용은 다시 빌드).
 - Next.js 사용 통계 전송을 끄려면 한 번만 `npx next telemetry disable`.
 - 종료는 각 터미널에서 `Ctrl+C`.
 
@@ -193,8 +194,8 @@ copy .env.example .env      # Windows CMD
 
 | 변수 | 설명 |
 |---|---|
-| `PORT` | 백엔드 포트 (기본 5173). `--port`가 우선 |
-| `HAEDAP_FRONTEND_ORIGIN` | 백엔드가 화면 요청을 전달할 Next.js 주소. 보통 비워 둠 (`--frontend`·`npm start`가 지정) |
+| `PORT` | 사용자가 여는 Next.js 포트 (기본 5173). `--port`가 우선 |
+| `HAEDAP_API_ORIGIN` | 내부 API 서버 주소 (기본 `http://127.0.0.1:8000`). Next.js rewrite 대상이며 **빌드 때 고정**되므로 바꾸면 `npm run build` 다시 실행 |
 | `HAEDAP_DB_PATH` | DB 파일 경로. 상대 경로는 프로젝트 최상위 기준 |
 | `OPENAI_API_KEY`, `OPENAI_MODEL` | 둘 다 설정하면 통합 질문에서 **AI 답변** 선택 가능. 키는 브라우저로 보내지 않음 |
 

@@ -1,6 +1,6 @@
 # 0005. 개발 모드는 백엔드와 프론트를 각각 직접 실행한다
 
-- 상태: 채택
+- 상태: 채택 — 단, 접속 주소(백엔드 5173)와 프록시 방향(백엔드 → Next.js)은 [0006](0006-nextjs-entry-rewrites-to-api.md)으로 대체. "두 프로세스를 직접 실행"과 "개발은 Docker 없이"는 유효
 - 날짜: 2026-10-08
 - 관련: [ADR 0002](0002-single-gateway-next-and-node-api.md)(개발 모드의 실행 방식 부분을 대체), [`../architecture.md`](../architecture.md)
 

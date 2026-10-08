@@ -42,10 +42,11 @@
 | 번호 | 결정 | 상태 |
 |---|---|---|
 | [0001](adr/0001-docs-directory.md) | 문서를 최상위 `docs/`에 모으고 AGENTS.md를 공통 지침으로 사용 | 채택 |
-| [0002](adr/0002-single-gateway-next-and-node-api.md) | Node API 게이트웨이 하나 뒤에 Next.js를 루프백으로 둠 | 채택 |
+| [0002](adr/0002-single-gateway-next-and-node-api.md) | Node API 게이트웨이 하나 뒤에 Next.js를 루프백으로 둠 | 대체됨(0006) |
 | [0003](adr/0003-sqlite-fts5-local-storage.md) | 내장 SQLite + FTS5로 로컬 저장·검색 | 채택 |
 | [0004](adr/0004-public-access-admin-only-writes.md) | 로그인 없는 일반 사용 + 관리자만 원본 자료 변경 | 채택 |
-| [0005](adr/0005-dev-mode-direct-processes.md) | 개발 모드는 백엔드·프론트를 각각 직접 실행 | 채택 |
+| [0005](adr/0005-dev-mode-direct-processes.md) | 개발 모드는 백엔드·프론트를 각각 직접 실행 | 채택 (일부 0006으로 대체) |
+| [0006](adr/0006-nextjs-entry-rewrites-to-api.md) | Next.js를 공개 진입점으로, `/api/*`는 rewrites로 내부 API에 전달 | 채택 |
 
 ## 작성 규칙 요약
 

@@ -1,5 +1,6 @@
+// Internal API server. Browsers open the Next.js public port; Next.js rewrites
+// `/api/*` to this server (frontend/next.config.mjs). See docs/adr/0006.
 import http from 'node:http';
-import { frontendProxy } from './frontend-proxy.mjs';
 import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { projectRoot, databasePath } from './paths.mjs';
@@ -18,22 +19,25 @@ try {
 } catch (error) {
   if (error.code !== 'ENOENT') throw error;
 }
-let config, frontend;
+let config;
 try {
   config = serverOptions();
-  // Next.js origin: --frontend, or HAEDAP_FRONTEND_ORIGIN (.env / scripts/run.mjs).
-  frontend = frontendProxy(config.frontend);
 } catch (error) {
   console.error(error.message);
   process.exit(1);
 }
 if (config.help) {
   console.log(
-    'Usage: node backend/server.mjs [--lan] [--port 5173] [--frontend http://127.0.0.1:3000]\nDefault: this PC only. --lan: devices on connected IPv4 subnets.\n--frontend: Next.js dev/start server to proxy screens to (API only when omitted).',
+    [
+      'Usage: node backend/server.mjs [--port 8000] [--public-port 5173] [--lan]',
+      '--port: API port on 127.0.0.1 (default: port of HAEDAP_API_ORIGIN, else 8000). Next.js forwards /api/* here.',
+      '--public-port: the Next.js port users open (PORT, default 5173).',
+      '--lan: also accept this PC\'s LAN addresses as the host name (start Next.js with -H 0.0.0.0).',
+    ].join('\n'),
   );
   process.exit(0);
 }
-const { port } = config;
+const { port, publicPort } = config;
 // Local mode needs only loopback; do not require LAN enumeration permissions.
 const interfaces = config.lan ? lanInterfaces() : [];
 const allowRequest = createNetworkPolicy(config, interfaces);
@@ -65,7 +69,7 @@ const server = http.createServer(async (req, res) => {
   if (!allowRequest(req))
     return send(
       403,
-      'Use the server address printed in the terminal, from this PC or its connected network.',
+      `Open the address printed in the terminal (http://127.0.0.1:${publicPort}).`,
     );
   let pathname;
   try {
@@ -76,44 +80,15 @@ const server = http.createServer(async (req, res) => {
     return send(400, 'Bad request');
   }
   if (pathname.startsWith('/api/')) return api(req, res, pathname);
-  if (
-    pathname.split('/').some((part) => part.startsWith('.')) ||
-    /^\/(frontend|backend|src|data|knowledge|tests|scripts|legacy-ui|node_modules)(\/|$)/.test(
-      pathname,
-    ) ||
-    [
-      '/server.mjs',
-      '/package.json',
-      '/package-lock.json',
-      '/next.config.mjs',
-      '/AGENTS.md',
-      '/README.md',
-    ].includes(pathname)
-  )
-    return send(404, 'Not found');
-  if (frontend) return frontend.request(req, res);
-  if (pathname === '/')
-    return send(
-      503,
-      'Next.js 화면 서버가 연결되지 않았습니다. 개발 중이면 npm run dev:backend와 npm run dev:frontend를 각각 실행하고, 일반 실행은 npm start를 사용해 주세요.',
-    );
-  return send(404, 'Not found');
-});
-server.on('upgrade', (req, socket, head) => {
-  if (
-    !frontend ||
-    !allowRequest(req) ||
-    (req.headers.origin && req.headers.origin !== `http://${req.headers.host}`)
-  ) {
-    socket.destroy();
-    return;
-  }
-  frontend.upgrade(req, socket, head);
+  return send(
+    404,
+    `API server only. Open http://127.0.0.1:${publicPort} (Next.js) for the screens.`,
+  );
 });
 server.on('error', (error) => {
   console.error(
     error.code === 'EADDRINUSE'
-      ? `Port ${port} is in use. Stop the existing server or run with --port ${port < 65535 ? port + 1 : 5173}.`
+      ? `API port ${port} is in use. Stop the existing server, or set HAEDAP_API_ORIGIN in .env (then rebuild for npm start).`
       : error.message,
   );
   clearInterval(autoBackupTimer);
@@ -122,13 +97,13 @@ server.on('error', (error) => {
 });
 server.listen(port, config.host, () => {
   console.log(`DB: ${dbPath}`);
-  console.log(`Frontend: ${config.frontend || 'not connected (API only)'}`);
+  console.log(`API: http://127.0.0.1:${port} (internal, Next.js /api/* rewrite)`);
   console.log(
-    `SEA THE ANSWER (Next.js): http://127.0.0.1:${port}\nMode: ${config.lan ? 'LAN' : 'Local (this PC only)'}`,
+    `SEA THE ANSWER (Next.js): http://127.0.0.1:${publicPort}\nMode: ${config.lan ? 'LAN' : 'Local (this PC only)'}`,
   );
   if (config.lan) {
     for (const entry of interfaces)
-      console.log(`LAN (${entry.name}): http://${entry.address}:${port}`);
+      console.log(`LAN (${entry.name}): http://${entry.address}:${publicPort}`);
     if (!interfaces.length)
       console.log(
         'No LAN IPv4 address found. Connect Wi-Fi/Ethernet, then restart.',
