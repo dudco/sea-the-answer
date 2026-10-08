@@ -1,11 +1,11 @@
-// One public gateway, one loopback Next.js process. API/cookies stay same-origin.
+// `npm start`: production-style local run (built screens). Starts the internal
+// API server, then `next start` on the public port. Development instead runs
+// `npm run dev:backend` and `npm run dev:frontend` directly (docs/adr/0005, 0006).
 import { spawn } from 'node:child_process';
-import { createServer } from 'node:net';
 import { access } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import { once } from 'node:events';
-import { serverOptions } from '../backend/network.mjs';
 const root = fileURLToPath(new URL('../', import.meta.url));
 process.chdir(root);
 try {
@@ -13,35 +13,40 @@ try {
 } catch (e) {
   if (e.code !== 'ENOENT') throw e;
 }
-const args = process.argv.slice(2),
-  dev = args.includes('--dev'),
-  serverArgs = args.filter((x) => x !== '--dev');
-const config = serverOptions(serverArgs);
-if (config.help) {
-  console.log(
-    'npm start -- [--lan] [--port 5173]\nnpm run dev -- [--lan] [--port 5173]',
-  );
-  process.exit(0);
-}
-if (!dev) {
-  try {
-    await access(resolve(root, 'frontend/.next/BUILD_ID'));
-  } catch {
-    console.error('먼저 npm run build를 실행해 주세요.');
+const args = process.argv.slice(2);
+let port = process.env.PORT || '5173',
+  lan = false;
+for (let i = 0; i < args.length; i++) {
+  if (args[i] === '--lan') lan = true;
+  else if (args[i] === '--port' && args[i + 1] && !args[i + 1].startsWith('--')) port = args[++i];
+  else if (args[i] === '--help') {
+    console.log('npm start -- [--lan] [--port 5173]');
+    process.exit(0);
+  } else if (args[i] === '--dev') {
+    console.error('개발 모드는 npm run dev:backend 와 npm run dev:frontend 를 각각 실행합니다.');
+    process.exit(1);
+  } else {
+    console.error(`Unknown option: ${args[i]}. Use --help.`);
     process.exit(1);
   }
 }
-const probe = createServer();
-probe.listen(0, '127.0.0.1');
-await once(probe, 'listening');
-const nextPort = probe.address().port;
-await new Promise((r) => probe.close(r));
-const children = [],
-  env = {
-    ...process.env,
-    NEXT_TELEMETRY_DISABLED: '1',
-    HAEDAP_NEXT_DIST: dev ? '.next-dev' : '.next',
-  };
+if (!/^\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535) {
+  console.error('Port must be an integer from 1 to 65535.');
+  process.exit(1);
+}
+// API server address. Next.js (src/proxy.js) reads the same value at request time.
+const apiOrigin = new URL(process.env.HAEDAP_API_ORIGIN || 'http://127.0.0.1:8000');
+if (apiOrigin.hostname !== '127.0.0.1' || !apiOrigin.port) {
+  console.error('npm start requires HAEDAP_API_ORIGIN=http://127.0.0.1:<port>.');
+  process.exit(1);
+}
+try {
+  await access(resolve(root, 'frontend/.next/BUILD_ID'));
+} catch {
+  console.error('먼저 npm run build를 실행해 주세요.');
+  process.exit(1);
+}
+const children = [];
 let stopping = false;
 function stop(code = 0) {
   if (stopping) return;
@@ -53,15 +58,13 @@ function stop(code = 0) {
   }, 2500);
   timer.unref();
   Promise.all(
-    children.map((c) =>
-      c.exitCode === null ? once(c, 'exit').catch(() => {}) : null,
-    ),
+    children.map((c) => (c.exitCode === null ? once(c, 'exit').catch(() => {}) : null)),
   ).finally(() => process.exit(code));
 }
-function launch(file, argv, overrides = {}) {
+function launch(file, argv) {
   const child = spawn(process.execPath, [file, ...argv], {
     cwd: root,
-    env: { ...env, ...overrides },
+    env: { ...process.env, NEXT_TELEMETRY_DISABLED: '1', HAEDAP_NEXT_DIST: '.next' },
     stdio: 'inherit',
     windowsHide: true,
   });
@@ -76,35 +79,9 @@ function launch(file, argv, overrides = {}) {
   return child;
 }
 for (const s of ['SIGINT', 'SIGTERM']) process.on(s, () => stop(0));
-const next = launch(resolve(root, 'node_modules/next/dist/bin/next'), [
-  dev ? 'dev' : 'start',
-  'frontend',
-  ...(dev ? ['--webpack'] : []),
-  '-H',
-  '127.0.0.1',
-  '-p',
-  String(nextPort),
+launch(resolve(root, 'backend/server.mjs'), [
+  '--port', apiOrigin.port, '--public-port', port, ...(lan ? ['--lan'] : []),
 ]);
-const origin = `http://127.0.0.1:${nextPort}`;
-let ready = false;
-for (let n = 0; n < 300 && !stopping; n++) {
-  try {
-    const response = await fetch(origin + '/chat', {
-      signal: AbortSignal.timeout(1000),
-    });
-    await response.body?.cancel();
-    if (response.status < 500) {
-      ready = true;
-      break;
-    }
-  } catch {}
-  await new Promise((r) => setTimeout(r, 200));
-}
-if (!ready) {
-  console.error('Next.js 시작 시간을 초과했습니다.');
-  stop(1);
-} else {
-  launch(resolve(root, 'backend/server.mjs'), serverArgs, {
-    HAEDAP_FRONTEND_ORIGIN: origin,
-  });
-}
+launch(resolve(root, 'node_modules/next/dist/bin/next'), [
+  'start', 'frontend', '-H', lan ? '0.0.0.0' : '127.0.0.1', '-p', port,
+]);

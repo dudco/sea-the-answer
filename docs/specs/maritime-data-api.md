@@ -2,11 +2,11 @@
 
 - 상태: 구현됨
 - 작성: 역할4 · 2026-10-08 (기존 2026-10-05 독립 Tool 계약의 문서 위치 정리)
-- 관련: [데이터 명세](maritime-data.md), [운영 안내](../user-guide.md#10-해사-데이터-tool-선택), [모듈 경계 ADR 제안](../adr/0005-maritime-data-tool-boundary.md), [정리 계획](../plans/2026-10-08-maritime-data-docs-alignment.md)
+- 관련: [데이터 명세](maritime-data.md), [운영 안내](../user-guide.md#10-해사-데이터-tool-선택), [모듈 경계 ADR 제안](../adr/0008-maritime-data-tool-boundary.md), [정리 계획](../plans/2026-10-08-maritime-data-docs-alignment.md)
 
 ## 목적과 범위
 
-PostgreSQL 해사 데이터를 읽는 독립 Python Tool의 요청·응답·오류·산술 범위를 정의합니다. Node 게이트웨이의 기존 [앱 API](api.md)와 별도 서비스이며, 팀 앱의 HTTP 어댑터·선박 ID 매핑·접근 정책·영구 감사 기록 및 LLM 연결은 아직 구현되지 않았습니다.
+PostgreSQL 해사 데이터를 읽는 독립 Python Tool의 요청·응답·오류·산술 범위를 정의합니다. 내부 API(현재 Node)의 기존 [앱 API](api.md)와 별도 서비스이며, 팀 앱의 HTTP 어댑터·선박 ID 매핑·접근 정책·영구 감사 기록 및 LLM 연결은 아직 구현되지 않았습니다.
 
 | 메서드·경로 | 역할 | Bearer 토큰 |
 |---|---|---|
@@ -97,7 +97,7 @@ DB 예외의 SQL·연결 문자열은 응답에 노출하지 않습니다. 자�
 
 ### API와 입력
 
-`GET /api/maritime-data/factors`는 계수·버전·근거를 반환합니다. `POST /api/maritime-data/calculate`는 아래 입력을 받습니다. 독립 API(8001)의 두 경로는 `Authorization: Bearer <MARITIME_DATA_API_TOKEN>`이 필요합니다. 팀 앱 연결 시 게이트웨이 어댑터에서 팀의 접근 정책과 POST CSRF를 적용해야 합니다. 이 어댑터는 아직 구현되지 않았습니다. 독립 도구 자체는 앱 계정을 제공하지 않습니다. 현재 실행·인증 방법은 운영 안내를 참고하세요.
+`GET /api/maritime-data/factors`는 계수·버전·근거를 반환합니다. `POST /api/maritime-data/calculate`는 아래 입력을 받습니다. 독립 API(8001)의 두 경로는 `Authorization: Bearer <MARITIME_DATA_API_TOKEN>`이 필요합니다. 팀 앱 연결 시 내부 API 어댑터에서 팀의 접근 정책과 POST CSRF를 적용해야 합니다. 이 어댑터는 아직 구현되지 않았습니다. 독립 도구 자체는 앱 계정을 제공하지 않습니다. 현재 실행·인증 방법은 운영 안내를 참고하세요.
 
 합성 예제의 VLSFO→HFO는 **개발용 가정**이며 실제 연료 증빙이 아닙니다.
 
@@ -169,4 +169,4 @@ CO2_t = Σ(연료종류별 사용량 t × CF). 기간 DWT 집약도 = CO2_t × 1
 
 ## 열린 질문
 
-- 팀 게이트웨이와의 HTTP 연결 방식, 실제 선박 키와 앱 `ships.id`의 매핑, 사용자 접근 정책 및 감사·오류 전달 방식을 팀 연결 단계에서 합의한다.
+- 팀 내부 API와의 HTTP 연결 방식, 실제 선박 키와 앱 `ships.id`의 매핑, 사용자 접근 정책 및 감사·오류 전달 방식을 팀 연결 단계에서 합의한다.

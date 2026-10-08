@@ -1,6 +1,6 @@
 # 데이터 모델
 
-> 대상: 기본 앱 1.3.1 + 선택 해사 데이터 Tool 계약 v1 · 최종 확인: 2026-10-08 (`backend/db.mjs`, `backend/workspace.mjs`, `backend/maritime_data/schema/schema.sql` 대조)
+> 대상: 기본 앱 1.4.0 + 선택 해사 데이터 Tool 계약 v1 · 최종 확인: 2026-10-08 (`backend/db.mjs`, `backend/workspace.mjs`, `backend/maritime_data/schema/schema.sql` 대조)
 > 테이블·필드·상태 값을 바꾸면 같은 작업에서 이 문서를 고치고, 되돌리기 어려운 변경이면 ADR을 남깁니다.
 
 ## 1. 저장소 개요
@@ -167,6 +167,7 @@ DB 옆 `backups/{uuid}.json`.
 2. 백업 대상이면 `workspace.mjs`의 `backupTables`에 추가하고, 이전 백업 복구 시의 동작을 정합니다(백업 `version`을 올릴지 결정 → ADR).
 3. `settings.schema` 또는 `user_version`을 올리고 이 문서의 해당 절을 갱신합니다.
 4. `backend/tests/`에 기존 DB 이전 회귀 테스트를 추가합니다.
+
 
 ## 9. PostgreSQL 해사 데이터 Tool (선택)
 

@@ -40,16 +40,20 @@
 |---|---|
 | [`plans/2026-10-08-team-module-integration.md`](plans/2026-10-08-team-module-integration.md) — RAG·LLM·Tool 팀 모듈 연결 로드맵 | 초안 |
 | [`plans/2026-10-08-maritime-data-docs-alignment.md`](plans/2026-10-08-maritime-data-docs-alignment.md) — 역할4 PR 문서·모듈 구조 정리 | 완료 |
+| [`plans/2026-10-08-maritime-data-pr-update.md`](plans/2026-10-08-maritime-data-pr-update.md) — 역할4 PR 최신 main 반영 및 제출 | 진행 중 |
 
 ### adr — 설계 결정
 
 | 번호 | 결정 | 상태 |
 |---|---|---|
 | [0001](adr/0001-docs-directory.md) | 문서를 최상위 `docs/`에 모으고 AGENTS.md를 공통 지침으로 사용 | 채택 |
-| [0002](adr/0002-single-gateway-next-and-node-api.md) | Node API 게이트웨이 하나 뒤에 Next.js를 루프백으로 둠 | 채택 |
+| [0002](adr/0002-single-gateway-next-and-node-api.md) | Node API 게이트웨이 하나 뒤에 Next.js를 루프백으로 둠 | 대체됨(0006) |
 | [0003](adr/0003-sqlite-fts5-local-storage.md) | 내장 SQLite + FTS5로 로컬 저장·검색 | 채택 |
 | [0004](adr/0004-public-access-admin-only-writes.md) | 로그인 없는 일반 사용 + 관리자만 원본 자료 변경 | 채택 |
-| [0005](adr/0005-maritime-data-tool-boundary.md) | 해사 데이터 Tool의 독립 실행과 후속 HTTP 게이트웨이 연결 경계 | 제안 |
+| [0005](adr/0005-dev-mode-direct-processes.md) | 개발 모드는 백엔드·프론트를 각각 직접 실행 | 채택 (일부 0006으로 대체) |
+| [0006](adr/0006-nextjs-entry-rewrites-to-api.md) | Next.js를 공개 진입점으로, `/api/*`는 rewrites로 내부 API에 전달 | 채택 (일부 0007로 대체) |
+| [0007](adr/0007-runtime-api-origin-via-proxy.md) | `/api/*` 전달 주소를 실행 시점에 결정(`proxy.js`) | 채택 |
+| [0008](adr/0008-maritime-data-tool-boundary.md) | 해사 데이터 Tool의 독립 실행과 내부 API 연결 경계 | 제안 |
 
 ## 작성 규칙 요약
 

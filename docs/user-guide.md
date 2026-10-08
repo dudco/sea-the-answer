@@ -1,6 +1,6 @@
 # 사용·운영 안내
 
-> 대상 버전: 1.3.1 · 설치와 기본 실행은 [`../README.md`](../README.md)를 먼저 보세요.
+> 대상 버전: 1.4.0 · 설치와 기본 실행은 [`../README.md`](../README.md)를 먼저 보세요.
 
 ## 1. 화면별 사용 방법
 
@@ -90,11 +90,28 @@ npm run ingest -- backend/knowledge/seed.json
 
 ## 7. 같은 네트워크의 팀원이 접속하기
 
-`npm run start:lan` 또는 Windows CMD의 `start.cmd -Lan`으로 실행하고, 출력된 `LAN (...)` 주소를 같은 네트워크의 팀원에게 알려줍니다. 팀원은 로그인 없이 기본 기능을 사용합니다.
+`npm run start:lan` 또는 Windows CMD의 `scripts\start.cmd -Lan`으로 실행하고, 출력된 `LAN (...)` 주소를 같은 네트워크의 팀원에게 알려줍니다. 팀원은 로그인 없이 기본 기능을 사용합니다.
 
-기본 실행은 이 PC에서만 접속됩니다. LAN 실행도 연결된 IPv4 서브넷만 허용하며 임의 Host·다른 출처 요청은 거부합니다. 학교·공용 인터넷에 공개하는 배포 구성이 아닙니다. Windows 방화벽이 막으면 `scripts/setup-lan-firewall.ps1`을 사용하고, macOS는 처음 실행 시 뜨는 네트워크 연결 허용 창에서 허용합니다.
+기본 실행은 이 PC에서만 접속됩니다. LAN 실행은 이 PC의 LAN 주소로 들어온 요청만 받고 임의 Host·다른 출처 요청은 거부하지만, **접속자 IP를 같은 서브넷으로 제한하지는 않습니다**(1.4.0부터). 신뢰할 수 있는 사설 네트워크에서만 켜고, 같은 서브넷으로 제한하려면 OS 방화벽을 쓰세요. Ubuntu는 `ufw`(예: `sudo ufw allow from 192.168.0.0/24 to any port 5173`), Windows는 인바운드 규칙의 원격 주소를 "로컬 서브넷"으로 제한하고, macOS는 처음 실행 시 뜨는 네트워크 연결 허용 창에서 허용합니다. 학교·공용 인터넷에 공개하는 배포 구성이 아닙니다.
 
-## 8. 기존 프로젝트의 데이터를 유지하면서 새 버전으로 바꾸기
+## 8. Windows 실행기 (`start.cmd` / `start.ps1`)
+
+Windows에서 더블클릭 한 번으로 설치·빌드·실행까지 하게 해 주는 편의 도구입니다. Ubuntu 서버·macOS에서는 쓰지 않고 `npm` 명령을 직접 실행합니다.
+
+`scripts\start.cmd`는 프로젝트 최상위로 이동한 뒤, 실행 정책 제한 없이(`-ExecutionPolicy Bypass`) `scripts\start.ps1`을 호출하고 받은 옵션을 그대로 넘깁니다. 실패하면 창이 바로 닫히지 않도록 `pause`합니다(`HAEDAP_NO_PAUSE=1`이면 생략).
+
+`scripts\start.ps1`이 하는 일:
+
+1. **Node.js 찾기**: `-NodePath` 옵션 → `HAEDAP_NODE` 환경변수 → PATH의 `node` 순서. 없으면 Node.js 24 LTS 설치 안내 후 종료. 찾은 Node 폴더를 PATH 맨 앞에 넣어 `npm`도 같은 Node를 쓰게 함.
+2. **런타임 점검**: `scripts/check-runtime.cjs`로 SQLite·FTS5 지원 확인, Node 주 버전이 24 이상인지 확인.
+3. **패키지 설치**: `node_modules/next`가 없으면 `npm ci`.
+4. **작업 실행** (`-Task`, 기본 `serve`)
+   - `serve`: 빌드(`frontend/.next/BUILD_ID`)가 없으면 `npm run build` 후 `node scripts/run.mjs` 실행. `-Port`, `-Lan`을 `--port`, `--lan`으로 전달.
+   - `build`: `npm run build` / `test`: `npm test` / `check`: 1~2단계만
+   - `ingest`: `node scripts/ingest.mjs <-Document 경로>` (기본 `backend/knowledge/seed.json`)
+5. Next.js 사용 통계 전송을 끔(`NEXT_TELEMETRY_DISABLED=1`).
+
+## 9. 기존 프로젝트의 데이터를 유지하면서 새 버전으로 바꾸기
 
 **기존 서버를 정상 종료한 후, 새 버전은 다른 폴더에 풀거나 클론하세요.**
 
@@ -113,7 +130,7 @@ DB 경로 선택 규칙:
 
 1.2.2 이전 버전의 DB는 기존 `admin`의 사용자 ID·자료 소유권을 유지하면서 비밀번호를 `1234`, 역할을 관리자로 한 번 갱신합니다. 브라우저에만 남아 있던 미저장 초안은 이전 버전에서 JSON으로 내보낸 뒤 **보고서 → 초안 JSON 가져오기**로 옮길 수 있습니다.
 
-## 9. 문제 해결
+## 10. 문제 해결
 
 | 증상 | 확인할 내용 |
 |---|---|
@@ -122,9 +139,12 @@ DB 경로 선택 규칙:
 | SQLite/FTS5 오류 | `node scripts/check-runtime.cjs` 확인. VS Code 내장 런타임 등 대신 공식 Node.js 사용 |
 | 패키지 설치 실패 | 인터넷·프록시를 확인하고 프로젝트 폴더에서 `npm ci` 재실행 |
 | "먼저 npm run build를 실행해 주세요" | `npm run build` 실행 |
-| API 연결 실패 | Next.js 임시 포트 대신 `SEA THE ANSWER`에 표시된 5173 주소로 접속 |
+| API 연결 실패 | 백엔드(API 서버)가 켜져 있는지 확인. 개발 중이면 `npm run dev:backend`. 8000 포트를 바꿨다면 `.env`의 `HAEDAP_API_ORIGIN`을 고친 뒤 두 프로세스를 모두 재시작했는지 확인 |
 | 포트 사용 중 | 기존 실행 창을 종료하거나 `npm start -- --port 5174` |
-| 수정한 화면이 반영되지 않음 | 일반 실행이면 재빌드 후 재시작. 개발 중이면 `npm run dev` |
+| 수정한 화면이 반영되지 않음 | 일반 실행이면 재빌드 후 재시작. 개발 중이면 `npm run dev:backend`와 `npm run dev:frontend`를 함께 실행 |
+| 8000 포트로 열었더니 "API server only" | 화면은 Next.js 주소 `http://127.0.0.1:5173`으로 접속 |
+| "API port 8000 is in use" | 다른 프로그램이 8000을 쓰는 중. `.env`에 `HAEDAP_API_ORIGIN=http://127.0.0.1:8100` 지정 후 두 프로세스 재시작 |
+| 큰 PDF·백업 업로드가 끊김 | 101MB 이하인지 확인(`next.config.mjs`의 `proxyClientMaxBodySize`) |
 | DB가 양쪽에 있다는 오류 | `.env`의 `HAEDAP_DB_PATH`로 사용할 DB 지정 |
 | 관리자 로그인 실패 | `admin / 1234` 확인. 기존 서버 종료 후 새 폴더에서 실행 |
 | 등록·수정·삭제 버튼이 안 보임 | 관리자 로그인 여부 확인 |
@@ -188,7 +208,7 @@ if (-not (Test-Path -LiteralPath .env.local)) {
 
 ### 팀 앱 연결 시 참고
 
-Python 호출자는 `from backend.maritime_data import query, calculations, agent`로 공통 로직을 사용할 수 있습니다. Node 게이트웨이의 HTTP 어댑터·키 매핑·권한·감사 구현은 후속 작업입니다. 독립 API의 토큰은 서버에 보관하고 브라우저로 보내지 않습니다. 현재 구현 범위와 경계 제안은 [아키텍처](architecture.md#8-해사-데이터-tool의-경계-선택), [ADR 0005](adr/0005-maritime-data-tool-boundary.md)를 참고하세요.
+Python 호출자는 `from backend.maritime_data import query, calculations, agent`로 공통 로직을 사용할 수 있습니다. 내부 API(현재 Node)의 HTTP 어댑터·키 매핑·권한·감사 구현은 후속 작업입니다. 독립 API의 토큰은 서버에 보관하고 브라우저로 보내지 않습니다. 현재 구현 범위와 경계 제안은 [아키텍처](architecture.md#8-해사-데이터-tool의-경계-선택), [ADR 0008](adr/0008-maritime-data-tool-boundary.md)를 참고하세요.
 
 ### 원본 확보·공개 참조 자료·기존 데이터 버전
 

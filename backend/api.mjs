@@ -8,6 +8,7 @@ import { runTool, toolDefinitions } from './tools.mjs';
 import * as w from './workspace.mjs';
 import { integratedAnswer, generateReport } from './analysis.mjs';
 import { sampleData } from './sample-data.mjs';
+import { requestHost } from './network.mjs';
 function json(res,status,body){res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(body));}
 function readJson(req,limit=1048576){requireValue(req.headers['content-type']?.split(';')[0].trim()==='application/json','application/json 요청이 필요합니다.','CONTENT_TYPE',415);return new Promise((resolve,reject)=>{let size=0,chunks=[],tooLarge=false;req.on('data',data=>{size+=data.length;if(size>limit){tooLarge=true;chunks=[];}else if(!tooLarge)chunks.push(data);});req.on('error',reject);req.on('end',()=>{if(tooLarge)return reject(new AppError(413,'BODY_TOO_LARGE','파일 또는 요청이 너무 큽니다.'));try{resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')));}catch{reject(new AppError(400,'INVALID_JSON','올바른 JSON이 필요합니다.'));}});});}
 export function createApi(db,options={}) {
@@ -23,12 +24,12 @@ export function createApi(db,options={}) {
  const issue=(res,user)=>{const value=randomBytes(32).toString('hex');sessions.set(digest(value),{userId:user.id,version:user.version,expires:Date.now()+12*3600000});setCookie(res,`haedap_session=${value}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200`);};
  return async(req,res,path)=>{let user=null;
   try {
-   const host=req.headers.host,allowed=options.allowRequest?options.allowRequest(req):/^(127\.0\.0\.1|localhost)(:\d+)?$/.test(host||'');
+   const host=requestHost(req),allowed=options.allowRequest?options.allowRequest(req):/^(127\.0\.0\.1|localhost)(:\d+)?$/.test(host||'');
    requireValue(allowed,'실행 창에 표시된 서버 주소로 접속해 주세요.','HOST_DENIED',403);
    requireValue(!req.headers.origin||req.headers.origin===`http://${host}`,'동일 출처 요청만 허용합니다.','ORIGIN_DENIED',403);
    requireValue(!['cross-site','same-site'].includes(req.headers['sec-fetch-site']),'동일 출처 요청만 허용합니다.','ORIGIN_DENIED',403);
    const guest=guestFor(req,res);user=sessionFor(req)||guest;const setupRequired=false;
-   if(req.method==='GET'&&path==='/api/health')return json(res,200,{ok:true,storage:'sqlite',retrieval:'fts5-bm25-ko-bigram',llmConfigured:modelConfigured(options.env),csrfToken:token,user,setupRequired,documents:user?w.workspaceDocuments(db,user).filter(d=>d.active).length:0,version:'1.3.1',authenticated:w.isAdmin(user),publicAccess:true});
+   if(req.method==='GET'&&path==='/api/health')return json(res,200,{ok:true,storage:'sqlite',retrieval:'fts5-bm25-ko-bigram',llmConfigured:modelConfigured(options.env),csrfToken:token,user,setupRequired,documents:user?w.workspaceDocuments(db,user).filter(d=>d.active).length:0,version:'1.4.0',authenticated:w.isAdmin(user),publicAccess:true});
    if(path!=='/api/health'&&!path.startsWith('/api/auth/')&&req.headers['x-haedap-identity'])requireValue(req.headers['x-haedap-identity']===user.id,'사용자 상태가 바뀌었습니다. 다시 연결해 주세요.','AUTH_REQUIRED',401);
    if(req.method==='GET') {
     requireValue(user,'로그인이 필요합니다.','AUTH_REQUIRED',401);
