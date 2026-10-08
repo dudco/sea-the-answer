@@ -1,0 +1,1867 @@
+'use client';
+
+import React from 'react';
+import { createModel } from '../lib/model';
+import { createApiClient } from '../lib/api';
+import { createViews } from '../views';
+import { btn, badge, notice, empty, dateText, n, download, options } from '../components/common';
+import { extractPdf, textToSections } from '../lib/pdf';
+import { parseCsv, toCsv } from '../lib/csv';
+export function createWorkspace() {
+  const model = createModel(),
+    api = createApiClient(),
+    views = createViews(model);
+  const {
+    state,
+    keys,
+    readLocal,
+    writeLocal,
+    validateDraft,
+    blankDraft,
+    persistDraft,
+    snapshotDraft,
+    metrics,
+    records,
+    currentShip,
+    draftKey,
+    canWrite,
+    isAdmin,
+  } = model;
+  const {
+    shell,
+    pageNames,
+    sourceCard,
+    documentForm,
+    shipForm,
+    recordForm,
+    userForm,
+    criterionForm,
+    form,
+    field,
+    changeLabel,
+    changeTarget,
+  } = views;
+  const noop = () => {};
+  const $ = (s) => document.querySelector(s);
+  let startup = null;
+  let revision = 0,
+    disposed = false,
+    router = null,
+    modal = null,
+    toasts = [],
+    modalId = 0,
+    csvPreview = null;
+  const listeners = new Set();
+  function render() {
+    if (disposed) return;
+    revision++;
+    listeners.forEach((fn) => fn());
+  }
+  function toast(text) {
+    const id = ++modalId;
+    toasts = [
+      ...toasts,
+      {
+        id,
+        text,
+      },
+    ];
+    render();
+    setTimeout(() => {
+      toasts = toasts.filter((t) => t.id !== id);
+      render();
+    }, 5000);
+  }
+  function setCsvPreview(node) {
+    csvPreview = node;
+    render();
+    return node;
+  }
+  function closeModal() {
+    modalGeneration++;
+    modal = null;
+    csvPreview = null;
+    if (confirmResolver) {
+      confirmResolver(false);
+      confirmResolver = null;
+    }
+    render();
+  }
+  function openModal(title, body, footer = null, drawer = false) {
+    closeModal();
+    focusBeforeDialog = document.activeElement;
+    modal = {
+      id: ++modalId,
+      title,
+      body,
+      footer,
+      drawer,
+    };
+    render();
+  }
+  const routes = {
+    chat: '/chat',
+    docs: '/documents',
+    operations: '/operations',
+    reports: '/reports',
+    admin: '/admin',
+  };
+  function navigate(page, id = '') {
+    closeModal();
+    state.menu = false;
+    state.page = page;
+    if (page === 'document') state.doc = id;
+    const url =
+      page === 'document'
+        ? '/documents/' + encodeURIComponent(id)
+        : page === 'editor'
+          ? '/reports/' + encodeURIComponent(id || state.draft.id || 'new')
+          : routes[page] || '/chat';
+    router?.push(url);
+    render();
+    window.scrollTo(0, 0);
+    if (page === 'admin' && isAdmin()) run(refreshAdmin);
+  }
+  async function routeChanged(path) {
+    state.routeError = '';
+    const chunks = path.split('/').filter(Boolean);
+    state.page =
+      {
+        chat: 'chat',
+        documents: chunks[1] ? 'document' : 'docs',
+        operations: 'operations',
+        reports: chunks[1] ? 'editor' : 'reports',
+        admin: 'admin',
+      }[chunks[0]] || 'chat';
+    state.menu = false;
+    closeModal();
+    if (state.page === 'document') state.doc = decodeURIComponent(chunks[1]);
+    render();
+    if (state.ready && state.page === 'admin' && isAdmin()) await refreshAdmin();
+    if (
+      state.ready &&
+      state.page === 'editor' &&
+      chunks[1] !== 'new' &&
+      state.draft.id !== decodeURIComponent(chunks[1])
+    )
+      try { await openReport(decodeURIComponent(chunks[1])); } catch(error) { state.routeError=error.message; render(); }
+  }
+  function updateCriterionSource() {
+    const doc = state.docs.find((d) => d.id === $('#f-documentId')?.value),
+      select = $('#f-chunkId');
+    if (!doc || !select) return;
+    const selected = doc.sections.find((s) => s.id === select.value) || doc.sections[0];
+    $('#criterionSource').textContent = selected?.text || '';
+  }
+  let confirmResolver = null,
+    focusBeforeDialog = null,
+    editing = null,
+    uploadedPdf = null,
+    uploadBusy = false,
+    uploadError = '',
+    modalGeneration = 0,
+    importRows = null;
+  function confirmAction(title, text, label = '계속') {
+    openModal(
+      title,
+      <p>{text}</p>,
+      <>
+        {btn('취소', 'closeModal')}
+        {btn(label, 'confirm', 'primary')}
+      </>,
+    );
+    return new Promise((r) => (confirmResolver = r));
+  }
+  function resetPrivateState() {
+    state.askSequence++;
+    state.calcSequence++;
+    state.timeSequence++;
+    state.calcBusy = false;
+    state.timeBusy = false;
+    state.question = '';
+    state.pendingQuestion = '';
+    state.askError = '';
+    state.reportError = '';
+    state.authError = '';
+    state.adminError = '';
+    state.adminLoading = false;
+    state.answer = null;
+    state.busy = false;
+    state.history = [];
+    state.docs = [];
+    state.operationRecords = [];
+    state.ships = [];
+    state.reports = [];
+    state.users = [];
+    state.logs = [];
+    state.changes = [];
+    state.backups = [];
+    state.draft = blankDraft();
+    state.draftRevision++;
+    state.dirty = false;
+    state.criterion = null;
+    state.user = null;
+    state.ready = false;
+    state.ship = '';
+    state.compare = [];
+    state.conflict = null;
+    state.calc = null;
+    state.timeResult = null;
+  }
+  async function refreshAll() {
+    const userId = state.user?.id;
+    const [d, o, r] = await Promise.all([api.documents(), api.operations(), api.reports()]);
+    if (state.user?.id !== userId) return;
+    state.docs = d.documents;
+    state.ships = o.ships;
+    state.operationRecords = o.records;
+    state.reports = r.reports;
+    if (!state.ships.some((s) => s.id === state.ship)) state.ship = state.ships[0]?.id || '';
+    state.compare = state.compare.filter((id) => state.ships.some((s) => s.id === id));
+    if (!state.compare.length) state.compare = state.ships.slice(0, 2).map((s) => s.id);
+    render();
+  }
+  async function connect() {
+    state.connecting = true;
+    state.connectionError = '';
+    render();
+    try {
+      const health = await api.health(),
+        previous = state.user?.id;
+      state.health = health;
+      if (!health.user) {
+        resetPrivateState();
+        return;
+      }
+      if (previous && previous !== health.user.id) {
+        closeModal();
+        resetPrivateState();
+      }
+      state.user = health.user;
+      await refreshAll();
+      state.ready = true;
+      if (!health.llmConfigured) state.mode = 'extractive';
+      if (previous !== state.user.id) {
+        try {
+          state.draft = validateDraft(readLocal(draftKey()));
+          if (state.draft.sources.some((id) => !state.docs.some((d) => d.id === id)))
+            state.draft = blankDraft();
+          const saved = state.reports.find((r) => r.id === state.draft.id);
+          if (state.draft.id && !saved) state.draft = blankDraft();
+          if (saved) {
+            state.draft.status = saved.status;
+            state.draft.owner = saved.owner;
+          }
+          state.dirty = !!(state.draft.title || state.draft.text);
+        } catch {
+          state.draft = blankDraft();
+        }
+      }
+      if (state.page === 'admin' && isAdmin()) await refreshAdmin();
+    } catch (e) {
+      state.connectionError = e.message;
+      state.ready = false;
+    } finally {
+      state.connecting = false;
+      render();
+    }
+  }
+  async function login(f) {
+    state.authError = '';
+    const body = formValues(f);
+    const button = f.querySelector('button[type="submit"]') || f.querySelector('button');
+    button.disabled = true;
+    try {
+      await api.request('/api/auth/login', body);
+      state.loginOpen = false;
+      closeModal();
+      await connect();
+    } catch (e) {
+      state.authError = e.message;
+      render();
+    } finally {
+      button.disabled = false;
+    }
+  }
+  async function logout() {
+    if (
+      state.dirty &&
+      state.localFailed &&
+      !(await confirmAction(
+        '로그아웃할까요?',
+        '브라우저에 보관되지 않은 내용이 있습니다. 파일로 보관한 뒤 로그아웃하세요.',
+        '로그아웃',
+      ))
+    )
+      return;
+    await api.request('/api/auth/logout', {});
+    resetPrivateState();
+    closeModal();
+    state.loginOpen = false;
+    navigate('chat');
+    await connect();
+    toast('로그아웃했어요. 기본 기능은 계속 사용할 수 있어요.');
+  }
+  async function refreshAdmin() {
+    if (!isAdmin()) return;
+    const userId = state.user.id;
+    state.adminLoading = true;
+    state.adminError = '';
+    const tab = state.adminTab;
+    render();
+    try {
+      const path = {
+        users: 'users',
+        approvals: 'changes',
+        logs: 'logs',
+        backup: 'backups',
+      }[tab];
+      if (path) {
+        const data = await api.request('/api/' + path);
+        if (state.user?.id !== userId) return;
+        state[path] = data[path];
+        if (path === 'backups') state.autoBackup = data.autoBackup;
+      }
+    } catch (e) {
+      if (state.user?.id === userId) state.adminError = e.message;
+    } finally {
+      if (state.user?.id === userId) {
+        state.adminLoading = false;
+        render();
+      }
+    }
+  }
+  async function ask(q) {
+    q = q.trim();
+    if (!q || state.busy) return;
+    if (!state.ready) throw Error('서버 연결을 먼저 확인해 주세요.');
+    const sequence = ++state.askSequence;
+    state.pendingQuestion = q;
+    state.answer = null;
+    state.askError = '';
+    state.busy = true;
+    state.slow = false;
+    const body = {
+      question: q,
+      filter: state.filter,
+      language: state.language,
+      mode: state.mode,
+      task: state.task,
+      context: {
+        ship: state.ship,
+        from: state.from,
+        to: state.to,
+      },
+      criterion: state.criterion,
+    };
+    navigate('chat');
+    const timer = setTimeout(() => {
+      if (sequence === state.askSequence && state.busy) {
+        state.slow = true;
+        render();
+      }
+    }, 15000);
+    try {
+      const answer = await api.ask(body);
+      if (sequence !== state.askSequence) return;
+      state.answer = answer;
+      if (state.question.trim() === q) state.question = '';
+    } catch (e) {
+      if (sequence === state.askSequence) state.askError = e.message;
+      if (e.code === 'AUTH_REQUIRED') await connect();
+    } finally {
+      clearTimeout(timer);
+      if (sequence === state.askSequence) {
+        state.busy = false;
+        state.slow = false;
+        render();
+      }
+    }
+  }
+  async function showHistory() {
+    const userId = state.user?.id,
+      { history } = await api.request('/api/history');
+    if (state.user?.id !== userId) return;
+    state.history = history;
+    openModal(
+      '내 질의 이력',
+      <>
+        <p className={'small muted mb'}>
+          {'최근 100건입니다. 질문 당시의 답변과 출처를 확인합니다.'}
+        </p>
+        {history.length
+          ? history.map((h, __index) => (
+              <React.Fragment key={__index}>
+                {
+                  <button className={'history-item'} data-action={'historyAnswer'} data-id={h.id}>
+                    <small>{dateText(h.at)}</small>
+                    {h.question}
+                    {h.unavailable ? ' · 근거 열람 불가' : ''}
+                  </button>
+                }
+              </React.Fragment>
+            ))
+          : empty('아직 질문이 없어요', '질문을 보내면 답변과 함께 저장됩니다.')}
+      </>,
+      '',
+      true,
+    );
+  }
+  function showSource(id, sectionId = '') {
+    const d = state.docs.find((d) => d.id === id);
+    if (!d) throw Error('문서가 삭제되었거나 열람 권한이 없습니다.');
+    const e = state.answer?.evidence.find((e) => e.id === sectionId),
+      s = d.sections.find((s) => s.id === sectionId) || d.sections[0];
+    openModal(
+      '답변 근거',
+      <>
+        <h2>{d.title}</h2>
+        <div className={'source-meta'}>
+          {badge(
+            d.active ? '사용 중' : d.meta.status === 'retired' ? '폐기' : '이전 버전',
+            d.active ? 'good' : 'warn',
+          )}
+          {badge(d.version)}
+          {badge(s.page ? 'p.' + s.page : '페이지 미지정')}
+        </div>
+        <p className={'small muted'}>
+          {d.reference}
+          {' · '}
+          {s.heading}
+          <br />
+          {'발행 '}
+          {d.meta.issuedAt || '미입력'}
+          {' / 개정 '}
+          {d.meta.revisedAt || '미입력'}
+        </p>
+        <blockquote className={'quote'}>{e?.text || s.text}</blockquote>
+        {notice(
+          '적용 조건: ' +
+            (d.meta.applicability ||
+              '문서에 별도로 지정되지 않았습니다. 담당자 확인이 필요합니다.'),
+        )}
+      </>,
+      btn(d.hasPdf ? '원문·문서 보기' : '문서 전체 보기', 'document', 'primary', 'file', {
+        'data-id': id,
+        'data-section': s.id,
+      }),
+      true,
+    );
+  }
+  function openDocument(id, section = '') {
+    if (state.page !== 'document') state.docBack = state.page;
+    state.section = section;
+    state.docView = 'text';
+    navigate('document', id);
+    if (section)
+      requestAnimationFrame(() =>
+        document.getElementById('chunk-' + section)?.scrollIntoView({
+          block: 'center',
+        }),
+      );
+  }
+  function numericInputs(raw) {
+    if (Object.values(raw).some((v) => String(v).trim() === ''))
+      throw Error('계산 입력값을 모두 입력해 주세요.');
+    const values = Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, Number(v)]));
+    if (Object.values(values).some((v) => !Number.isFinite(v)))
+      throw Error('숫자 입력값을 확인해 주세요.');
+    return values;
+  }
+  async function calculate() {
+    const seq = ++state.calcSequence;
+    state.calcBusy = true;
+    state.calc = null;
+    state.calcError = '';
+    render();
+    try {
+      const inputs = numericInputs(state.calcInputs),
+        { result } = await api.calculate(inputs);
+      if (seq === state.calcSequence)
+        state.calc = {
+          ...result,
+          inputs,
+        };
+    } catch (e) {
+      if (seq === state.calcSequence) state.calcError = e.message;
+    } finally {
+      if (seq === state.calcSequence) {
+        state.calcBusy = false;
+        render();
+      }
+    }
+  }
+  async function calculateTime() {
+    const seq = ++state.timeSequence,
+      inputs = {
+        ...state.timeInputs,
+      };
+    state.timeBusy = true;
+    state.timeError = '';
+    state.timeResult = null;
+    render();
+    try {
+      const { result } = await api.voyageTime({
+        start: inputs.start + ':00Z',
+        end: inputs.end + ':00Z',
+        before: Number(inputs.before),
+        after: Number(inputs.after),
+      });
+      if (seq === state.timeSequence)
+        state.timeResult = {
+          ...result,
+          inputs,
+        };
+    } catch (e) {
+      state.timeError = e.message;
+    } finally {
+      if (seq === state.timeSequence) {
+        state.timeBusy = false;
+        render();
+      }
+    }
+  }
+  function calculationText(c) {
+    return `## 계산 결과\n입력: 연료 ${c.inputs.fuel} t / 계수 ${c.inputs.factor} / DWT ${c.inputs.dwt} t / 거리 ${c.inputs.distance} nm\nCO₂ ${c.emission} t / 단순 집약도 ${c.intensity} gCO₂/(DWT·nm)\n산식: ${c.formula}\n계산 기록: ${c.id} / ${c.version}\n공식 CII 등급: 산출 불가`;
+  }
+  function appendReport(text, sources = [], type = '규정 검토') {
+    if (!canWrite()) return;
+    if (state.draft.status !== 'draft') state.draft = blankDraft();
+    const d = state.draft;
+    if (!d.text) {
+      d.type = type;
+      d.title = d.title || '선박 운항 검토 보고서';
+    }
+    d.text += (d.text ? '\n\n' : '') + text;
+    d.sources = [...new Set([...d.sources, ...sources])];
+    persistDraft();
+    navigate('editor');
+    toast('내용과 근거를 초안에 담았어요.');
+  }
+  function answerToReport() {
+    const a = state.answer;
+    if (!a) return;
+    let text = `## ${a.question}\n\n${a.statements
+      .map((s) => {
+        const e = a.evidence.find((e) => e.id === s.chunkId);
+        return (
+          s.text +
+          (e
+            ? `\n근거: ${e.title} / ${e.version} / ${e.page ? 'p.' + e.page : '페이지 미지정'} / ${e.heading}`
+            : '')
+        );
+      })
+      .join('\n\n')}`;
+    if (a.operations) {
+      const s = a.operations;
+      text += `\n\n## 운항 조회\n선박: ${s.ship.name}\n기간: ${s.from} ~ ${s.to}\n기록: ${s.count}개${s.sample ? ' (가상 데이터 포함)' : ''}\n연료 ${s.fuel} t / CO₂ ${s.emission} t / 거리 ${s.distance} nm\nCII: 산출 불가\n기준 비교: ${a.compliance.label}\n${a.compliance.reason}`;
+      if (a.compliance.rule)
+        text += `\n근거 구절: ${a.compliance.rule.quote}\n입력 기준: ${a.compliance.rule.metric} ${a.compliance.rule.operator} ${a.compliance.limit}`;
+    }
+    const sources = [
+      ...a.evidence.map((e) => e.document_id),
+      ...(a.compliance?.rule ? [a.compliance.rule.documentId] : []),
+    ];
+    appendReport(text, sources, a.operations ? '종합 검토' : '규정 검토');
+  }
+  async function mayReplaceDraft() {
+    return (
+      !state.dirty ||
+      !(state.draft.text || state.draft.title) ||
+      (await confirmAction(
+        '작성 중인 초안을 바꿀까요?',
+        '저장하지 않은 편집 내용이 바뀝니다. 필요하면 먼저 저장하거나 JSON 파일로 보관해 주세요.',
+        '계속',
+      ))
+    );
+  }
+  async function newReport() {
+    if (!(await mayReplaceDraft())) return;
+    state.draft = blankDraft();
+    state.conflict = null;
+    state.reportError = '';
+    persistDraft();
+    navigate('editor');
+  }
+  async function openReport(id) {
+    const userId = state.user?.id,
+      snapshot = snapshotDraft(),
+      { report } = await api.report(id);
+    if (state.user?.id !== userId) return;
+    if (snapshotDraft() !== snapshot)
+      throw Error('불러오는 동안 편집 내용이 바뀌었어요. 다시 시도해 주세요.');
+    if (!(await mayReplaceDraft())) return;
+    state.draft = validateDraft(report);
+    state.draftRevision++;
+    state.dirty = false;
+    state.conflict = null;
+    state.reportError = '';
+    state.localFailed = !writeLocal(draftKey(), state.draft);
+    navigate('editor');
+  }
+  async function saveReport() {
+    if (state.saving) return false;
+    state.reportError = '';
+    if (!state.draft.title.trim() || !state.draft.text.trim()) {
+      state.reportError = '제목과 본문을 입력해 주세요.';
+      render();
+      return false;
+    }
+    const snapshot = structuredClone(state.draft),
+      revision = state.draftRevision,
+      userId = state.user.id;
+    state.saving = true;
+    render();
+    try {
+      const { report } = await api.saveReport(snapshot);
+      if (state.user?.id !== userId) return false;
+      if (state.draft.id === snapshot.id) {
+        state.draft.id = report.id;
+        state.draft.version = report.version;
+        state.draft.owner = report.owner;
+        state.conflict = null;
+        state.dirty = state.draftRevision !== revision;
+        state.localFailed = !writeLocal(draftKey(), state.draft);
+      }
+      state.reports = (await api.reports()).reports;
+      toast(
+        state.dirty
+          ? '전송한 내용은 저장됐어요. 이후 편집 내용은 다시 저장해 주세요.'
+          : '보고서를 저장했어요.',
+      );
+      return true;
+    } catch (e) {
+      state.reportError = e.message;
+      if (e.code === 'VERSION_CONFLICT' && snapshot.id) {
+        state.conflict = (await api.report(snapshot.id)).report;
+      }
+      return false;
+    } finally {
+      state.saving = false;
+      render();
+    }
+  }
+  async function replaceConflict() {
+    const r = state.conflict;
+    if (!r) return;
+    if (
+      !(await confirmAction(
+        '내 내용으로 대체 저장할까요?',
+        `서버 버전 ${r.version}의 제목과 본문을 현재 편집 내용으로 바꿉니다. 서버 내용 확인과 초안 파일 보관을 먼저 진행해 주세요.`,
+        '대체 저장',
+      ))
+    )
+      return;
+    state.draft.version = r.version;
+    persistDraft();
+    await saveReport();
+  }
+  async function generateTemplate(template) {
+    if (!state.ship) throw Error('보고서 대상 선박을 선택해 주세요.');
+    if (!(await mayReplaceDraft())) return;
+    const userId = state.user?.id,
+      rev = state.draftRevision;
+    toast('저장된 운항 기록으로 초안을 만들고 있어요.');
+    const { report } = await api.request('/api/reports/generate', {
+      template,
+      ship: state.ship,
+      from: state.from,
+      to: state.to,
+    });
+    if (state.user?.id !== userId) return;
+    const reports = (await api.reports()).reports;
+    if (state.user?.id !== userId) return;
+    state.reports = reports;
+    if (rev !== state.draftRevision) {
+      toast('생성한 초안은 보고서 목록에 저장했어요. 현재 편집 내용은 유지합니다.');
+      return;
+    }
+    state.draft = validateDraft(report);
+    state.draftRevision++;
+    state.dirty = false;
+    state.conflict = null;
+    state.reportError = '';
+    writeLocal(draftKey(), state.draft);
+    navigate('editor');
+  }
+  function reportFile() {
+    const d = state.draft;
+    return `# ${d.title}\n\n유형: ${d.type}\n상태: ${d.status}\n\n${d.text}\n\n## 근거 문서\n${d.sources
+      .map((id) => {
+        const s = state.docs.find((d) => d.id === id);
+        return s ? `${s.title} / ${s.version} / ${s.reference}` : '열람 불가 문서';
+      })
+      .join('\n')}`;
+  }
+  function backupDraft() {
+    download(
+      '해답_초안.json',
+      JSON.stringify(
+        {
+          format: 'haedap-report-draft',
+          formatVersion: 2,
+          exportedAt: new Date().toISOString(),
+          report: state.draft,
+        },
+        null,
+        2,
+      ),
+      'application/json',
+    );
+  }
+  function formValues(f) {
+    const data = {};
+    for (const el of f.querySelectorAll('[name]')) {
+      if (el.type === 'file') continue;
+      data[el.name] = el.type === 'checkbox' ? el.checked : el.value;
+    }
+    return data;
+  }
+  async function submitForm(f, fn) {
+    const generation = modalGeneration,
+      buttons = [...f.querySelectorAll('button')];
+    buttons.forEach((b) => (b.disabled = true));
+    const error = f.querySelector('#formError'),
+      progress = f.querySelector('.form-progress');
+    if (error) error.textContent = '';
+    if (progress) progress.textContent = '처리 중입니다. 창을 닫지 말고 기다려 주세요.';
+    try {
+      await fn(formValues(f));
+    } catch (e) {
+      if (generation === modalGeneration && error) error.textContent = e.message;
+      else toast(e.message);
+      if (e.code === 'AUTH_REQUIRED') await connect();
+    } finally {
+      if (generation === modalGeneration) {
+        buttons.forEach((b) => (b.disabled = false));
+        if (progress) progress.textContent = '';
+      }
+    }
+  }
+  function requireAdmin() {
+    if (!isAdmin()) throw Error('관리자만 문서와 운항 정보를 변경할 수 있습니다.');
+  }
+  async function saveChange(kind, payload) {
+    requireAdmin();
+    const result = await api.change(kind, payload);
+    closeModal();
+    await refreshAll();
+    toast('변경 내용을 바로 반영했어요.');
+    return result;
+  }
+  function editDocument(id) {
+    requireAdmin();
+    editing = state.docs.find((d) => d.id === id) || null;
+    uploadedPdf = null;
+    uploadBusy = false;
+    uploadError = '';
+    openModal(editing ? '문서 개정·정보 수정' : '문서 등록', documentForm(editing));
+  }
+  async function onPdf(file) {
+    if (!file) {
+      uploadedPdf = null;
+      uploadError = '';
+      return;
+    }
+    const generation = modalGeneration;
+    uploadedPdf = null;
+    uploadError = '';
+    uploadBusy = true;
+    const output = $('#pdfProgress'),
+      submit = $('#documentForm button[type=submit]');
+    if (submit) submit.disabled = true;
+    try {
+      const data = await extractPdf(file, (text) => {
+        if (generation === modalGeneration && output) output.textContent = text;
+      });
+      if (generation !== modalGeneration) return;
+      uploadedPdf = data.file;
+      $('#f-text').value = data.sections
+        .map((s) => `--- PAGE ${s.page} ---\n${s.text}`)
+        .join('\n\n');
+      if (!$('#f-title').value) $('#f-title').value = file.name.replace(/\.pdf$/i, '');
+      output.textContent =
+        `${data.sections.length}페이지 추출 완료.` +
+        (data.emptyPages.length
+          ? ` 텍스트 없는 페이지 ${data.emptyPages.join(', ')}: 표·스캔 여부를 원문에서 확인해 주세요.`
+          : ' 원문과 페이지를 확인해 주세요.');
+    } catch (e) {
+      if (generation === modalGeneration && output) {
+        output.textContent = e.message;
+        uploadError = e.message;
+      }
+    } finally {
+      if (generation === modalGeneration) {
+        uploadBusy = false;
+        if (submit) submit.disabled = false;
+      }
+    }
+  }
+  async function saveDocument(v) {
+    if (uploadBusy) throw Error('PDF 텍스트 추출이 끝난 뒤 저장해 주세요.');
+    if (uploadError)
+      throw Error('PDF를 다시 선택하거나 선택을 해제한 뒤 본문을 입력해 주세요. ' + uploadError);
+    const doc = {
+      id: editing?.logical_id || 'doc-' + crypto.randomUUID(),
+      title: v.title,
+      version: v.version,
+      kind: v.kind,
+      url: v.url || null,
+      reference: v.reference,
+      reviewedAt: new Date().toISOString().slice(0, 10),
+      language: /[가-힣]/.test(v.text) ? 'ko' : 'en',
+      sections: textToSections(v.text, v.reference),
+    };
+    await saveChange('document.save', {
+      document: doc,
+      expectedId: editing
+        ? state.docs.find((d) => d.logical_id === editing.logical_id && d.currentRevision)?.id || ''
+        : '',
+      expectedMetaRevision: editing
+        ? state.docs.find((d) => d.logical_id === editing.logical_id && d.currentRevision)?.meta
+            .revision
+        : undefined,
+      meta: {
+        issuer: v.issuer,
+        issuedAt: v.issuedAt,
+        revisedAt: v.revisedAt,
+        scope: v.scope,
+        status: v.status,
+        applicability: v.applicability,
+      },
+      ...(uploadedPdf
+        ? {
+            file: uploadedPdf,
+          }
+        : {}),
+    });
+  }
+  async function deleteDocument(id) {
+    requireAdmin();
+    const d = state.docs.find((d) => d.id === id);
+    if (
+      await confirmAction(
+        '문서를 삭제할까요?',
+        `‘${d.title}’의 모든 버전을 검색·열람에서 제외합니다. 삭제하면 바로 반영됩니다.`,
+        '삭제',
+      )
+    ) {
+      await saveChange('document.delete', {
+        id,
+      });
+      navigate('docs');
+    }
+  }
+  function editShip(id) {
+    requireAdmin();
+    editing = state.ships.find((s) => s.id === id) || null;
+    openModal(editing ? '선박 정보 수정' : '선박 등록', shipForm(editing || {}));
+  }
+  function editRecord(id) {
+    requireAdmin();
+    if (!state.ships.length) throw Error('먼저 선박을 등록해 주세요.');
+    editing = state.operationRecords.find((r) => r.id === id) || null;
+    openModal(editing ? '운항 기록 수정' : '운항 기록 등록', recordForm(editing || {}));
+  }
+  async function saveRecord(v) {
+    for (const k of ['fuel', 'factor', 'distance', 'speed', 'draft', 'engineHours'])
+      v[k] = v[k] === '' ? null : Number(v[k]);
+    const result = await saveChange('operation.save', {
+      ...v,
+      id: editing?.id,
+      version: editing?.version || 0,
+      sample: editing?.sample || false,
+    });
+    if (result.status === 'approved') {
+      state.ship = v.ship;
+      if (state.from > v.date) state.from = v.date;
+      if (state.to < v.date) state.to = v.date;
+      state.criterion = null;
+      render();
+    }
+  }
+  async function deleteRecord(id) {
+    requireAdmin();
+    const r = state.operationRecords.find((r) => r.id === id);
+    if (
+      await confirmAction(
+        '기록을 삭제할까요?',
+        `${r.date} 운항 기록을 삭제합니다. 삭제하면 바로 반영됩니다.`,
+        '삭제',
+      )
+    )
+      await saveChange('operation.delete', {
+        id,
+        version: r.version,
+      });
+  }
+  function showRecord(id) {
+    const r = state.operationRecords.find((r) => r.id === id);
+    if (!r) return;
+    openModal(
+      '운항 기록 상세',
+      <>
+        <h3>
+          {state.ships.find((s) => s.id === r.ship)?.name}
+          {' · '}
+          {r.date}
+        </h3>
+        {Object.entries({
+          연료: r.fuel + ' t',
+          배출계수: r.factor,
+          배출량: n(r.fuel * r.factor, 3) + ' t CO₂',
+          거리: r.distance + ' nm',
+          속력: r.speed + ' kn',
+          연료종류: r.fuelType,
+          위치: r.position,
+          항차: r.voyage,
+          흘수: r.draft,
+          기상: r.weather,
+          기관운전시간: r.engineHours,
+          점검사유: r.note,
+        }).map(([k, v], __index) => (
+          <React.Fragment key={__index}>
+            {
+              <div className={'status-line'}>
+                <span>{k}</span>
+                <strong>{v ?? '미입력'}</strong>
+              </div>
+            }
+          </React.Fragment>
+        ))}
+      </>,
+    );
+  }
+  function importOperations() {
+    requireAdmin();
+    importRows = null;
+    openModal(
+      '운항 기록 CSV 불러오기',
+      form(
+        'csvForm',
+        <>
+          <p className={'small muted'}>
+            {'서식의 단위를 유지하세요. 선박 ID는 아래 목록에서 확인할 수 있습니다.'}
+          </p>
+          <p className={'small'}>{state.ships.map((s) => s.name + ': ' + s.id).join(' · ')}</p>
+          {btn('CSV 서식 받기', 'csvTemplate', 'sm mt', 'download')}
+          <input
+            className={'file-input'}
+            name={'file'}
+            type={'file'}
+            accept={'.csv,text/csv'}
+            required
+            onChange={noop}
+          />
+          <div id="csvResult" data-csv-slot="true" />
+        </>,
+        '파일 검증',
+      ),
+    );
+  }
+  async function validateCsv(f) {
+    const file = f.querySelector('[name=file]').files[0];
+    if (!file) throw Error('CSV를 선택해 주세요.');
+    const rows = parseCsv(await file.text()),
+      result = await api.request('/api/operations/validate', {
+        rows,
+      });
+    if (!result.valid) {
+      setCsvPreview(
+        notice(result.errors.map((e) => `${e.row}행: ${e.message}`).join(' · '), 'warning'),
+      );
+      return;
+    }
+    importRows = rows;
+    setCsvPreview(
+      <>
+        {notice(`${rows.length}개 기록의 필수 값·단위 범위·중복 검증을 통과했습니다.`)}
+        {
+          <>
+            <div className={'tablewrap mt'}>
+              <table>
+                <thead>
+                  <tr>
+                    <th>{'선박'}</th>
+                    <th>{'일자'}</th>
+                    <th>{'연료(t)'}</th>
+                    <th>{'거리(nm)'}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.slice(0, 20).map((r, __index) => (
+                    <React.Fragment key={__index}>
+                      {
+                        <tr>
+                          <td>{r.ship}</td>
+                          <td>{r.date}</td>
+                          <td>{r.fuel}</td>
+                          <td>{r.distance}</td>
+                        </tr>
+                      }
+                    </React.Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className={'small muted'}>{'처음 20개 기록 미리보기'}</p>
+            {btn('등록', 'commitCsv', 'primary mt')}
+          </>
+        }
+      </>,
+    );
+  }
+  function editUser(id) {
+    editing = state.users.find((u) => u.id === id) || null;
+    openModal(editing ? '사용자 수정' : '사용자 추가', userForm(editing || {}));
+  }
+  function changePreview(c) {
+    const p = c.payload,
+      labels = {
+        name: '선박명',
+        type: '선종',
+        dwt: 'DWT (t)',
+        imo: 'IMO 번호',
+        from: '출발 항만',
+        to: '도착 항만',
+        date: '일자',
+        fuel: '연료 (t)',
+        factor: '배출계수',
+        distance: '거리 (nm)',
+        speed: '속력 (kn)',
+        fuelType: '연료 종류',
+        position: '위치',
+        voyage: '항차',
+        draft: '흘수 (m)',
+        weather: '기상',
+        engineHours: '기관 운전시간 (h)',
+        note: '점검 사유',
+      };
+    const fields = (r) =>
+      Object.entries(labels)
+        .filter(([k]) => r[k] !== undefined)
+        .map(([k, label], __index) => (
+          <React.Fragment key={__index}>
+            {
+              <div className={'status-line'}>
+                <span>{label}</span>
+                <strong>{r[k] ?? '미입력'}</strong>
+              </div>
+            }
+          </React.Fragment>
+        ));
+    if (p.document)
+      return (
+        <>
+          <div className={'source-meta'}>
+            {badge(p.document.version)}
+            {badge(p.meta?.status === 'retired' ? '폐기' : '사용 중')}
+            {badge(
+              {
+                all: '전체 열람',
+                operator: '담당자·관리자',
+                admin: '관리자만',
+              }[p.meta?.scope],
+            )}
+          </div>
+          <p className={'small muted'}>
+            {'발행기관: '}
+            {p.meta?.issuer || '미입력'}
+            <br />
+            {'발행일 '}
+            {p.meta?.issuedAt || '미입력'}
+            {' / 개정일 '}
+            {p.meta?.revisedAt || '미입력'}
+            <br />
+            {'적용 조건: '}
+            {p.meta?.applicability || '미입력'}
+          </p>
+          <details className={'mt'}>
+            <summary>{'등록할 본문과 페이지 확인'}</summary>
+            <div className={'review-payload'}>
+              {p.document.sections.map((s, __index) => (
+                <React.Fragment key={__index}>
+                  {
+                    <>
+                      <h4>
+                        {s.page ? 'p.' + s.page : '페이지 미지정'}
+                        {' · '}
+                        {s.heading}
+                      </h4>
+                      <p className={'preview-text'}>{s.text}</p>
+                    </>
+                  }
+                </React.Fragment>
+              ))}
+            </div>
+          </details>
+        </>
+      );
+    if (p.rows)
+      return (
+        <>
+          <p className={'small muted'}>
+            {'등록할 기록 '}
+            {p.rows.length}
+            {'개'}
+          </p>
+          <div className={'review-payload'}>
+            {p.rows.map((r, __index) => (
+              <React.Fragment key={__index}>
+                {
+                  <details>
+                    <summary>
+                      {state.ships.find((s) => s.id === r.ship)?.name || r.ship}
+                      {' · '}
+                      {r.date}
+                    </summary>
+                    {fields(r)}
+                  </details>
+                }
+              </React.Fragment>
+            ))}
+          </div>
+        </>
+      );
+    if (c.kind === 'operation.delete') {
+      const r = state.operationRecords.find((r) => r.id === p.id);
+      return r ? fields(r) : notice('이미 삭제되었거나 변경된 기록입니다.', 'warning');
+    }
+    if (c.kind === 'document.delete') {
+      const d = state.docs.find((d) => d.id === p.id);
+      return (
+        <p className={'mt'}>
+          {'삭제 대상: '}
+          {d?.title || '이미 삭제되었거나 접근 불가'}
+          {' / '}
+          {d?.version || ''}
+        </p>
+      );
+    }
+    return <div className={'review-payload mt'}>{fields(p)}</div>;
+  }
+  async function showChange(id) {
+    const c = state.changes.find((c) => c.id === id);
+    if (!c) return;
+    const p = structuredClone(c.payload);
+    if (p.file)
+      p.file = {
+        name: p.file.name,
+        note: '원본 PDF 포함',
+      };
+    if (p.document) {
+      p.document.sections = p.document.sections.map((s) => ({
+        ...s,
+        text: s.text.length > 1500 ? s.text.slice(0, 1500) + '…' : s.text,
+      }));
+    }
+    let body = (
+      <>
+        <h3>{changeLabel(c.kind)}</h3>
+        <p className={'small muted mt'}>
+          {c.actor_name}
+          {' · '}
+          {dateText(c.at)}
+        </p>
+        <p>{changeTarget(c)}</p>
+      </>
+    );
+    if (c.kind === 'report.approve') {
+      const { report } = await api.report(c.payload.id);
+      body = (
+        <>
+          {body}
+          {<pre className={'review-payload mt'}>{report.text}</pre>}
+        </>
+      );
+    } else
+      body = (
+        <>
+          {body}
+          {changePreview(c)}
+        </>
+      );
+    body = (
+      <>
+        {body}
+        {<p className={'small muted mt'}>{c.note || ''}</p>}
+      </>
+    );
+    openModal(
+      '승인 요청 검토',
+      body,
+      c.status === 'pending' ? (
+        <>
+          {btn('반려', 'rejectChange', '', '', {
+            'data-id': c.id,
+          })}
+          {btn('승인·반영', 'approveChange', 'primary', '', {
+            'data-id': c.id,
+          })}
+        </>
+      ) : (
+        ''
+      ),
+    );
+  }
+  async function reviewChange(id, decision) {
+    if (
+      !(await confirmAction(
+        decision === 'approve' ? '변경을 승인할까요?' : '요청을 반려할까요?',
+        decision === 'approve'
+          ? '방금 검토한 변경을 저장 데이터에 반영합니다.'
+          : '이 요청은 반영하지 않습니다. 보고서는 작성 중으로 돌아갑니다.',
+        decision === 'approve' ? '승인·반영' : '반려',
+      ))
+    )
+      return;
+    await api.request('/api/changes/review', {
+      id,
+      decision,
+    });
+    closeModal();
+    await refreshAll();
+    await refreshAdmin();
+    toast('검토 결과를 반영했어요.');
+  }
+  async function restoreDialog(id) {
+    const b = state.backups.find((x) => x.id === id);
+    openModal(
+      '전체 데이터 복구',
+      form(
+        'restoreForm',
+        <>
+          {notice(
+            `${dateText(b.createdAt)} 시점으로 문서·기록·보고서·계정·권한을 되돌립니다. 현재 데이터는 복구 직전 자동 보관됩니다. 복구 후 일반 화면으로 돌아옵니다. 관리 기능은 admin / 1234로 다시 로그인합니다.`,
+            'warning',
+          )}
+          {field('confirm', '계속하려면 ‘복구’를 입력해 주세요', '', 'text', {
+            required: true,
+            autoComplete: 'off',
+          })}
+        </>,
+        '선택한 백업으로 복구',
+      ),
+    );
+    editing = {
+      id,
+    };
+  }
+  const actions = {
+    importBackup: () =>
+      openModal(
+        '전체 백업 파일 가져오기',
+        form(
+          'backupImportForm',
+          <>
+            <input
+              className={'file-input'}
+              name={'file'}
+              type={'file'}
+              accept={'.json,application/json'}
+              required
+              onChange={noop}
+            />
+            <p className={'small muted'}>
+              {
+                '100MB 이하의 해답 전체 백업 JSON을 가져옵니다. 목록에 추가된 뒤 별도로 복구를 실행할 수 있습니다.'
+              }
+            </p>
+          </>,
+          '가져오기',
+        ),
+      ),
+    closeModal,
+    confirm: () => {
+      const r = confirmResolver;
+      confirmResolver = null;
+      closeModal();
+      r?.(true);
+    },
+    menu: () => {
+      state.menu = !state.menu;
+      render();
+    },
+    reconnect: connect,
+    logout,
+    refreshAll,
+    openLogin: () => {
+      closeModal();
+      state.authError = '';
+      state.loginOpen = true;
+      render();
+    },
+    cancelLogin: () => {
+      state.loginOpen = false;
+      state.authError = '';
+      render();
+    },
+    newQuestion: () => {
+      state.askSequence++;
+      state.busy = false;
+      state.answer = null;
+      state.askError = '';
+      state.question = '';
+      render();
+    },
+    retryQuestion: () => ask(state.pendingQuestion || state.question),
+    history: showHistory,
+    historyAnswer: (id) => {
+      const h = state.history.find((h) => h.id === id);
+      if (!h?.answer)
+        throw Error('근거가 삭제되었거나 현재 열람 권한이 없어 답변을 표시하지 않습니다.');
+      state.answer = h.answer;
+      state.askError = '';
+      navigate('chat');
+    },
+    source: (id, el) => showSource(id, el.dataset.section),
+    document: (id, el) => openDocument(id, el.dataset.section),
+    backDocument: () => navigate(state.docBack),
+    backDocs: () => navigate('docs'),
+    documentText: () => {
+      state.docView = 'text';
+      render();
+    },
+    documentPdf: () => {
+      state.docView = 'pdf';
+      render();
+    },
+    refreshDocuments: async () => {
+      state.docs = (await api.documents()).documents;
+      render();
+    },
+    newDocument: () => editDocument(),
+    editDocument,
+    deleteDocument,
+    newShip: () => editShip(),
+    editShip,
+    newRecord: () => editRecord(),
+    editRecord,
+    deleteRecord,
+    recordDetail: showRecord,
+    seedExample: async () => {
+      if (
+        await confirmAction(
+          '가상 예시를 등록할까요?',
+          '가상 선박 3척과 운항 기록 21개를 DB에 저장합니다. 실제 기록과 구분해서 표시합니다.',
+          '예시 등록',
+        )
+      ) {
+        await api.request('/api/operations/example', {});
+        await refreshAll();
+        toast('가상 예시를 등록했어요.');
+      }
+    },
+    useSampleInputs: () => {
+      const rows = records(),
+        m = metrics();
+      if (!rows.length) throw Error('선택 기간에 기록이 없습니다.');
+      state.calcInputs = {
+        fuel: m.fuel,
+        factor: m.fuel ? m.co2 / m.fuel : rows[0].factor,
+        dwt: currentShip().dwt,
+        distance: m.distance,
+      };
+      state.calcSequence++;
+      state.calc = null;
+      render();
+      toast('기록별 배출계수의 연료 가중평균을 적용했어요.');
+    },
+    calcReport: () => {
+      if (state.calc) appendReport(calculationText(state.calc), [], '배출량 검토');
+    },
+    importOperations,
+    commitCsv: async () => {
+      if (!importRows) throw Error('먼저 파일을 검증해 주세요.');
+      await saveChange('operation.import', {
+        rows: importRows,
+      });
+      importRows = null;
+    },
+    csvTemplate: () =>
+      download(
+        '운항기록_서식.csv',
+        toCsv([
+          {
+            ship: state.ship,
+            date: new Date().toISOString().slice(0, 10),
+            fuel: 20,
+            factor: 3.114,
+            distance: 240,
+            speed: 10,
+            fuelType: '연료 종류 확인',
+            note: '서식 예시 값을 실제 기록으로 수정',
+          },
+        ]),
+        'text/csv;charset=utf-8',
+      ),
+    exportRecords: () => download('운항기록.csv', toCsv(records()), 'text/csv;charset=utf-8'),
+    criterion: () => {
+      if (!state.docs.some((d) => d.active))
+        throw Error('근거로 사용할 문서를 먼저 등록해 주세요.');
+      openModal('적용 기준 확인', criterionForm());
+    },
+    clearCriterion: () => {
+      state.criterion = null;
+      render();
+    },
+    answerReport: answerToReport,
+    newReport,
+    editReport: () => navigate('editor'),
+    reportList: () => navigate('reports'),
+    openReport,
+    saveReport,
+    replaceConflict,
+    refreshReports: async () => {
+      state.reports = (await api.reports()).reports;
+      render();
+    },
+    templateNoon: () => generateTemplate('noon'),
+    templateMrv: () => generateTemplate('mrv'),
+    copyReport: () => {
+      const d = state.draft;
+      state.draft = {
+        ...d,
+        id: '',
+        version: 0,
+        owner: '',
+        status: 'draft',
+        title: (d.title + ' 사본').slice(0, 120),
+      };
+      state.conflict = null;
+      persistDraft();
+      render();
+    },
+    previewReport: () =>
+      openModal(
+        '보고서 미리보기',
+        <>
+          <h2>{state.draft.title || '제목 없음'}</h2>
+          <pre className={'preview-text mt'}>{state.draft.text}</pre>
+        </>,
+      ),
+    viewConflict: () => {
+      const r = state.conflict;
+      if (r)
+        openModal(
+          '서버에 저장된 버전',
+          <>
+            <h2>{r.title}</h2>
+            <p>
+              {'버전 '}
+              {r.version}
+            </p>
+            <pre>{r.text}</pre>
+          </>,
+          btn('서버 버전 불러오기', 'openReport', 'primary', '', {
+            'data-id': r.id,
+          }),
+        );
+    },
+    removeSource: (id) => {
+      state.draft.sources = state.draft.sources.filter((s) => s !== id);
+      persistDraft();
+      render();
+    },
+    downloadReport: () =>
+      download(
+        (state.draft.title || '해답_보고서') + '.md',
+        reportFile(),
+        'text/markdown;charset=utf-8',
+      ),
+    backupDraft,
+    importDraft: () =>
+      openModal(
+        '보고서 초안 가져오기',
+        form(
+          'importForm',
+          <>
+            <input
+              className={'file-input'}
+              name={'file'}
+              type={'file'}
+              accept={'.json,application/json'}
+              required
+              onChange={noop}
+            />
+            <p className={'small muted'}>
+              {'가져온 내용은 새 초안으로 열립니다. 서버에 저장된 보고서를 덮어쓰지 않습니다.'}
+            </p>
+          </>,
+          '가져오기',
+        ),
+      ),
+    submitReport: async () => {
+      if (state.dirty) throw Error('먼저 편집 내용을 저장해 주세요.');
+      if (
+        !(await confirmAction(
+          '검토를 요청할까요?',
+          '현재 버전을 관리자에게 검토 요청합니다. 검토 중에는 직접 수정할 수 없습니다.',
+          '검토 요청',
+        ))
+      )
+        return;
+      await api.request('/api/reports/submit', {
+        id: state.draft.id,
+        version: state.draft.version,
+      });
+      state.draft.status = 'review';
+      writeLocal(draftKey(), state.draft);
+      await refreshAll();
+      render();
+    },
+    adminTab: async (id) => {
+      state.adminTab = id;
+      await refreshAdmin();
+    },
+    refreshAdmin,
+    newUser: () => editUser(),
+    editUser,
+    reviewChange: showChange,
+    approveChange: (id) => reviewChange(id, 'approve'),
+    rejectChange: (id) => reviewChange(id, 'reject'),
+    logDetail: (id) => {
+      const l = state.logs.find((l) => l.id === id);
+      if (l)
+        openModal(
+          '시스템 로그',
+          <>
+            <h3>{l.action}</h3>
+            <p className={'small muted'}>
+              {dateText(l.at)}
+              {' · '}
+              {l.actor}
+            </p>
+            <pre className={'mt'}>{JSON.stringify(l.detail, null, 2)}</pre>
+          </>,
+        );
+    },
+    createBackup: async () => {
+      toast('전체 데이터를 백업하고 있어요.');
+      await api.request('/api/backups', {});
+      await refreshAdmin();
+      toast('백업을 만들었어요.');
+    },
+    downloadBackup: async (id) => {
+      const data = await api.request('/api/backups/' + id);
+      download(
+        '해답_전체백업_' + data.createdAt.slice(0, 10) + '.json',
+        JSON.stringify(data),
+        'application/json',
+      );
+    },
+    restoreBackup: restoreDialog,
+    help: () =>
+      openModal(
+        '해답 사용 안내',
+        <>
+          {
+            <ol className={'help-list'}>
+              <li>{'문서에서 PDF와 적용 정보를 등록합니다.'}</li>
+              <li>{'운항 정보에서 선박과 기록을 등록합니다.'}</li>
+              <li>{'통합 질문에서 선박·기간을 선택하고 질문합니다.'}</li>
+              <li>{'결과를 보고서에 담거나 Noon/MRV 초안을 만듭니다.'}</li>
+              <li>{'관리자는 승인·로그·백업을 확인합니다.'}</li>
+            </ol>
+          }
+          {notice(
+            'CII와 자동 규정 적용 판단, 스캔 PDF OCR은 팀의 전문 모듈 연결이 필요합니다. 데이터나 근거가 없으면 판단 불가로 표시됩니다.',
+          )}
+        </>,
+      ),
+  };
+  async function run(action) {
+    try {
+      await action();
+    } catch (e) {
+      toast(e.message || '처리에 실패했습니다.');
+      if (e.code === 'AUTH_REQUIRED') await connect();
+    }
+  }
+  const handleClick = (e) => {
+    const el = e.target.closest('[data-action],[data-nav],[data-question],[data-doc],[data-tab]');
+    if (!el || el.disabled) return;
+    if (el.dataset.nav) {
+      navigate(el.dataset.nav);
+      return;
+    }
+    if (el.dataset.doc) {
+      openDocument(el.dataset.doc);
+      return;
+    }
+    if (el.dataset.tab) {
+      state.tab = el.dataset.tab;
+      render();
+      return;
+    }
+    if (el.dataset.question) {
+      state.question = el.dataset.question;
+      run(() => ask(el.dataset.question));
+      return;
+    }
+    const fn = actions[el.dataset.action];
+    if (fn) run(() => fn(el.dataset.id, el));
+  };
+  const handleInput = (e) => {
+    const t = e.target;
+    if (t.id === 'question') state.question = t.value;
+    if (t.dataset.report && canWrite() && state.draft.status === 'draft') {
+      state.draft[t.dataset.report] = t.value;
+      persistDraft();
+      if ($('#saveStatus'))
+        $('#saveStatus').textContent = state.localFailed
+          ? '브라우저 보관 실패 · 파일로 보관해 주세요'
+          : '브라우저 임시 보관 · 저장 전';
+      const b = $('[data-action=submitReport]');
+      if (b) b.disabled = true;
+    }
+    if (t.dataset.calc) {
+      state.calcInputs[t.dataset.calc] = t.value;
+      state.calcSequence++;
+      const repaint = state.calc || state.calcBusy;
+      state.calc = null;
+      state.calcBusy = false;
+      if (repaint) render();
+    }
+    if (t.dataset.time) {
+      state.timeInputs[t.dataset.time] = t.value;
+      state.timeSequence++;
+      state.timeResult = null;
+      state.timeBusy = false;
+    }
+  };
+  const handleSubmit = (e) => {
+    const f = e.target,
+      ids = [
+        'authForm',
+        'askForm',
+        'docSearch',
+        'reportSearch',
+        'calcForm',
+        'timeForm',
+        'documentForm',
+        'shipForm',
+        'recordForm',
+        'userForm',
+        'csvForm',
+        'importForm',
+        'restoreForm',
+        'criterionForm',
+        'backupImportForm',
+      ];
+    if (!ids.includes(f.id)) return;
+    e.preventDefault();
+    if (!f.reportValidity()) return;
+    const v = () => formValues(f);
+    if (f.id === 'authForm') return run(() => login(f));
+    if (f.id === 'askForm') return run(() => ask(state.question));
+    if (f.id === 'docSearch') {
+      state.docQuery = v().query;
+      render();
+      return;
+    }
+    if (f.id === 'reportSearch') {
+      state.reportQuery = v().query;
+      render();
+      return;
+    }
+    if (f.id === 'calcForm') return run(calculate);
+    if (f.id === 'timeForm') return run(calculateTime);
+    run(() =>
+      submitForm(f, async (data) => {
+        if (f.id === 'documentForm') await saveDocument(data);
+        if (f.id === 'shipForm')
+          await saveChange('ship.save', {
+            ...data,
+            id: editing?.id,
+            version: editing?.version || 0,
+            dwt: Number(data.dwt),
+            sample: editing?.sample || false,
+          });
+        if (f.id === 'recordForm') await saveRecord(data);
+        if (f.id === 'userForm') {
+          const self = editing?.id === state.user.id;
+          await api.request('/api/users', {
+            ...data,
+            id: editing?.id,
+            version: editing?.version || 0,
+            active: data.active === 'true',
+          });
+          closeModal();
+          if (self) {
+            resetPrivateState();
+            await connect();
+            toast('계정 정보를 변경했습니다. 다시 로그인해 주세요.');
+          } else await refreshAdmin();
+        }
+        if (f.id === 'csvForm') await validateCsv(f);
+        if (f.id === 'importForm') {
+          const file = f.querySelector('[name=file]').files[0];
+          if (!file || file.size > 1024 * 1024)
+            throw Error('1MB 이하의 초안 JSON을 선택해 주세요.');
+          const draft = validateDraft(JSON.parse(await file.text()));
+          if (!(await mayReplaceDraft())) return;
+          state.draft = {
+            ...draft,
+            id: '',
+            version: 0,
+            owner: '',
+            status: 'draft',
+          };
+          state.conflict = null;
+          persistDraft();
+          navigate('editor');
+        }
+        if (f.id === 'backupImportForm') {
+          const file = f.querySelector('[name=file]').files[0];
+          if (!file || file.size > 100 * 1024 * 1024)
+            throw Error('100MB 이하의 해답 전체 백업 JSON을 선택해 주세요.');
+          await api.request('/api/backups/import', JSON.parse(await file.text()));
+          closeModal();
+          await refreshAdmin();
+          toast('백업 파일을 목록에 추가했어요.');
+        }
+        if (f.id === 'restoreForm') {
+          await api.request('/api/backups/restore', {
+            id: editing.id,
+            confirm: data.confirm,
+          });
+          closeModal();
+          resetPrivateState();
+          await connect();
+          toast('복구를 완료했습니다. 관리 기능은 다시 관리자 로그인해 주세요.');
+        }
+        if (f.id === 'criterionForm') {
+          state.criterion = {
+            ...data,
+            limit: Number(data.limit),
+          };
+          closeModal();
+          render();
+          toast('기준을 적용했어요. 질문을 다시 보내면 비교합니다.');
+        }
+      }),
+    );
+  };
+  const handleKeydown = (e) => {
+    if (e.target.id === 'question' && e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+      e.preventDefault();
+      run(() => ask(state.question));
+    }
+  };
+  const handleChange = (e) => {
+    const t = e.target;
+    if (t.dataset.backupSetting) {
+      run(async () => {
+        await api.request('/api/backups/settings', {
+          autoBackup: t.value,
+        });
+        state.autoBackup = t.value;
+        toast('자동 백업 설정을 저장했어요.');
+      });
+      return;
+    }
+    if (t.type === 'file' && t.closest('#csvForm')) {
+      importRows = null;
+      if ($('#csvResult')) setCsvPreview(null);
+    }
+    if (t.id === 'document-file') {
+      run(() => onPdf(t.files[0]));
+      return;
+    }
+    if (t.id === 'f-documentId') {
+      const d = state.docs.find((d) => d.id === t.value);
+      $('#f-chunkId').replaceChildren(
+        ...(d?.sections || []).map(
+          (s) => new Option((s.page ? 'p.' + s.page + ' · ' : '') + s.heading, s.id),
+        ),
+      );
+      updateCriterionSource();
+      return;
+    }
+    if (t.id === 'f-chunkId') {
+      updateCriterionSource();
+      return;
+    }
+    if (t.dataset.field) {
+      const k = t.dataset.field,
+        old = state[k];
+      state[k] = t.value;
+      if (['from', 'to'].includes(k) && (!state.from || !state.to || state.from > state.to)) {
+        state[k] = old;
+        toast('시작일과 종료일을 확인해 주세요.');
+      }
+      if (['ship', 'from', 'to'].includes(k)) state.criterion = null;
+      if (['ship', 'from', 'to', 'filter', 'language', 'mode', 'task'].includes(k)) {
+        state.askSequence++;
+        state.busy = false;
+        state.slow = false;
+      }
+      render();
+    }
+    if (t.dataset.compare) {
+      if (t.checked) state.compare = [...new Set([...state.compare, t.dataset.compare])];
+      else if (state.compare.length > 1)
+        state.compare = state.compare.filter((id) => id !== t.dataset.compare);
+      render();
+    }
+  };
+  return {
+    model,
+    state,
+    views,
+    api,
+    get revision() {
+      return revision;
+    },
+    get modal() {
+      return modal;
+    },
+    get csvPreview() {
+      return csvPreview;
+    },
+    get toasts() {
+      return toasts;
+    },
+    subscribe(fn) {
+      listeners.add(fn);
+      return () => listeners.delete(fn);
+    },
+    getSnapshot: () => revision,
+    getServerSnapshot: () => 0,
+    attach(r) {
+      router = r;
+      disposed = false;
+    },
+    async start() {
+      disposed = false;
+      startup ??= connect();
+      await startup;
+      if (!disposed) await routeChanged(window.location.pathname);
+    },
+    dispose() {
+      disposed = true;
+      state.askSequence++;
+      state.calcSequence++;
+      state.timeSequence++;
+    },
+    routeChanged,
+    closeModal,
+    restoreFocus() {
+      focusBeforeDialog?.focus?.();
+    },
+    events: {
+      onClick: handleClick,
+      onInput: (e) => {
+        handleInput(e);
+        render();
+      },
+      onChange: (e) => {
+        handleChange(e);
+        render();
+      },
+      onSubmit: handleSubmit,
+      onKeyDown: handleKeydown,
+    },
+  };
+}
