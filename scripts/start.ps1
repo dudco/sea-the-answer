@@ -1,6 +1,6 @@
 param(
     [ValidateRange(1,65535)][int]$Port = 5173,
-    [ValidateSet('serve','dev','build','test','ingest','check')][string]$Task = 'serve',
+    [ValidateSet('serve','build','test','ingest','check')][string]$Task = 'serve',
     [string]$Document = 'backend/knowledge/seed.json',
     [switch]$Lan,
     [string]$NodePath
@@ -10,7 +10,7 @@ Set-Location -LiteralPath (Split-Path -Parent $PSScriptRoot)
 $nodeCommand = Get-Command node -CommandType Application -ErrorAction SilentlyContinue
 if (-not $NodePath -and $env:HAEDAP_NODE) { $NodePath = $env:HAEDAP_NODE }
 if (-not $NodePath -and $nodeCommand) { $NodePath = $nodeCommand.Source }
-if (-not $NodePath) { Write-Host 'Install official Node.js 24 LTS, reopen the terminal, and run start.cmd.'; exit 1 }
+if (-not $NodePath) { Write-Host 'Install official Node.js 24 LTS, reopen the terminal, and run scripts\start.cmd.'; exit 1 }
 $env:PATH = (Split-Path -Parent $NodePath) + ';' + $env:PATH
 $env:NEXT_TELEMETRY_DISABLED = '1'
 & $NodePath 'scripts/check-runtime.cjs'
@@ -36,7 +36,6 @@ if ($Task -eq 'serve' -and -not (Test-Path -LiteralPath 'frontend/.next/BUILD_ID
     Invoke-Npm -NpmArgs @('run','build')
 }
 $runArguments = @('scripts/run.mjs')
-if ($Task -eq 'dev') { $runArguments += '--dev' }
 if ($PSBoundParameters.ContainsKey('Port')) { $runArguments += @('--port',[string]$Port) }
 if ($Lan) { $runArguments += '--lan' }
 & $NodePath @runArguments

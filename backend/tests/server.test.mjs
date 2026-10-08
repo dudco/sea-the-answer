@@ -14,7 +14,7 @@ test('HTTP integration: ingestion, search, tools, persistence, input and origin 
   const port = probe.address().port; await new Promise(r => probe.close(r));
   const root = new URL('../../', import.meta.url);
   const child = spawn(process.execPath, ['backend/server.mjs'], { cwd: root, windowsHide: true,
-    env: { ...process.env, PORT: String(port), HAEDAP_DB_PATH: join(temp, 'db.sqlite'), OPENAI_API_KEY: '', OPENAI_MODEL: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
+    env: { ...process.env, PORT: '5173', HAEDAP_API_ORIGIN: `http://127.0.0.1:${port}`, HAEDAP_DB_PATH: join(temp, 'db.sqlite'), OPENAI_API_KEY: '', OPENAI_MODEL: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
   let logs = ''; child.stdout.on('data', d => { logs += d; }); child.stderr.on('data', d => { logs += d; });
   const base = `http://127.0.0.1:${port}`;
   try {
@@ -38,11 +38,17 @@ test('HTTP integration: ingestion, search, tools, persistence, input and origin 
       req.on('error', reject); req.end();
     });
     assert.equal(badHostStatus, 403);
+    // Through the Next.js proxy: X-Forwarded-Host is the public address.
+    const viaNext = await post('/api/ask', { question: '황 함유량 기준' }, { 'X-Forwarded-Host': '127.0.0.1:5173', Origin: 'http://127.0.0.1:5173' });
+    assert.equal(viaNext.status, 200);
+    assert.equal((await post('/api/ask', { question: 'CII' }, { 'X-Forwarded-Host': '127.0.0.1:5173', Origin: `http://127.0.0.1:${port}` })).status, 403);
+    assert.equal((await post('/api/ask', { question: 'CII' }, { 'X-Forwarded-Host': 'evil.example:5173', Origin: 'http://evil.example:5173' })).status, 403);
     assert.equal((await post('/api/ask', { question: 'x'.repeat(1100000) })).status, 413);
     const malformed = await fetch(base + '/api/ask', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Haedap-Token': health.csrfToken }, body: '{bad' });
     assert.equal(malformed.status, 400);
     for (const path of ['/data/haedap.sqlite', '/.env', '/backend/db.mjs', '/knowledge/seed.json', '/server.mjs', '/.backup/', '/legacy-ui/app.js', '/backend-ui.js']) assert.equal((await fetch(base + path)).status, 404, path);
-    assert.equal((await fetch(base+'/')).status,503,'API-only process explains how to start Next.js');
+    const rootPage = await fetch(base + '/'); assert.equal(rootPage.status, 404, 'API server serves no screens');
+    assert.ok((await rootPage.text()).includes('http://127.0.0.1:5173'), 'explains the Next.js address to open');
     const calc = await (await post('/api/tools/calculate_emissions', { fuel: 100, factor: 3, dwt: 1000, distance: 100 })).json();
     assert.equal(calc.result.emission, 300);
     assert.equal((await post('/api/tools/calculate_emissions', { fuel: '100' })).status, 400);

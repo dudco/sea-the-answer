@@ -1,12 +1,20 @@
 # HTTP API
 
-- 상태: 구현됨 (1.3.1)
+- 상태: 구현됨 (1.4.0)
 - 최종 확인: 2026-10-08
 - 관련: [`../architecture.md`](../architecture.md), [`../data-model.md`](../data-model.md), [`integrated-answer.md`](integrated-answer.md), [ADR 0004](../adr/0004-public-access-admin-only-writes.md)
 
 ## 1. 목적
 
-화면(`frontend/src/lib/api.js`)과 팀 모듈이 사용하는 로컬 Node HTTP API의 계약입니다. 모든 경로는 게이트웨이와 같은 출처(`http://<host>:<port>/api/...`)에서 제공됩니다.
+화면(`frontend/src/lib/api.js`)과 팀 모듈이 사용하는 로컬 HTTP API의 계약입니다. 브라우저는 Next.js 공개 주소(`http://<host>:5173/api/...`)로 호출하고, Next.js가 `HAEDAP_API_ORIGIN`(기본 `http://127.0.0.1:8000`)으로 그대로 전달합니다. **API 구현을 Python 등으로 바꿔도 이 문서의 경로·형식·검사 규칙을 지키면 화면은 바뀌지 않습니다.**
+
+### 전달 경로와 Host 규칙 (구현이 지켜야 할 것)
+
+- API 서버는 `127.0.0.1`에만 바인딩하고, 루프백이 아닌 상대의 요청은 거부합니다.
+- 실제 호스트 = `X-Forwarded-Host`(루프백 상대일 때만) 또는 `Host`. 호스트 이름은 `127.0.0.1`·`localhost`(LAN 모드면 이 PC의 LAN IPv4 추가), 포트는 프록시 경유면 공개 포트, 직접 호출이면 API 포트여야 합니다. 아니면 403 `HOST_DENIED`.
+- `Origin`이 있으면 `http://<실제 호스트>`와 같아야 하고, `Sec-Fetch-Site`가 `cross-site`/`same-site`면 거부합니다(403 `ORIGIN_DENIED`).
+- `X-Forwarded-For`는 신뢰하지 않습니다(Next.js가 클라이언트 값을 그대로 넘김).
+- `/api/` 밖의 경로는 404.
 
 ## 2. 인증과 쓰기 보호
 
@@ -20,7 +28,7 @@
 - **모든 POST**: `Content-Type: application/json` + `X-Haedap-Token`(CSRF) 필요. 같은 출처·Host·LAN 범위 검사.
 - 역할: `admin` — 승인·사용자·백업·전체 로그·원본 자료 변경. `guest` — 공개 문서·운항 조회, 질문·계산, 자기 초안 작성·저장·검토 요청. 이전 `operator`/`viewer` 레코드는 보존하지만 로그인 불가.
 - 제한 문서는 검색 입력 단계부터 제외하고, 원본 PDF·이전 버전·보고서 근거·질문 이력 재열람에도 범위를 검사합니다.
-- 본문 크기 제한: `/api/changes` 38MB(PDF 포함 문서 등록), `/api/backups/import` 100MB, 그 외 POST 1MB. JSON이 아니면 **415 `CONTENT_TYPE`**.
+- 본문 크기 제한: `/api/changes` 38MB(PDF 포함 문서 등록), `/api/backups/import` 100MB, 그 외 POST 1MB. JSON이 아니면 **415 `CONTENT_TYPE`**. Next.js 프록시 한도는 101MB, 응답 대기는 60초입니다.
 
 ## 3. 경로
 

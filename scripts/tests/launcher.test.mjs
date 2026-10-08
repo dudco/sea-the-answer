@@ -16,9 +16,9 @@ test('Windows launchers: CMD local, PowerShell local, CMD LAN; same-origin API o
   const results = [];
   try {
     const configurations = [
-      { name: 'double-click entry point', command: 'cmd.exe', args: ['/d', '/c', 'start.cmd'], lan: false },
+      { name: 'double-click entry point', command: 'cmd.exe', args: ['/d', '/c', 'scripts\\start.cmd'], lan: false },
       { name: 'terminal entry point', command: 'powershell.exe', args: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'scripts/start.ps1'], lan: false },
-      { name: 'LAN double-click entry point', command: 'cmd.exe', args: ['/d', '/c', 'start.cmd', '-Lan'], lan: true },
+      { name: 'LAN double-click entry point', command: 'cmd.exe', args: ['/d', '/c', 'scripts\\start.cmd', '-Lan'], lan: true },
     ];
     for (const [index, config] of configurations.entries()) {
       const probe = createServer(); probe.listen(0, '127.0.0.1'); await once(probe, 'listening');
