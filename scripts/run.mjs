@@ -61,8 +61,8 @@ function stop(code = 0) {
     children.map((c) => (c.exitCode === null ? once(c, 'exit').catch(() => {}) : null)),
   ).finally(() => process.exit(code));
 }
-function launch(file, argv) {
-  const child = spawn(process.execPath, [file, ...argv], {
+function launch(program, argv) {
+  const child = spawn(program, argv, {
     cwd: root,
     env: { ...process.env, NEXT_TELEMETRY_DISABLED: '1', HAEDAP_NEXT_DIST: '.next' },
     stdio: 'inherit',
@@ -79,9 +79,10 @@ function launch(file, argv) {
   return child;
 }
 for (const s of ['SIGINT', 'SIGTERM']) process.on(s, () => stop(0));
-launch(resolve(root, 'backend/server.mjs'), [
-  '--port', apiOrigin.port, '--public-port', port, ...(lan ? ['--lan'] : []),
+const uv = process.env.HAEDAP_UV || 'uv';
+launch(uv, [
+  'run', '--locked', '--project', 'backend', 'uvicorn', 'backend.pyapi.workspace_api:app', '--host', '127.0.0.1', '--port', apiOrigin.port,
 ]);
-launch(resolve(root, 'node_modules/next/dist/bin/next'), [
+launch(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'),
   'start', 'frontend', '-H', lan ? '0.0.0.0' : '127.0.0.1', '-p', port,
 ]);

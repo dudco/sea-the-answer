@@ -28,6 +28,18 @@ if (-not (Test-Path -LiteralPath 'node_modules/next/package.json')) {
     Write-Host 'Installing dependencies (internet is required for the first installation)...'
     Invoke-Npm -NpmArgs @('ci')
 }
+if ($Task -eq 'serve' -or $Task -eq 'test') {
+    if (-not $env:HAEDAP_UV -and (Test-Path -LiteralPath '.env')) {
+        foreach ($line in Get-Content -LiteralPath '.env') {
+            if ($line -match '^\s*HAEDAP_UV\s*=(.*)$') { $env:HAEDAP_UV = $Matches[1].Trim().Trim('"').Trim("'") }
+        }
+    }
+    $uvName = if ($env:HAEDAP_UV) { $env:HAEDAP_UV } else { 'uv' }
+    $uvCommand = Get-Command $uvName -CommandType Application -ErrorAction SilentlyContinue
+    if (-not $uvCommand) { Write-Host 'Install uv and reopen the terminal before starting FastAPI.'; exit 1 }
+    & $uvCommand.Source 'sync' '--locked' '--project' 'backend'
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
 if ($Task -eq 'build') { Invoke-Npm -NpmArgs @('run','build'); exit 0 }
 if ($Task -eq 'test') { Invoke-Npm -NpmArgs @('test'); exit 0 }
 if ($Task -eq 'ingest') { & $NodePath 'scripts/ingest.mjs' $Document; exit $LASTEXITCODE }
