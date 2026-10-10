@@ -1,4 +1,7 @@
 node_modules/
+.venv/
+__pycache__/
+.pytest_cache/
 .next/
 .next-dev/
 data/
