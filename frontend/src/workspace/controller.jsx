@@ -1812,6 +1812,11 @@ export function createWorkspace() {
     state,
     views,
     api,
+    acceptSavedReport(report, userId) {
+      if (state.user?.id !== userId) return;
+      state.reports = [report, ...state.reports.filter((item) => item.id !== report.id)];
+      render();
+    },
     get revision() {
       return revision;
     },

@@ -4,6 +4,25 @@
 
 ## 1. 화면별 사용 방법
 
+### 업무 스킬
+
+**사용할 문서**에서 문서 왼쪽 체크박스를 눌러 선택합니다. 여러 문서를 하나씩 체크할 수 있고 다시 누르면 해제됩니다. 아래 선택 개수를 확인한 뒤 실행하세요. 최대 20개입니다.
+
+별도 업무 스킬 메뉴 없이 기존 화면에서 기능을 펼쳐 실행합니다. 통합 질문의 **선택 문서로 질문하기**, 활성 문서 상세의 **이 문서로 질문·점검표 만들기**, 운항 정보의 **운항 실적·MRV 참고값 분석**, 보고서 목록의 **자료로 보고서 초안 만들기**를 사용합니다. 저장된 답변 아래 **이 응답의 근거·계산 점검**에서 해당 응답을 평가합니다. 모든 기본 기능은 LLM 없이 동작합니다. 이전 `/skills` 주소는 `/chat`으로 이동합니다.
+
+| 스킬 | 필요한 입력 | 결과 |
+|---|---|---|
+| MRV 참고 분석 | 앱 선박·보고연도, 기존 명시 매핑 | 기존 Python Tool의 참고값·단위·출처·차단 사유 |
+| 선택 문서 답변 | 질문·활성 문서(여러 개 가능) | 선택 개정본만 검색한 원문 근거·페이지 |
+| 운항 실적 요약 | 앱 선박·기간 | 연료·계산 CO2·거리·보고일·샘플 표시 |
+| 보고서 초안 | 앱 선박·기간·양식, 선택 문서(선택 사항) | 저장되지 않은 검토용 초안. 별도 버튼으로 새 보고서 저장 |
+| 점검표 | 작업 목적·선택 문서 | 미확인 상태의 근거 있는 점검 항목 초안 |
+| 질의평가 | 본인 질의 이력 | 인용·범위·계산 계약 검사. 의미적 정답성은 사람 검토 |
+
+문서 답변·점검표·보고서의 문서 설명에는 **AI로 정리**를 선택할 수 있습니다. 기존 OpenAI 호환 설정을 사용하며 Ollama Qwen도 같은 방식으로 설정합니다. Docker에서 호스트 Ollama는 `LLM_API_BASE_URL=http://host.docker.internal:11434/v1`, `OPENAI_MODEL=qwen2.5:3b`, `LLM_RESPONSE_FORMAT=json_object` 예시를 참고하세요. 모델이 해당 PC에 설치·실행되어 있어야 합니다. 공급자별 키 격리는 기존 정책을 유지하며 Qwen을 위해 공급자 키를 복사하지 않습니다. 모델 응답 실패는 원문으로 되돌립니다. 입력에 답이 없다고 모델이 판단하면 근거 부족으로 반환할 수 있습니다.
+
+현재 기능은 화면에서 사용자가 직접 실행합니다. 자연어에서 스킬을 자동 선택하거나 이전 대화의 선박·기간을 자동 기억하는 기능은 아닙니다. 현재 문서와 공통 선박·기간을 초기 입력으로 사용하며 최종 작업 범위는 실행 양식에서 확인합니다. 점검표는 완료·안전 승인을 의미하지 않고, MRV 초안은 공식 제출물이 아닙니다. 질의평가는 자동 정답률 산출이 아닙니다.
+
 | 화면 | 할 수 있는 일 |
 |---|---|
 | 통합 질문 | 문서 질문, 선박·기간 지정, 운항 수치·추이·출처 확인, 근거 페이지 열기, 입력 기준 비교, 당시 답변 이력 열기, 보고서에 담기 |
@@ -207,7 +226,7 @@ Windows 호환 래퍼는 `./scripts/load-maritime-data.ps1 -DataDir data/maritim
 
 ### 팀 앱 연결 시 참고
 
-backend 코드는 `from tools import query, calculations, agent`로 공통 로직을 바로 호출할 수 있습니다(같은 프로세스). 기존 앱 선박과의 연결은 `vessels.ship_id`에 검토한 매핑만 지정합니다. 원본 키는 보존하고 앱 선박을 대량 자동 생성하거나 MRV를 일별 기록으로 변환하지 않습니다. 화면에서 쓰려면 앱 권한·CSRF·감사를 적용하는 어댑터 라우트가 필요하며 아직 구현되지 않았습니다. 토큰은 서버에 보관하고 브라우저로 보내지 않습니다. 현재 경계는 [아키텍처](architecture.md#8-해사-데이터-tool의-경계-선택), [ADR 0011 제안](adr/0011-tools-runtime-and-data-preparation.md)을 참고하세요.
+backend 코드는 `from tools import query, calculations, agent`로 공통 로직을 바로 호출할 수 있습니다(같은 프로세스). 기존 앱 선박과의 연결은 `vessels.ship_id`에 검토한 매핑만 지정합니다. 원본 키는 보존하고 앱 선박을 대량 자동 생성하거나 MRV를 일별 기록으로 변환하지 않습니다. 운항 화면의 MRV 분석은 일반 앱 권한·CSRF·감사 경계에서 명시 매핑과 정체성을 확인해 참고 계산을 실행합니다. 토큰을 브라우저로 보내지 않습니다. 통합 질문의 자동 MRV 호출은 후속 범위입니다. 현재 경계는 [아키텍처](architecture.md#8-해사-데이터-tool의-경계-선택), [업무 스킬](specs/workflow-skills.md)을 참고하세요.
 
 ### 기존 앱 선박에 명시적으로 연결하기
 
@@ -267,7 +286,7 @@ uv run --locked --project backend python -m scripts.load_capacity_candidates --c
 uv run --locked --project backend python -m scripts.load_capacity_candidates --csv D:/Data/vessel_capacity_candidates.csv --apply
 ```
 
-서버 Bearer 인증으로 `POST /api/maritime-data/reference-intensity`에 `{"scope":{"dataset":"real_annual","vessel_id":"REAL:IMO:9074729","year":2023},"accept_reference_limitations":true}`를 보낸다. 예시 ID·연도의 실제 레코드/후보가 없으면 blocked다. 성공은 `estimated`이며 `reference_dwt_intensity`와 CO₂·추정 거리·DWT·출처 스냅샷·한계 경고를 함께 확인한다. 공식 CII나 등급이 아니다. 기존 `/calculate`의 실제 MRV blocked 정책은 유지되며 화면 자동 연결은 포함하지 않는다.
+서버 Bearer 인증으로 `POST /api/maritime-data/reference-intensity`에 `{"scope":{"dataset":"real_annual","vessel_id":"REAL:IMO:9074729","year":2023},"accept_reference_limitations":true}`를 보낸다. 예시 ID·연도의 실제 레코드/후보가 없으면 blocked다. 성공은 `estimated`이며 `reference_dwt_intensity`와 CO₂·추정 거리·DWT·출처 스냅샷·한계 경고를 함께 확인한다. 공식 CII나 등급이 아니다. 기존 `/calculate`의 실제 MRV blocked 정책은 유지한다. 앱의 운항 정보 화면에서 참고값 분석 기능을 펼쳐 매핑된 선박·연도를 선택해 실행할 수 있다.
 
 후보 DWT가 있어도 선종·양수 CO₂/거리·출처 일치·단일 승인 보고 조건을 만족해야 한다. 거리·DCS 범위·시점별 제원은 여전히 미검증이다. 참고값을 공식 등급으로 표시하거나 추정거리를 검증거리로 바꾸지 않는다. 참조 테이블이 비어 있지 않으면 적재를 거절한다. 앱 JSON 백업에는 참조 테이블이 없으므로 PostgreSQL/CSV를 따로 백업한다.
 

@@ -27,6 +27,8 @@
 
 ### specs — 구현 계약
 
+- [업무 스킬 실행 계약](specs/workflow-skills.md): 여섯 스킬, 선택 문서·매핑·권한·초안·평가 범위.
+
 | 문서 | 상태 |
 |---|---|
 | [`specs/llm-provider.md`](specs/llm-provider.md) — Chat Completions 공통 설정·공급자 키 격리·인용 검증 | 구현됨 (실제 공급자 미검증) |
@@ -36,6 +38,8 @@
 | [`specs/prepare-data.md`](specs/prepare-data.md) — 데이터 선택·출처·품질·집계 적격성 계약 | 구현됨 |
 
 ### plans — 작업 계획
+
+- [앱 업무 스킬 구현](plans/2026-10-15-app-workflow-skills.md): 진행 상태와 실제 검증.
 
 | 문서 | 상태 |
 |---|---|
@@ -48,6 +52,8 @@
 | [`plans/2026-10-13-mrv-reference-intensity.md`](plans/2026-10-13-mrv-reference-intensity.md) — 공개 DWT 후보 연결·MRV 참고 집약도 | 완료 (로컬·미제출) |
 
 ### adr — 설계 결정
+
+- [0015 업무 스킬과 선택 LLM](adr/0015-optional-model-workflow-skills.md): 고정 실행기와 런타임 지침.
 
 추가 제안: [0013 - 제원 후보 별도 보존·MRV 참고 집약도 API](adr/0013-mrv-reference-intensity.md). 팀 PR #11에서 사용하는 0012와 번호를 구분합니다.
 

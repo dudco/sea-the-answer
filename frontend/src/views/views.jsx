@@ -1,4 +1,6 @@
 import React from 'react';
+import { SkillResult } from '../components/skill-result';
+import SkillsPanel from '../components/skills-panel';
 import * as helpers from '../components/common';
 export function createMainViews(model, views) {
   const noop = () => {};
@@ -35,7 +37,7 @@ export function createMainViews(model, views) {
   }
   function composer() {
     return (
-      <form id={'askForm'} className={'composer'}>
+      <><form id={'askForm'} className={'composer'}>
         <textarea
           id={'question'}
           aria-label={'질문 입력'}
@@ -100,7 +102,7 @@ export function createMainViews(model, views) {
             {I('send')}
           </button>
         </div>
-      </form>
+      </form><SkillsPanel group="documents" /></>
     );
   }
   function answerView(a) {
@@ -117,7 +119,7 @@ export function createMainViews(model, views) {
                 ? '답변 근거를 확인해 주세요'
                 : '답변과 확인 근거'}
           </h2>
-          {badge(a.generation === 'llm' ? 'AI 초안' : '문서 검색', 'teal')}
+          {badge(a.skill ? '업무 스킬' : a.generation === 'llm' ? 'AI 초안' : '문서 검색', 'teal')}
         </div>
         <p className={'small muted'}>{a.notice}</p>
         {/* Only model warnings mean the AI answer failed; e.g. OPERATIONS_CONTEXT_REQUIRED has its own notice. */}
@@ -156,7 +158,7 @@ export function createMainViews(model, views) {
             </React.Fragment>
           );
         })}
-        {!a.evidence.length
+        {!a.evidence.length && !a.skill
           ? notice(
               en
                 ? 'Insufficient document evidence. Ask the responsible officer.'
@@ -165,6 +167,7 @@ export function createMainViews(model, views) {
             )
           : ''}
         {operationAnswer(a)}
+        {a.skill && <><h3>{a.skill.name}</h3><SkillResult answer={a} /></>}
         {a.toolRuns.map((t, __index) => (
           <React.Fragment key={__index}>
             {
@@ -198,6 +201,7 @@ export function createMainViews(model, views) {
             ? btn(en ? 'Choose report template' : '보고서 양식 선택', 'reportList', '', 'file')
             : ''}
         </div>
+        <SkillsPanel group="evaluation" targetAnswerId={a.id} />
       </article>
     );
   }
@@ -583,6 +587,7 @@ export function createMainViews(model, views) {
             </div>
           </>
         }
+        {d.active && <SkillsPanel group="document" documentId={d.id} />}
       </>
     );
   }

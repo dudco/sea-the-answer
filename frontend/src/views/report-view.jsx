@@ -1,4 +1,5 @@
 import React from 'react';
+import SkillsPanel from '../components/skills-panel';
 import * as helpers from '../components/common';
 export function createReportViews(model, views) {
   const noop = () => {};
@@ -100,6 +101,7 @@ export function createReportViews(model, views) {
             </div>
           </>
         }
+        <SkillsPanel group="reports" />
       </>
     );
   }

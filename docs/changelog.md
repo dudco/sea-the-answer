@@ -8,6 +8,24 @@
 - **기본 문서 확충 / 2026-10-15** (버전 유지): 원본 PDF와 함께 등록되는 기본 문서 5건(해양환경관리법 법률 제21416호, 선박안전법 제19134호, 해상교통안전법 제19573호, 선박직원법 제21053호 — 2026-10-15 국가법령정보센터에서 받은 본문 PDF; USCG Navigation Rules and Regulations Handbook 2024-08-12 수정판)과 법령 정의 조항·COLREG Rule 3 기반 `해사 기본 용어집`을 `seed.json`에 추가. 법령은 조문 단위, 핸드북은 페이지 단위 절이며 원문 페이지 번호를 보존한다. `seed.json` 항목의 `file` 필드가 `knowledge/` 아래 PDF를 가리키면 `bootstrap()`이 원본을 함께 저장한다(`knowledge/` 밖 경로는 거부). 재생성 스크립트 `scripts/build_seed_documents.py` 추가. 검증: 2026-10-15 `uv run pytest` 242 통과·65 건너뜀(PostgreSQL 필요), 신규 `test_seed_documents.py` 9건 포함. 실제 PostgreSQL 적재와 화면 확인은 미수행. 알려진 한계: 키워드 검색이 조사가 붙은 단어(예: "조종불능선이")를 찾지 못하고 흔한 단어와 핵심 단어를 같은 점수로 세어, 문서가 늘면서 일부 질문의 근거 순위가 나빠진다.
 - **AI 답변 실패 배너 오표시 수정 / 2026-10-14**: 통합 질문 화면이 경고 코드가 하나라도 있으면 "AI 답변을 생성하지 못해…" 배너를 띄워, 모델 답변이 성공(`generation=llm`)해도 `OPERATIONS_CONTEXT_REQUIRED`만으로 실패처럼 보였다. `MODEL_FAILED_EXTRACTIVE_FALLBACK`·`MODEL_NOT_CONFIGURED`일 때만 표시하도록 `frontend/src/views/views.jsx`를 수정. 검증: 2026-10-14 `npm test` 4 통과. 같은 날 동국 AI Chat 게이트웨이(`gpt-6-luna`)로 backend 컨테이너에서 `grounded_statements` 실호출 성공(200, 유효 인용, 4.3초), 웹 화면에서 "연료 황 함유량 기준은?" 질문이 AI 초안으로 표시됨을 확인.
 - **동국 AI Chat 게이트웨이 호스트 / 2026-10-14** (버전 유지, [ADR 0014 제안](adr/0014-mindlogic-gateway-host.md)): 확인된 API 기본 주소 `https://factchat-cloud.mindlogic.ai/v1/gateway`의 정확한 호스트에 `DONGUK_AI_CHAT_API_KEY`를 보내고, 이 호스트에서는 문서 표기대로 `/chat/completions/`로 호출한다. 다른 `*.mindlogic.ai`·유사 도메인에는 키를 보내지 않는다. 검증: 2026-10-14 로컬 작업 폴더의 `backend/`에서 (Linux, Python 3.13) `uv run pytest` 233 통과·65 건너뜀(PostgreSQL 필요 테스트). 실제 게이트웨이 호출·e2e는 미수행.
+### 2026-10-15 - 선택적 LLM을 사용하는 앱 업무 스킬
+
+- 실행·저장 상태 보완: 처리 중 양식을 잠그고 저장 중 새 실행을 차단한다. 보고서 저장 성공 문구와 과거 이력 미리보기의 상태 안내를 구분했다. 지연 요청을 포함한 Docker 전체 19단계 통과(49.3초), frontend 4 passed·production build 성공.
+
+- 문서 선택 오류: 스킬 양식의 input/change가 공통 화면 처리기에 전파되지 않도록 분리하고, 문서 선택을 체크박스·선택 개수 표시로 변경했다. 실제 인앱 브라우저 클릭·입력 후 선택 유지·선택 문서 조회 확인. frontend 4 passed, production build, Docker 전체 19단계 재검증 통과(36.7초).
+
+- 화면 배치 변경: 독립 스킬 메뉴를 제거하고 통합 질문·문서 상세·운항 정보·보고서 목록·답변 아래에 각각 연결했다. /skills는 /chat으로 이동한다. 화면별 재사용 실행 패널이 현재 자료를 초기 선택하고 펼칠 때만 카탈로그를 요청한다. frontend 4 passed·production build·기존 화면 기반 Docker 전체 19단계 통과(35.5초).
+
+- PR #16 재점검: 스킬 보고서에 공통 template·ship·from·to 메타데이터를 유지하고, 저장 후 공통 보고서 목록을 갱신하며, 이력에서 업무 스킬 배지를 표시한다. backend 272 passed / 69 skipped, 실제 PostgreSQL 관련 36 passed, frontend 4 passed, 확장 Docker 전체 19단계 통과(28.8초).
+
+- 최초 독립 화면에서 시작한 MRV 참고 분석·선택 문서 답변·운항 요약·보고서 초안·점검표·내 응답 평가를 선택 실행한다. 런타임 `knowledge/skills/*/SKILL.md` 6개와 고정 서버 실행기를 추가했다. 기본 동작은 LLM 불필요, 선택 문서 표현만 기존 OpenAI 호환/Qwen에 연결한다.
+- `/api/skills/run`은 일반 앱 인증·CSRF·사용자 식별·트랜잭션·감사를 재사용한다. 문서 ID 범위를 SQL에서 제한하고 활성/열람권한·인용을 검증한다. MRV는 앱 선박의 명시 매핑·IMO를 확인해 기존 Python Tool을 실행한다. 토큰을 브라우저에 노출하지 않는다. 기존 공개 운항 접근 정책을 유지하며 사용자별 선박 ACL은 추가하지 않았다.
+- 보고서는 payload만 생성하고 별도 저장 버튼에서 새 draft로 저장한다. 평가는 본인 저장 응답에 한하며 인용·범위·계산 일관성을 검사하고 의미적 정답성은 사람 검토로 남긴다. migration·원본·기존 Tool API 계약은 변경하지 않았다.
+- 검증: 스킬 형식 6개, backend 253 passed / 68 skipped, 실 PostgreSQL 임시 스키마의 관련 회귀 35 passed, frontend 4 passed·production build, 격리 Docker e2e 19단계 통과. 앞선 실패는 새 선택란 접근성 라벨을 보완하고 테스트 스택을 비운 뒤 해결했다. 별도 Docker 체험 DB에서 여섯 스킬 HTTP와 실제 MRV/DWT 표본 8.013878 화면 표시·모바일 폭·브라우저 오류 없음을 확인했다.
+- 실제 Qwen 2.5 3B 요청은 성공하고 검증된 JSON·근거 부족 응답을 반환했다. 표현 품질·전체 정답률을 통과한 것으로 해석하지 않는다. 모델 없이 여섯 기능을 사용할 수 있다. 자연어 자동 라우팅·지속 대화 기억·공식 CII·점검 승인 기능은 포함하지 않았다.
+- 팀 최신 main 통합 후 검증: backend **272 passed / 68 skipped**, 실 PostgreSQL 관련 **35 passed**, frontend **4 passed**, production build와 Docker 전체 **19단계 통과**. 팀의 기본 문서·게이트웨이·선택 입력 수정도 보존했다.
+- 최초 구현 후 팀 main 024f3b376713의 게이트웨이·기본 문서·입력 보존 수정을 유지해 다시 통합했다. 작업은 해당 main 기반 `codex/qwen-workflow-skills`의 로컬 변경이다. 최초 검증 시 원격 푸시·PR은 하지 않았으며 이후 사용자 요청으로 PR #16에 제출했다. 체험용 DB는 기존 개인 role4 DB와 분리했다.
+
 - **PR #11 검토 반영 / 2026-10-14** (1.4.0 유지, [ADR 0013](adr/0013-provider-credential-isolation.md)): URL·출력 형식 설정을 `LLM_API_BASE_URL`·`LLM_RESPONSE_FORMAT`으로 변경. `OPENAI_MODEL`·`OPENAI_API_KEY`는 유지하고 `DONGUK_AI_CHAT_API_KEY`를 분리했다. URL 호스트에 맞는 공급자 키만 선택하며 로컬 Ollama·기타 호환 서버에는 두 키가 있어도 인증 헤더를 보내지 않는다. CI 워크플로는 기능 변경에서 제거해 별도 PR로 분리한다. 최신 `main`의 RAG 전처리·문서 변경을 함께 보존했다. 기존 `.env`는 재시작 전 이름 변경이 필요하며 자동 수정하지 않는다. 실제 동국·Ollama 접속은 미검증.
 
 - **최초 PR #11의 OpenAI 호환 Chat Completions / 2026-10-13** (버전 유지, [ADR 0012](adr/0012-openai-compatible-chat-completions.md)): #8 머지본 `196ad73`에서 `api/llm.py`로 모델 통신·JSON·인용 검증 분리. 당시 `OPENAI_BASE_URL`·`OPENAI_RESPONSE_FORMAT` 추가, 기존 키·모델 이름 유지. 키 없는 로컬 호환 서버 활성화와 health·답변 설정 판정 통일, 실패·잘림·위조 인용은 기존 발췌 경고로 전환. `.env.example`·Compose·README·공급자 계약 갱신. 당시 PR에 검증 워크플로를 연결했으며 2026-10-14 검토에서 별도 PR로 분리. 동국·Ollama 실접속은 미검증.

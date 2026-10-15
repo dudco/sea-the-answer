@@ -1,6 +1,6 @@
 # 데이터 모델
 
-> 대상: 기본 앱 1.4.0 + 선택 해사 데이터 Tool 계약 v1 · 최종 확인: 2026-10-13 (`migrations/`, `backend/api/store/`, `scripts/` 대조)
+> 대상: 기본 앱 1.4.0 + 선택 해사 데이터 Tool 계약 v1 · 최종 확인: 2026-10-15 (`migrations/`, `backend/api/store/`, `api/workflow_skills.py`, `scripts/` 대조)
 > 테이블·필드·상태 값을 바꾸면 같은 작업에서 이 문서를 고치고, 되돌리기 어려운 변경이면 ADR을 남깁니다.
 
 > 문서 전처리 통합은 `migrations/`의 PostgreSQL 테이블/컬럼을 바꾸지 않는다. `chunks.document_id`로 문서 제목을, `chunk_pages.id`로 물리 페이지를 조회한다. 기존 `haedap-chunk-v1` 문서 해시와 청크 ID를 유지하고 기존 개정본의 청크는 재작성하지 않는다. 새 문서·새 내용 개정의 분할 규칙만 [전처리 계약](specs/api.md#python-문서-전처리-계약-2026-10-13-확정)에 따라 달라진다.
@@ -112,6 +112,7 @@ erDiagram
 - `type`: `규정 검토` · `일일 운항` · `배출량 검토` · `종합 검토`
 - `status` 전이: `draft` → (검토 요청) `review` → (승인) `approved` / (반려) `draft`. `review`·`approved`는 수정 불가 → 복사해 새 초안.
 - `body`(≤50,000자 JSON): 생성 초안은 `{template:'noon'|'mrv', ship, from, to, recordIds:[{id,version}], sample}`, 승인 시 `approvedBy`, `approvedAt` 추가.
+- 업무 스킬 초안도 위 공통 필드를 유지하며 `skill`과 요청 당시 `scope:{ship,from,to}`를 추가한다. Noon의 `from/to`는 실제 마지막 기록일이고 `scope`는 사용자가 요청한 전체 기간이다.
 - 열람: 관리자, 소유자, 또는 `approved` — 단, `sources`의 모든 문서를 열람할 수 있어야 함.
 
 ## 5. 사용자·이력·운영

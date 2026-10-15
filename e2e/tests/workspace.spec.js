@@ -292,8 +292,134 @@ test('workspace: documents, operations, reports, admin review, backup', async ({
     expect(await records()).toHaveLength(22);
   });
 
+  await test.step('Skills: selected documents and checklist stay within scope without a model', async () => {
+    await go('chat');
+    await expect(page.locator('[data-nav=skills]')).toHaveCount(0);
+    const panel = page.locator('[data-workflow=documents]');
+    await panel.locator('summary').first().click();
+    const docs = (await api('/api/documents')).data.documents.filter(d => d.active);
+    const source = docs.find(d => d.sections.some(s => s.text.includes('연료'))) || docs[0];
+    const question = source.sections[0].text.slice(0, 80);
+    const selectedDocument = panel.locator(`[data-document-id="${source.id}"]`);
+    await selectedDocument.check();
+    await panel.getByLabel('질문 또는 작업 목적').fill('선택 상태 유지 확인');
+    await expect(selectedDocument).toBeChecked();
+    await selectedDocument.uncheck();
+    await expect(selectedDocument).not.toBeChecked();
+    await selectedDocument.check();
+    const secondSource = docs.find(d=>d.id!==source.id);
+    if(secondSource){
+      const secondDocument=panel.locator(`[data-document-id="${secondSource.id}"]`);
+      await secondDocument.check();
+      await expect(selectedDocument).toBeChecked();
+      await expect(secondDocument).toBeChecked();
+      await secondDocument.uncheck();
+    }
+    await panel.getByLabel('질문 또는 작업 목적').fill(question);
+    let releaseExecution;
+    const executionGate = new Promise(resolve=>{releaseExecution=resolve;});
+    const holdExecution = async route=>{await executionGate; await route.continue();};
+    await page.route('**/api/skills/run',holdExecution);
+    const response = page.waitForResponse(r => r.url().endsWith('/api/skills/run') && r.request().method() === 'POST');
+    await panel.getByRole('button', { name: '실행', exact: true }).click();
+    try {
+      await expect(selectedDocument).toBeDisabled();
+      await expect(panel.getByLabel('질문 또는 작업 목적')).toBeDisabled();
+    } finally { releaseExecution(); }
+    const value = await (await response).json();
+    await page.unroute('**/api/skills/run',holdExecution);
+    expect(value.evidence.length).toBeGreaterThan(0);
+    expect(value.evidence.every(e => e.document_id === source.id)).toBe(true);
+    expect(value.generation).toBe('extractive');
+    await expect(page.locator('.skill-evidence').first()).toBeVisible();
+    await page.goto('/documents/' + encodeURIComponent(source.id));
+    const documentPanel = page.locator('[data-workflow=document]');
+    await documentPanel.locator('summary').first().click();
+    await expect(documentPanel.locator(`[data-document-id="${source.id}"]`)).toBeChecked();
+    await documentPanel.getByLabel('실행할 기능').selectOption('checklist');
+    await documentPanel.getByLabel('질문 또는 작업 목적').fill(question);
+    await documentPanel.getByRole('button', { name: '실행', exact: true }).click();
+    await expect(page.getByRole('heading', { name: '점검 항목 초안', exact: true })).toBeVisible();
+    await expect(page.getByRole('checkbox', { name: '점검 항목 1', exact: true })).not.toBeChecked();
+  });
+
+  await test.step('Skills: operation summary, report preview and explicit draft save', async () => {
+    const ops = (await api('/api/operations')).data;
+    const ship = ops.ships[0];
+    const days = ops.records.filter(r => r.ship === ship.id).map(r => r.date).sort();
+    await go('operations');
+    const panel = page.locator('[data-workflow=operations]');
+    await panel.locator('summary').first().click();
+    await panel.getByLabel('실행할 기능').selectOption('operation-summary');
+    await panel.getByLabel('선박', { exact: true }).selectOption(ship.id);
+    await panel.getByLabel('시작일', { exact: true }).fill(days[0]);
+    await panel.getByLabel('종료일', { exact: true }).fill(days.at(-1));
+    await panel.getByLabel('질문 또는 작업 목적').fill('기간 운항 실적을 요약해줘');
+    await panel.getByRole('button', { name: '실행', exact: true }).click();
+    await expect(page.locator('.skill-metrics')).toContainText('계산 CO₂');
+    const before = (await api('/api/reports')).data.reports.length;
+    await go('reports');
+    const reportPanel = page.locator('[data-workflow=reports]');
+    await reportPanel.locator('summary').first().click();
+    await reportPanel.getByLabel('선박', { exact: true }).selectOption(ship.id);
+    await reportPanel.getByLabel('시작일', { exact: true }).fill(days[0]);
+    await reportPanel.getByLabel('종료일', { exact: true }).fill(days.at(-1));
+    await reportPanel.getByLabel('질문 또는 작업 목적').fill('보고서 초안을 만들어줘');
+    const response = page.waitForResponse(r => r.url().endsWith('/api/skills/run') && r.request().method() === 'POST');
+    await reportPanel.getByRole('button', { name: '실행', exact: true }).click();
+    const value = await (await response).json();
+    await expect(page.getByLabel('보고서 초안 내용')).toContainText('검토용');
+    expect((await api('/api/reports')).data.reports).toHaveLength(before);
+    let releaseSave;
+    const saveGate = new Promise(resolve=>{releaseSave=resolve;});
+    const holdSave = async route=>{if(route.request().method()==='POST')await saveGate; await route.continue();};
+    await page.route('**/api/reports',holdSave);
+    await page.getByRole('button', { name: '새 보고서 초안으로 저장', exact: true }).click();
+    try {
+      await expect(reportPanel.getByRole('button',{name:'실행',exact:true})).toBeDisabled();
+      await expect(reportPanel.getByLabel('선박',{exact:true})).toBeDisabled();
+    } finally { releaseSave(); }
+    await expect(page.getByRole('button', { name: '초안 저장됨', exact: true })).toBeDisabled();
+    await page.unroute('**/api/reports',holdSave);
+    await expect(reportPanel).toContainText('새 보고서 초안으로 저장했습니다. 제출되지 않았습니다.');
+    expect((await api('/api/reports')).data.reports).toHaveLength(before + 1);
+    await page.getByRole('button', { name: '저장한 초안 열기', exact: true }).click();
+    await expect(page).toHaveURL(/\/reports\//);
+    // The earlier report flow leaves a dirty editor draft; preserve its existing guard.
+    await expect(page.getByRole('heading', { name: '작성 중인 초안을 바꿀까요?' })).toBeVisible();
+    await confirm();
+    await dialogClosed();
+    await expect(page.locator('#report-text')).toHaveValue(value.result.draft.text);
+    await go('reports');
+    const savedRow = page.locator('.docrow').filter({ hasText: value.result.draft.title });
+    await expect(savedRow).toContainText(`${value.result.from} ~ ${value.result.to}`);
+    await go('chat');
+    await action('history').click();
+    await page.locator(`[data-action=historyAnswer][data-id="${value.id}"]`).click();
+    const evaluation = page.locator('[data-workflow=evaluation]');
+    await evaluation.locator('summary').first().click();
+    await evaluation.getByRole('button', { name: '응답 점검 실행', exact: true }).click();
+    await expect(page.locator('.skill-result table')).toContainText('사람 검토 필요');
+  });
+
+  await test.step('Skills: MRV requires an explicit real vessel mapping', async () => {
+    const ship = (await api('/api/operations')).data.ships[0];
+    await go('operations');
+    const panel = page.locator('[data-workflow=operations]');
+    await panel.locator('summary').first().click();
+    await panel.getByLabel('실행할 기능').selectOption('mrv-analysis');
+    await panel.getByLabel('선박', { exact: true }).selectOption(ship.id);
+    await panel.getByLabel('MRV 보고연도').fill('2018');
+    await panel.getByLabel('질문 또는 작업 목적').fill('MRV 참고값을 확인해줘');
+    await panel.getByRole('button', { name: '실행', exact: true }).click();
+    await expect(page.locator('article')).toContainText('명시적 연결이 필요합니다');
+  });
+
   await test.step('Mobile navigation and overflow', async () => {
     await go('chat');
+    await action('history').click();
+    await page.locator('[data-action=historyAnswer]').first().click();
+    await expect(page.locator('article.answer')).toContainText('업무 스킬');
     await page.waitForFunction(() => !document.querySelector('.toast'));
     await page.screenshot({ path: testInfo.outputPath('desktop.png'), fullPage: true });
     await page.setViewportSize({ width: 390, height: 844 });

@@ -27,12 +27,12 @@ class RequestContext:
 
 Handler = Callable[[RequestContext], Any]
 
-from . import admin, auth, changes, documents, operations, reports, system  # noqa: E402
+from . import admin, auth, changes, documents, operations, reports, skills, system  # noqa: E402
 
 GET: dict[str, Handler] = {}
 POST: dict[str, Handler] = {}
 GET_PREFIX: list[tuple[str, Handler]] = []
-for _module in (system, auth, documents, operations, changes, reports, admin):
+for _module in (system, auth, documents, operations, changes, reports, admin, skills):
     for _table, _routes in ((GET, getattr(_module, "GET", {})), (POST, getattr(_module, "POST", {}))):
         _duplicate = _table.keys() & _routes.keys()
         assert not _duplicate, f"duplicate route {_duplicate} in {_module.__name__}"

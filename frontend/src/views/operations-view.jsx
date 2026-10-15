@@ -1,4 +1,5 @@
 import React from 'react';
+import SkillsPanel from '../components/skills-panel';
 import * as helpers from '../components/common';
 export function createOperationsViews(model, views) {
   const noop = () => {};
@@ -575,6 +576,7 @@ export function createOperationsViews(model, views) {
               analysis,
               calculation,
             }[state.tab]()}
+        <SkillsPanel group="operations" />
       </>
     );
   }

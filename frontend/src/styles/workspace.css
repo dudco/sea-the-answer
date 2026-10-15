@@ -8,3 +8,39 @@
 
 /* Keep the longer sidebar subtitle on one line. */
 .sidebar .brand small{letter-spacing:1px;white-space:nowrap}
+.skills-page { max-width: 1100px; margin: 0 auto; }
+.workflow-panel { border: 1px solid var(--line); border-radius: 10px; padding: 16px; background: #fff; }
+.workflow-panel > summary { cursor: pointer; font-weight: 600; color: var(--teal); }
+.workflow-panel[open] > summary { margin-bottom: 16px; }
+.workflow-panel > .skill-form { margin-top: 12px; }
+.skill-inputs { display: grid; gap: 16px; border: 0; padding: 0; margin: 0; min-width: 0; }
+.skill-inputs > label { display: grid; gap: 7px; }
+.skill-form select, .skill-form textarea, .skill-form input:not([type=checkbox]) { width: 100%; }
+.skill-form select, .skill-form textarea, .skill-form input:not([type=checkbox]), .skill-result textarea {
+  font: inherit; line-height: 1.5; border: 1px solid #cbd9e2; border-radius: 8px;
+  padding: 10px 12px; background: #fff; color: #17344b; min-width: 0;
+}
+.skill-form select:focus-visible, .skill-form textarea:focus-visible, .skill-form input:focus-visible {
+  outline: 2px solid #167d83; outline-offset: 2px;
+}
+.skill-form label.inline { display: flex; align-items: center; }
+.skill-documents { min-width: 0; border: 0; padding: 0; }
+.skill-documents legend { margin-bottom: 8px; }
+.skill-document-list { max-height: 240px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
+.skill-document-option { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; cursor: pointer; }
+.skill-document-option:has(input:checked) { background: var(--mint); }
+.skill-document-option input { margin-top: 4px; flex-shrink: 0; accent-color: var(--teal); }
+.skill-document-option span { overflow-wrap: anywhere; }
+.skill-dates { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 16px; }
+.skill-dates label { display: grid; gap: 7px; }
+.skill-metrics { display: grid; grid-template-columns: repeat(auto-fit,minmax(170px,1fr)); gap: 16px; margin: 20px 0; }
+.skill-metrics div { background: #eef5f7; border-radius: 8px; padding: 14px; }
+.skill-metrics dd { margin: 8px 0 0; font-weight: 600; }
+.skill-value { font-size: 25px; font-weight: 650; overflow-wrap: anywhere; }
+.skill-value small { font-size: 14px; font-weight: 400; }
+.skill-result h3 { margin: 18px 0 10px; }
+.skill-result textarea { width: 100%; }
+.skill-result li { margin: 12px 0; }
+.skill-json { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 350px; overflow: auto; font-size: 12px; }
+.skill-evidence { border-left: 3px solid #167d83; padding: 8px 16px; margin: 18px 0; }
+.skill-evidence blockquote { white-space: pre-wrap; }

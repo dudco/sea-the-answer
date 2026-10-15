@@ -6,7 +6,7 @@
 
 ## 목적과 범위
 
-PostgreSQL 해사 데이터를 읽는 `backend/tools/`의 요청·응답·오류·산술 범위를 정의합니다. `MARITIME_DATA_API_TOKEN`이 설정되면 앱 backend(FastAPI)에 `/api/maritime-data/*`로 함께 마운트되고([ADR 0009](../adr/0009-split-packages-and-compose.md)), 독립 앱(`create_app`)으로도 실행할 수 있습니다. Tool 경로·요청·응답은 두 방식이 같습니다. [앱 API](api.md)와 달리 서버 전용 Bearer 토큰을 씁니다. DB의 선택적 `vessels.ship_id` 연결과 오프라인 명시 매핑은 제공하지만, 앱 선박 ID를 Tool 입력으로 자동 변환하는 화면 어댑터·사용자 접근 정책·영구 감사 통합 및 LLM 연결은 아직 구현되지 않았습니다.
+PostgreSQL 해사 데이터를 읽는 `backend/tools/`의 요청·응답·오류·산술 범위를 정의합니다. `MARITIME_DATA_API_TOKEN`이 설정되면 앱 backend(FastAPI)에 `/api/maritime-data/*`로 함께 마운트되고([ADR 0009](../adr/0009-split-packages-and-compose.md)), 독립 앱(`create_app`)으로도 실행할 수 있습니다. Tool 경로·요청·응답은 두 방식이 같습니다. [앱 API](api.md)와 달리 서버 전용 Bearer 토큰을 씁니다. 운항 정보 화면의 MRV 업무는 별도 [일반 앱 어댑터](workflow-skills.md)에서 명시 매핑·IMO 정체성·기존 공개 접근 정책을 검증하고 Python 계산 함수를 호출합니다. 사용자별 선박 ACL과 자연어 자동 Tool 선택은 추가하지 않았습니다.
 
 | 메서드·경로 | 역할 | Bearer 토큰 |
 |---|---|---|
@@ -100,7 +100,7 @@ DB 예외의 SQL·연결 문자열은 응답에 노출하지 않습니다. 자�
 
 ### API와 입력
 
-`GET /api/maritime-data/factors`는 계수·버전·근거를 반환합니다. `POST /api/maritime-data/calculate`는 아래 입력을 받습니다. 독립 API(8001)의 두 경로는 `Authorization: Bearer <MARITIME_DATA_API_TOKEN>`이 필요합니다. 팀 앱 연결 시 내부 API 어댑터에서 팀의 접근 정책과 POST CSRF를 적용해야 합니다. 이 어댑터는 아직 구현되지 않았습니다. 독립 도구 자체는 앱 계정을 제공하지 않습니다. 현재 실행·인증 방법은 운영 안내를 참고하세요.
+`GET /api/maritime-data/factors`는 계수·버전·근거를 반환합니다. `POST /api/maritime-data/calculate`는 아래 입력을 받습니다. 독립 API(8001)의 두 경로는 `Authorization: Bearer <MARITIME_DATA_API_TOKEN>`이 필요합니다. 기존 calculate의 일반 화면 자동 호출은 추가하지 않았습니다. MRV 참고값은 `/api/skills/run` 어댑터에서 앱의 접근 정책·CSRF·감사 경계로 실행합니다. 독립 도구 자체는 앱 계정을 제공하지 않습니다. 현재 실행·인증 방법은 운영 안내를 참고하세요.
 
 합성 예제의 VLSFO→HFO는 **개발용 가정**이며 실제 연료 증빙이 아닙니다.
 
@@ -175,7 +175,7 @@ CO2_t = Σ(연료종류별 사용량 t × CF). 기간 DWT 집약도 = CO2_t × 1
 - 참조 부재·출처 간 DWT 5% 초과 충돌·원본 DWT와 후보의 5% 초과 충돌·결측/비양수·지원 밖 선종·복수 승인 보고는 blocked다. 날짜/연도 일치·실제 자료·승인 상태를 확인하며 Partial을 합산하거나 임의 선택하지 않는다.
 - 계산 성공에도 MRV 범위와 DCS 범위 차이, 역산 거리·범위 미검증, 후보 DWT·시점 미검증, 보정/법정 검증 미적용을 표시한다. 출처별 숫자·URL·파일 SHA256·논리 행 번호를 보존한다.
 - 조회는 한 READ ONLY/REPEATABLE READ 트랜잭션, SQL당 5초 제한을 사용한다. 참조 테이블을 읽는 DB 오류/미적용 스키마는 503, 입력 오류는 422, 인증은 기존 401/403이다. 참조 테이블은 존재하나 해당 후보가 없으면 200 blocked다.
-- 기존 query/calculate/ask 응답, 원본·vessels·앱 선박·운항·공식 CII 판정은 변경하지 않는다. 화면·LLM·영구 감사 어댑터는 후속 범위다.
+- 기존 query/calculate/ask 응답, 원본·vessels·앱 선박·운항·공식 CII 판정은 변경하지 않는다. 별도 `/api/skills/run` 어댑터가 매핑된 앱 선박의 참고 계산과 실행 이력을 제공하며 자연어 자동 호출은 후속 범위다.
 
 ## 수용 기준
 

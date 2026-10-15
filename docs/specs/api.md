@@ -37,6 +37,8 @@
 | 메서드 · 경로 | 권한 | 동작 |
 |---|---|---|
 | GET `/api/health` | 모두 | 상태·사용자·CSRF 토큰 |
+| GET `/api/skills` | 모두 | 고정 업무 스킬 목록 |
+| POST `/api/skills/run` | 모두(본인 이력·문서 권한 검사) | [업무 스킬](workflow-skills.md). 입력 범위·매핑 검증 후 실행, 초안 저장은 별도 |
 | POST `/api/auth/login` · `/api/auth/logout` | 모두 | 관리자 로그인·로그아웃 |
 | GET `/api/documents` | 모두 | 허용 문서 목록·메타데이터·페이지별 본문 |
 | GET `/api/documents/:id/pdf` | 모두(범위 검사) | 허용된 저장 원본 PDF |
