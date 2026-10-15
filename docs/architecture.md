@@ -9,7 +9,7 @@
 
 문서 등록: `frontend/src/lib/pdf.js`가 브라우저에서 페이지별 텍스트를 추출 → `controller.jsx`에서 사용자가 검토한 본문을 sections로 변환 → `POST /api/changes` (`document.save`) → `api/store/documents.py`의 `DocumentStore.save_document` → `api/rag_preprocessing.py` → 기존 `documents`, `chunks`, `chunk_pages`, `document_files` 저장. 원본 PDF는 기존과 같이 base64로 보존하며 외부 추출 서비스에 보내지 않는다.
 
-전처리는 웹·DB 의존성이 없는 함수이고 문서 ID·제목은 저장 계층에서 기존 관계로 연결한다. 청킹 규칙과 변경 적용 범위는 [API 전처리 계약](specs/api.md#python-문서-전처리-계약-2026-10-13-확정), 검증과 새 구조 통합 기록은 [작업 기록](plans/2026-10-13-rag-preprocessing.md)에 있다. 검색은 Python의 단어 포함 점수이며 FTS5/BM25나 벡터 검색을 이번 작업에서 추가하지 않는다.
+전처리는 웹·DB 의존성이 없는 함수이고 문서 ID·제목은 저장 계층에서 기존 관계로 연결한다. 청킹 규칙과 변경 적용 범위는 [API 전처리 계약](specs/api.md#python-문서-전처리-계약-2026-10-13-확정), 검증과 새 구조 통합 기록은 [작업 기록](plans/2026-10-13-rag-preprocessing.md)에 있다. 2026-10-14부터 검색은 `api/rag_retrieval.py`의 BM25Okapi를 사용한다. 저장 계층이 권한·상태·종류를 먼저 필터링하고 모듈은 허용된 청크만 토큰화·정렬한다. PostgreSQL 저장·개정·전처리는 변경하지 않는다.
 
 ## 1. 한눈에 보기
 
@@ -81,7 +81,7 @@ sequenceDiagram
   UI->>API: question, task, context{ship,from,to}, criterion
   API->>WS: 사용자·CSRF 확인 후 호출
   WS->>DB: search() — 적용 중 문서의 청크 중 열람 가능한 것
-  WS->>WS: 질문 단어(+한영 동의어)가 포함된 개수로 순위 → 상위 5
+  WS->>WS: 권한·상태·종류 필터 → 한영 토큰·동의어 → BM25 → 상위 5
   alt mode=llm 이고 모델 설정됨
     WS->>WS: 외부 LLM → 인용 구절이 원문에 있는지 검사
   else
@@ -109,6 +109,7 @@ sequenceDiagram
 | `api/config.py`, `api/deps.py` | 환경 설정(DB 주소, 백업 경로, 허용 호스트), `Workspace` 열기와 최초 1회 초기화 |
 | `api/llm.py` | Chat Completions 호출, 선택적 JSON 출력 형식, 모델 JSON·원문 인용 검증. URL 호스트별 키 선택과 설정 판정은 `config.llm_settings()`를 health·답변이 공유 |
 | `api/rag_preprocessing.py` | 저장 전 페이지별 텍스트 정리·경계 기반 최대 900자 청킹. DB·웹 의존성 없음 |
+| `api/rag_retrieval.py` | 허용된 청크의 제목·출처·heading·본문을 토큰화해 BM25 정렬. 내부 score는 저장 계층에서 제거해 기존 evidence 응답 유지 |
 | `api/errors.py`, `api/validation.py` | `ApiError`·`require`, 입력 검증·형식 도우미 |
 | `knowledge/seed.json`, `knowledge/sample-data.json` | 기본 문서, "예시 데이터 넣기"용 가상 운항 기록 |
 | `tools/` | 서비스 실행 중 사용하는 읽기 전용 해사 데이터 조회·계산·규칙 기반 조회 도우미(8절) |
@@ -117,6 +118,8 @@ sequenceDiagram
 최상위 `scripts/`는 원본·공개 참조 자료 정규화, 전처리·품질 판정, 필드 사전 생성, CSV 적재 및 명시적 선박 연결을 담당합니다. backend uv 환경의 `data` 의존성 그룹을 사용하며 운영 이미지에는 포함하지 않습니다([ADR 0011 제안](adr/0011-tools-runtime-and-data-preparation.md)). 자료 준비는 서비스 시작이나 Tool 호출 때 자동 실행하지 않습니다.
 
 DB 스키마는 backend가 아니라 최상위 `migrations/`(dbmate)가 소유합니다. backend는 테이블이 없으면 `SCHEMA_NOT_READY`(503)를 반환합니다.
+
+개발자용 `scripts/debug_bm25.py`는 backend 기본 uv 의존성만 사용하는 읽기 전용 진단 도구다. `DocumentStore.search_candidates`의 기존 조회·권한·상태·kind 필터와 `rag_retrieval.query_tokens/chunk_tokens/retrieve`를 공유한다. API는 계속 score 없는 상위 5개를 반환하고, CLI만 점수·일치 토큰·미리보기를 출력한다. DB READ ONLY 트랜잭션에서 실행하며 초기화·저장·질문 이력·LLM 호출은 하지 않는다. 운영 이미지에는 스크립트를 포함하지 않고 실행할 때 읽기 전용 마운트한다. 기본 guest 또는 명시한 기존 활성 계정의 scope를 적용하며 DB 자격 증명을 가진 개발자 전용이다. [실행 방법](../README.md#bm25-개발자-디버그), [출력 계약](specs/api.md#개발자-진단-cli-계약-2026-10-15-확정).
 
 `frontend/tests/`는 CSV·PDF 유틸 단위 테스트(`npm test`), 최상위 `e2e/tests/`는 화면 → API → DB 전체 흐름 검증(Playwright)입니다.
 
@@ -164,8 +167,8 @@ DB 스키마는 backend가 아니라 최상위 `migrations/`(dbmate)가 소유�
 
 ## 7. 알려진 한계
 
-- 문서 청크를 요청마다 전부 읽어 메모리에서 순위를 매기는 캡스톤 데모 규모 설계. 대규모 운영에는 인덱스·페이징·파일 저장소·TLS·로그 보존 정책이 필요.
-- 검색은 단어 포함 여부 기반(이전 Node 구현의 FTS5·BM25·한글 바이그램보다 단순)이라 의미가 같고 단어가 다른 질문, 교차 언어 질문에 약함.
+- 문서 청크를 요청마다 읽고 권한 필터 후 메모리 BM25 인덱스를 만드는 캡스톤 데모 규모 설계. 대규모 운영에는 인덱스 재사용·페이징·파일 저장소·TLS·로그 보존 정책이 필요.
+- 검색은 한영 단어·한글 2글자 토큰·제한된 동의어 기반이다. 형태소·영문 stemming·의미 검색은 없고, 한글 부분 토큰은 오탐할 수 있다. 작은 corpus의 BM25 점수는 0 또는 음수일 수 있으며 확률이 아니다. 상세 규칙은 [검색 계약](specs/api.md#문서-검색-bm25)을 따른다.
 - 관리자 세션은 backend 프로세스 메모리에 있어 backend를 여러 개 띄우면 공유되지 않음.
 - 질문 유형 분기는 단어 규칙 기반. 질문 속 날짜·선박명 자동 추출은 미구현.
 

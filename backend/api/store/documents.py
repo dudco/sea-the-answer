@@ -1,4 +1,4 @@
-"""Documents: revisions, chunks, access scope and keyword search."""
+"""Documents: revisions, chunks, access scope and BM25 search."""
 
 from __future__ import annotations
 
@@ -11,15 +11,8 @@ from psycopg.types.json import Jsonb
 
 from ..errors import ApiError, require
 from ..rag_preprocessing import preprocess_sections
+from ..rag_retrieval import retrieve
 from ..validation import iso_date, sha256, stamp, text
-
-SEARCH_SYNONYMS = (
-    ("fuel", "연료"), ("emission", "emissions", "배출량"),
-    ("report", "보고서"), ("cii", "탄소집약도", "carbon intensity"),
-    ("eca", "배출규제해역"), ("sulphur", "sulfur", "sox", "황함유량"),
-    ("rating", "등급"), ("corrective", "시정", "개선"),
-    ("changeover", "전환"), ("checklist", "점검표"),
-)
 
 
 class DocumentStore:
@@ -143,21 +136,21 @@ class DocumentStore:
 
     def search(self, user: dict, question: str, kind: str = "all") -> list[dict]:
         text(question, "질문", 2000)
+        candidates = self.search_candidates(user, kind)
+        # Filter before BM25 so inaccessible chunks cannot affect IDF/ranking.
+        # Keep scores internal; /search and /ask retain their evidence contract.
+        return [{key: value for key, value in row.items() if key != "score"}
+                for row in retrieve(question, candidates, top_k=5)]
+
+    def search_candidates(self, user: dict, kind: str = "all") -> list[dict]:
+        """Shared read-only candidate selection for API search and diagnostics."""
         require(kind in ("all", "imo", "manual"), "문서 필터가 올바르지 않습니다.")
-        query = question.lower()
-        terms = list(dict.fromkeys(re.findall(r"[a-z0-9]{2,}|[가-힣]{2,}", query)))[:30]
-        for group in SEARCH_SYNONYMS:
-            if any(word in query for word in group):
-                terms.extend(group)
-        terms = list(dict.fromkeys(terms))
-        if not terms:
-            return []
         rows = self.all("""SELECT c.id,c.document_id,c.heading,c.text,p.page,d.title,d.kind,d.url,
             d.reference,d.version,d.reviewed_at,d.hash,m.body AS meta
             FROM chunks c JOIN documents d ON d.id=c.document_id
             LEFT JOIN chunk_pages p ON p.id=c.id LEFT JOIN document_meta m ON m.id=d.id
             WHERE d.active=true ORDER BY d.id,c.position""")
-        ranked = []
+        candidates = []
         for row in rows:
             meta = row["meta"] or {"scope": "all", "status": "active"}
             if meta.get("status") != "active":
@@ -167,9 +160,5 @@ class DocumentStore:
                 continue
             if kind == "imo" and row["kind"] != "official-summary" or kind == "manual" and row["kind"] == "official-summary":
                 continue
-            haystack = " ".join(str(row[key]) for key in ("title", "reference", "heading", "text")).lower()
-            score = sum(term in haystack for term in terms)
-            if score:
-                ranked.append((score, {**row, "reviewed_at": stamp(row["reviewed_at"]), "meta": meta}))
-        ranked.sort(key=lambda item: -item[0])
-        return [row for _, row in ranked[:5]]
+            candidates.append({**row, "reviewed_at": stamp(row["reviewed_at"]), "meta": meta})
+        return candidates

@@ -51,7 +51,7 @@ erDiagram
 | `chunks` | `id`(=`{revision}-{n}`), `document_id`, `position`, `heading`, `text` | 절을 900자씩 분할 |
 | `chunk_pages` | `id`(청크 ID), `page` | PDF 물리 페이지 번호(없으면 NULL → "페이지 미지정") |
 
-검색(`Workspace.search`): 질문에서 영숫자 2자 이상·한글 2자 이상 단어를 최대 30개 뽑고 한영 동의어 묶음(`SEARCH_SYNONYMS`)을 더한 뒤, 열람 가능한 적용 중 문서의 청크마다 제목·조항·소제목·본문에 포함된 단어 수로 순위를 매겨 최대 5개를 반환합니다. 별도 검색 인덱스는 없습니다.
+검색(`Workspace.search`): 현재 개정·문서 상태·열람 범위·종류 필터를 통과한 청크를 `api/rag_retrieval.py`에 전달하고 BM25 상위 5개를 반환합니다. 요청마다 메모리에 인덱스를 만들며 DB에는 점수나 별도 검색 인덱스를 저장하지 않습니다. 기존 청크의 재등록·재청킹·스키마 변경은 필요 없습니다. 토큰화와 점수 규칙은 [검색 계약](specs/api.md#문서-검색-bm25)을 따릅니다.
 
 ### `document_meta` / `document_files`
 

@@ -39,6 +39,8 @@
 
 | 문서 | 상태 |
 |---|---|
+| [`plans/2026-10-15-bm25-debug.md`](plans/2026-10-15-bm25-debug.md) — 읽기 전용 BM25 디버그 CLI | 완료 |
+| [`plans/2026-10-14-bm25-retrieval.md`](plans/2026-10-14-bm25-retrieval.md) — 권한 적용 후 한영 BM25 문서 검색 | 완료 |
 | [`plans/2026-10-13-openai-compatible-chat.md`](plans/2026-10-13-openai-compatible-chat.md) — 모델 호출 전환·#11 검토 반영·CI 분리·후속 PR | 진행 중 |
 | [`plans/2026-10-13-rag-preprocessing.md`](plans/2026-10-13-rag-preprocessing.md) — Python 해사 문서 전처리·청킹 및 새 구조 통합 | 완료 |
 | [`plans/2026-10-08-team-module-integration.md`](plans/2026-10-08-team-module-integration.md) — RAG·LLM·Tool 팀 모듈 연결 로드맵 | 초안 |

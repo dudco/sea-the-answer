@@ -11,6 +11,7 @@ dependencies = [
     # tools
     "sqlalchemy>=2.0,<3",
     "python-dotenv>=1,<2",
+    "rank-bm25>=0.2.2",
 ]
 
 [dependency-groups]

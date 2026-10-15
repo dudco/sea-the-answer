@@ -4,6 +4,10 @@
 
 ## 변경 이력
 
+- **BM25 개발자 진단 / 2026-10-15** (1.4.0 유지): `scripts/debug_bm25.py`에서 기존 PostgreSQL 청크를 읽어 질의 토큰·Top-K·전체 점수·일치 토큰·출처·미리보기를 출력한다. 문서 ID/제목·kind·활성 사용자 범위·JSON 옵션을 지원한다. 기존 토큰 함수와 후보 조회를 공유하고 DB는 READ ONLY로 연결한다. 랭킹·API 응답·저장·청킹·UI·스키마·의존성 변경 없음. 토큰별 기여도와 검색 품질 개선은 제외했다. [계획](plans/2026-10-15-bm25-debug.md), [실행](../README.md#bm25-개발자-디버그).
+
+- **BM25 문서 검색 / 2026-10-14** (1.4.0 유지): `api/rag_retrieval.py`에 한영 단어·한글 2글자 토큰·기존 동의어와 rank-bm25 BM25Okapi 검색을 분리했다. 저장 계층의 권한·현재 개정·문서 상태·종류 필터 이후 제목·출처·heading·본문으로 상위 5개를 선택한다. 내부 점수는 외부 evidence에 추가하지 않고 기존 응답·페이지·원문 인용을 유지한다. health의 retrieval은 `bm25-ko-en`. 사용자 추가 의존성을 사용하며 저장·개정·전처리·스키마·UI는 변경하지 않았다. 임베딩·ChromaDB·벡터·하이브리드·RRF는 범위 밖이다. [작업 계획](plans/2026-10-14-bm25-retrieval.md).
+
 - **PR #11 검토 반영 / 2026-10-14** (1.4.0 유지, [ADR 0013](adr/0013-provider-credential-isolation.md)): URL·출력 형식 설정을 `LLM_API_BASE_URL`·`LLM_RESPONSE_FORMAT`으로 변경. `OPENAI_MODEL`·`OPENAI_API_KEY`는 유지하고 `DONGUK_AI_CHAT_API_KEY`를 분리했다. URL 호스트에 맞는 공급자 키만 선택하며 로컬 Ollama·기타 호환 서버에는 두 키가 있어도 인증 헤더를 보내지 않는다. CI 워크플로는 기능 변경에서 제거해 별도 PR로 분리한다. 최신 `main`의 RAG 전처리·문서 변경을 함께 보존했다. 기존 `.env`는 재시작 전 이름 변경이 필요하며 자동 수정하지 않는다. 실제 동국·Ollama 접속은 미검증.
 
 - **최초 PR #11의 OpenAI 호환 Chat Completions / 2026-10-13** (버전 유지, [ADR 0012](adr/0012-openai-compatible-chat-completions.md)): #8 머지본 `196ad73`에서 `api/llm.py`로 모델 통신·JSON·인용 검증 분리. 당시 `OPENAI_BASE_URL`·`OPENAI_RESPONSE_FORMAT` 추가, 기존 키·모델 이름 유지. 키 없는 로컬 호환 서버 활성화와 health·답변 설정 판정 통일, 실패·잘림·위조 인용은 기존 발췌 경고로 전환. `.env.example`·Compose·README·공급자 계약 갱신. 당시 PR에 검증 워크플로를 연결했으며 2026-10-14 검토에서 별도 PR로 분리. 동국·Ollama 실접속은 미검증.
@@ -34,6 +38,25 @@
 - **1.2.0 / 2026-09-30**: PDF/CSV, 다중 보고서, 통합 결과, 계정·권한·로그·백업·복구.
 
 ## 검증 기록
+
+### 2026-10-15 — BM25 개발자 진단
+
+- Windows, Python 3.13, rank-bm25 0.2.2. 신규 진단 테스트 23개. `backend/`에서 `uv run pytest tests/test_debug_bm25.py tests/test_rag_retrieval.py -q`: **53 passed**. 루트의 `uv run --project backend pytest backend/tests/test_debug_bm25.py backend/tests/test_rag_retrieval.py -q`와 CLI `--help`도 확인했다.
+- `backend/`에서 `uv run python ../.verification/bm25-db-tests.py`로 격리된 PostgreSQL 17 클러스터를 열어 `python -m pytest -q -rs --tb=short` 수행: **338 passed / 4 skipped**, 기존 Starlette/httpx 경고 1개. 4개는 `MARITIME_DATA_TEST_DATABASE_URL`이 필요한 기존 데이터셋 테스트다. 임시 서버는 종료했다. 보조 스크립트·로그는 Git 제외이며 실제 앱 DB를 테스트용으로 사용하지 않았다.
+- `docker compose build backend` 후 README의 일회성 CLI 명령(`--top-k 3 --preview-chars 0 --json`)을 실제 등록 DB에서 실행했다. 공개 검색 후보 **5,689개 청크**를 확인했고, 세 질의(한국어 선급정지 / 영어 heavy deck cargo / 혼합 Part 5D)에 대해 진단의 순위·점수가 기존 `retrieve` 및 `DocumentStore.search` 순위와 일치했다. 문서 ID+제목 필터의 corpus 1,376개, 없는 ID의 빈 결과, 기존 활성 관리자 계정 범위도 확인했다. `SHOW transaction_read_only=on` 확인. 본문·접속 문자열·비밀값은 출력/기록하지 않았으며 실 DB에는 쓰지 않았다.
+- `docker compose -p haedap-bm25-debug-check --profile e2e up --build --force-recreate --exit-code-from e2e e2e`: **Chromium E2E 1 passed**, 종료 코드 0. backend·frontend 운영 이미지 빌드 및 기존 문서/검색/운항/보고서/관리/백업 흐름 통과. 이후 같은 프로젝트의 `docker compose ... --profile e2e down`으로 테스트 컨테이너·네트워크를 정리했다. 기존 `haedap` 웹앱은 재시작하지 않았다.
+- UI 소스를 바꾸지 않아 frontend 단위 테스트는 별도로 재실행하지 않았다. 검색 정확도 개선, 토큰별 점수 기여도, 대규모 성능, 실제 외부 LLM 호출은 검증 범위 밖이다. `git diff --check` 통과.
+
+### 2026-10-14 — BM25 문서 검색
+
+- Windows, Python 3.13, rank-bm25 0.2.2. 사용자의 `.env`·실제 PDF·앱 DB는 변경하지 않았다.
+- `backend/`에서 `uv run pytest -q`: DB 설정 없는 초기 실행은 253 passed / 65 skipped. 이후 실 DB 검색 회귀 테스트 1개를 추가했다.
+- 격리된 loopback PostgreSQL 17 클러스터의 `HAEDAP_TEST_DATABASE_URL`을 설정하고 `python -m pytest -q -rs --tb=short`: **315 passed / 4 skipped**, 기존 Starlette/httpx 사용 중단 경고 1개. 4개는 적재된 해사 데이터셋용 `MARITIME_DATA_TEST_DATABASE_URL`이 없어 건너뛰었다. 임시 서버는 종료했다. 로컬 보조 실행 명령: `backend/`에서 `uv run python ../.verification/bm25-db-tests.py` (보조 파일·로그는 Git 제외).
+- 신규 검색 단위 테스트 30개: 한영 순위·길이/빈도 반영, 동의어·한글 조사 대응, Unicode 정규화, 메타데이터 보존, 빈 입력, 0/음수 점수, top-k·동점, 권한/상태/종류 필터를 점수 계산 전 적용하는지 확인.
+- 실 DB에서 합성 문서 저장 → `/api/search` 한영 순위·문서명·페이지·heading → `/api/ask` 원문 인용 → 범위/상태 변경 즉시 제외를 검증했다. 기존 개정·중복·롤백 테스트도 통과했다.
+- `frontend/`에서 `npm.cmd test`: **4 passed**.
+- 루트에서 `docker compose -p haedap-bm25-check --profile e2e up --build --force-recreate --exit-code-from e2e e2e`: **Chromium E2E 1 passed**, 종료 코드 0 (문서·검색·원문·운항·보고서·관리·백업 전체 시나리오). backend는 새 의존성으로 운영 이미지 빌드, frontend 운영 이미지는 변경 없는 기존 빌드 캐시를 사용했다. 기존 앱과 다른 Compose 프로젝트명으로 실행하고 `docker compose -p haedap-bm25-check --profile e2e down`으로 테스트 스택을 정리했다.
+- 실제 해사 질문 평가 세트의 Recall@5, 대규모 자료 성능, 실제 외부 LLM 호출은 이번 검증에 포함하지 않았다.
 
 ### 2026-10-14 — PR #11 검토 반영 (Windows)
 

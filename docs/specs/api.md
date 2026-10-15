@@ -77,6 +77,28 @@
 - `ship.save`에서 해사 원본과 연결된 선박의 정체성을 바꾸면 **409 `MARITIME_SHIP_IDENTITY_CONFLICT`**. 실제 선박은 원본과 동일한 IMO 및 비샘플 구분을 유지해야 하며 이름·DWT 변경은 허용합니다. 합성 선박은 기존 이름·선종·DWT·IMO·sample 구분을 유지해야 합니다. 필요한 식별정보 수정은 관리자가 연결을 수동 검토·해제한 뒤 수행하고 다시 연결합니다. 이 검사는 원본 데이터나 매핑을 자동 변경하지 않으며 연결이 없는 선박에는 기존 수정 규칙을 적용합니다.
 - 보고서 검토 요청과 이전 버전의 대기 항목은 `POST /api/changes/review`로 처리합니다.
 
+### 문서 검색 (BM25)
+
+#### 개발자 진단 CLI 계약 (2026-10-15 확정)
+
+`scripts/debug_bm25.py`는 HTTP API가 아닌 DB 접근 권한이 있는 개발자용 도구다. `query`, `--top-k`(기본 5), `--document-id`(개정 ID 완전 일치), `--document-title`(대소문자 무시 부분 일치), `--kind`(all/imo/manual), `--username`(활성 계정의 열람 범위 시뮬레이션), `--preview-chars`(기본 240, 0이면 본문 생략), `--json`을 받는다. 기본 사용자는 guest이며 문서 필터를 권한 검사 대신 사용하지 않는다. username 옵션은 웹 로그인 기능이 아니며 DB 자격 증명을 보유한 운영자만 사용한다.
+
+DB의 READ ONLY 트랜잭션에서 기존 `DocumentStore.search_candidates`를 사용한다. 추가 문서 필터는 BM25 **이전**에 AND 조건으로 적용한다. 필터 후 corpus 크기·IDF가 달라지므로 필터 없는 UI 검색과 점수가 다를 수 있다. 같은 계정·kind·corpus·top-k이면 기존 `retrieve`의 순서·점수를 유지한다. 비활성 개정·상태 및 열람 불가 청크는 통계에서도 제외된다.
+
+출력은 query 원문, 실제 확장 query_tokens, corpus_size, 역할·필터·top_k, results의 rank/chunk_id/document_id/title/page/heading/score/matched_tokens/preview다. score는 rank-bm25의 최종 합산 float이며 반올림·재계산하지 않는다. matched_tokens는 실제 질의 토큰과 **title/reference/heading/text 전체** 토큰의 교집합(질의 순서)이지 토큰별 기여도가 아니다. 작은 corpus의 0·음수 점수도 유지한다. 빈 질의/토큰/corpus/불일치는 빈 results, 잘못된 옵션·DB 오류·없는/비활성 계정은 비정상 종료한다. DB 오류의 접속 문자열·자격 증명은 출력하지 않는다. bootstrap·저장·마이그레이션·질의 이력·LLM 호출은 하지 않는다.
+
+#### 기존 API 검색 계약
+
+2026-10-14 확정: `POST /api/search`의 `{question, filter}` 및 `{evidence: [...]}`, `/api/ask`의 evidence 형식은 유지한다. 질문은 기존처럼 비어 있지 않은 최대 2,000자 문자열이며 `filter`는 `all|imo|manual`이다. `GET /api/health.retrieval`은 `bm25-ko-en`을 반환한다.
+
+- `DocumentStore.search`가 PostgreSQL에서 현재 개정(`active=true`) 청크를 읽고, 문서 상태·사용자 scope·종류 필터를 적용한 뒤에만 검색 모듈에 전달한다. 제한된 청크는 BM25 통계에도 포함하지 않는다.
+- `api/rag_retrieval.py`의 `retrieve(query, chunks, top_k=5)`는 원본 청크 필드와 숫자 `score`를 가진 사본 목록을 반환한다. `DocumentStore`는 내부 점수만 제거하여 기존 API 응답을 유지한다. 문서 ID·제목·페이지·heading·본문은 변경하지 않는다.
+- corpus는 `title`, `reference`, `heading`, `text`를 같은 비중으로 결합한다. Unicode NFKC 정규화·소문자화 후 기존 정규식의 2자 이상 영숫자·한글 단어를 추출하고 한글 3자 이상 단어에는 겹치는 2글자 토큰을 추가한다. 원문은 정규화하지 않고 검색용 사본에만 적용한다.
+- 질의의 서로 다른 기본 단어는 최대 30개이며 기존 한영 동의어를 확장한다. 단어와 확장어 모두 동일하게 토큰화하고 질의 토큰을 중복 제거한다. corpus의 반복 토큰은 BM25 빈도 계산을 위해 유지한다.
+- BM25Okapi 기본값(`k1=1.5`, `b=0.75`, `epsilon=0.25`)으로 계산한다. 일치 토큰이 없는 청크는 반환하지 않는다. 작은 corpus에서 0·음수 점수인 일치 청크도 반환하며 점수 내림차순, 동점은 입력 순서(DB의 문서 ID·청크 순서)를 유지한다. 점수는 확률이나 corpus 간 비교 가능한 신뢰도가 아니다.
+- 검색 모듈은 빈 질의·빈 corpus·토큰 없는 corpus에 빈 목록을 반환한다. `top_k`는 양의 정수여야 한다. 외부 API의 기존 빈 질문 검증은 그대로 유지한다.
+- 매 요청 허용 청크로 메모리 인덱스를 만들며 DB 재등록·재청킹은 필요 없다. 형태소 분석·영문 stemming·의미 검색·벡터 검색은 포함하지 않는다.
+
 ## 4. 문서 등록 payload (`document.save`)
 
 ```json
@@ -127,7 +149,7 @@
 - 명시적인 Part/Chapter/Section 머리말과 ABS 규정 꼬리말이 3개 이상 서로 다른 페이지 가장자리에서 반복될 때만 제거한다. 제거한 머리말 중 가장 구체적인 절 제목은 `heading`에 보존한다. 본문 중간의 같은 문구와 조항 제목은 보존한다.
 - 번호 있는 짧은 조항 제목과 TABLE/FIGURE 제목은 별도 블록을 시작하고 `heading`에 반영한다. 긴 블록은 문단→문장→줄→공백 경계 순으로 최대 길이 안에서 나눈다. 표 블록은 문장보다 줄 경계를 우선한다. 경계가 없는 긴 문자열만 강제 분할한다.
 - 기존 문서 hash와 `unchanged` 판정을 유지한다. 이미 등록된 동일 문서/재활성화된 이전 개정본의 청크는 다시 쓰지 않는다. 변경된 청킹은 새 문서·새 내용의 개정부터 적용된다. 기존 청크를 바꾸는 재색인은 별도 작업이다.
-- API 응답·PostgreSQL 테이블·열람 범위·인용 검증은 그대로 유지한다. 검색은 현재 Python의 단어 포함 점수 방식이다.
+- API 응답·PostgreSQL 테이블·열람 범위·인용 검증은 그대로 유지한다. 현재 검색은 위 BM25 계약을 따른다.
 
 CLI 일괄 수집 명령은 제거되었습니다(Node 버전의 `npm run ingest`). 빈 DB의 첫 요청 때 `backend/knowledge/seed.json`(위 `document` 객체 배열)이 자동 등록됩니다.
 

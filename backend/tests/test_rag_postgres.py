@@ -97,3 +97,45 @@ def test_legacy_same_hash_keeps_existing_chunks(database):
     data["expectedId"] = old_id
     assert database.save_document(data) == {"id": old_id, "status": "unchanged"}
     assert database.all("SELECT * FROM chunks WHERE document_id=%s ORDER BY position", (old_id,)) == before
+
+
+def test_bm25_api_ranking_filters_and_original_citations(database):
+    documents = []
+    for name, content in [
+        ("broad", "ballast inspection 평형수 검사 " + "navigation 항로 기록 " * 25),
+        ("focused", "ballast inspection 평형수 검사 " * 4),
+        *[(f"unrelated-{i}", "galley cooking 식당 조리") for i in range(6)],
+    ]:
+        data = payload()
+        data["document"].update(id="bm25-" + name, title="Synthetic " + name,
+                                sections=[{"page": 11, "heading": "Checks", "text": content}])
+        identifier = database.save_document(data)["id"]
+        documents.append((data, identifier))
+    guest = TestClient(main.app, base_url="http://localhost:5173")
+    headers = {"X-Haedap-Token": guest.get("/api/health").json()["csrfToken"]}
+    for question in ("ballast inspection", "평형수 검사"):
+        response = guest.post("/api/search", headers=headers, json={"question": question})
+        assert response.status_code == 200
+        evidence = response.json()["evidence"]
+        assert [e["document_id"] for e in evidence[:2]] == [documents[1][1], documents[0][1]]
+        first = evidence[0]
+        assert first["title"] == "Synthetic focused" and first["page"] == 11
+        assert first["heading"] == "Checks" and "score" not in first
+        answer = guest.post("/api/ask", headers=headers,
+                            json={"question": question, "task": "documents"}).json()
+        assert answer["statements"][0]["chunkId"] == first["id"]
+        assert answer["statements"][0]["quote"] == first["text"]
+    assert guest.post("/api/search", headers=headers,
+                      json={"question": "ballast", "filter": "imo"}).json()["evidence"] == []
+    # Restrict the previously top-ranked document; it must disappear immediately.
+    focused, focused_id = documents[1]
+    focused["expectedId"] = focused_id
+    focused["meta"]["scope"] = "admin"
+    database.save_document(focused)
+    result = guest.post("/api/search", headers=headers, json={"question": "ballast"}).json()["evidence"]
+    assert [e["document_id"] for e in result] == [documents[0][1]]
+    broad, broad_id = documents[0]
+    broad["expectedId"] = broad_id
+    broad["meta"]["status"] = "retired"
+    database.save_document(broad)
+    assert guest.post("/api/search", headers=headers, json={"question": "ballast"}).json()["evidence"] == []

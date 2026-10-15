@@ -9,7 +9,7 @@ from ..web import security
 
 def health(ctx):
     user = ctx.user
-    return {"ok": True, "storage": "postgresql", "retrieval": "literal-ko-en", "llmConfigured": config.llm_configured(),
+    return {"ok": True, "storage": "postgresql", "retrieval": "bm25-ko-en", "llmConfigured": config.llm_configured(),
             "csrfToken": security.csrf_token, "user": user, "setupRequired": False,
             "documents": len(ctx.db.allowed_document_ids(user)), "version": config.VERSION,
             "authenticated": user["role"] == "admin", "publicAccess": True}
