@@ -140,6 +140,8 @@ e2e는 앱과 분리된 테스트 스택(`e2e-db`·`e2e-migrate`·`e2e-backend`�
 
 Docker 없이 e2e를 돌리려면 **빈 DB로 띄운 스택**에 대고 `e2e/`에서 `npm ci`, `npx playwright install chromium`, `npx playwright test`를 실행합니다(주소는 `E2E_BASE_URL`, 기본 `http://127.0.0.1:5173`). 시나리오가 예시 데이터를 넣고 건수를 확인하므로 데이터가 있는 DB에서는 실패합니다.
 
+push·PR에는 [GitHub Actions 검증](.github/workflows/verify.yaml)이 연결됩니다. 백엔드 테스트(임시 PostgreSQL 포함), 프런트 단위 테스트·빌드, 운영·개발·e2e Compose 구성 검사와 격리된 브라우저 e2e를 실행합니다. 실제 모델 키는 사용하지 않습니다. CI는 LLM 기능 PR #13과 별도로 관리합니다.
+
 ## 설정 (`.env`)
 
 | 변수 | 기본값 | 설명 |

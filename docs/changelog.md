@@ -2,6 +2,12 @@
 
 버전을 올리거나 검증을 수행하면 이 파일에 기록합니다. 검증은 **실제로 수행한 것만** 날짜·환경과 함께 적고, 수행하지 않은 범위는 따로 적습니다.
 
+## 2026-10-14 — CI 워크플로 분리
+
+PR #11의 검토 의견에 따라 `.github/workflows/verify.yaml`을 [CI PR #14](https://github.com/dudco/sea-the-answer/pull/14)로 분리했다. 최신 main `76620c7`을 기준으로 backend·frontend·Compose e2e 검증만 추가하며 모델 호출 코드·환경변수 계약은 [기능 PR #13](https://github.com/dudco/sea-the-answer/pull/13)에 둔다. 기존 워크플로의 push·main 대상 PR·수동 실행, 읽기 전용 저장소 권한, 동시 실행 취소와 e2e 정리를 유지한다.
+
+2026-10-14 커밋 `8112816`의 [fork Actions](https://github.com/cxo-ca/sea-the-answer/actions/runs/38518455486)가 성공했다. Linux / Python 3.13.16 / PostgreSQL 18에서 backend 151개 통과·실 데이터셋 4개 건너뜀(기존 Starlette/httpx 경고 1건), frontend 4개·Next.js 16.3.8 빌드, Compose 구성 3종과 Docker Chromium e2e 1개를 통과했다. 테스트 컨테이너·네트워크 정리도 확인했다. 실제 외부 모델 호출은 실행하지 않았다. 이후 이 결과 기록만 문서로 추가했다.
+
 ## 변경 이력
 
 - **선택 상자 값이 바뀌지 않던 문제 수정 / 2026-10-15**: 화면 공통 `onInput` 처리에서 바로 다시 그리면서, `change` 이벤트가 값을 저장하기 전에 React가 선택 상자를 이전 값으로 되돌렸다. 질문 화면의 답변 방식·언어·작업 유형·검색 범위와 운항·문서 화면의 `data-field` 선택·날짜 입력이 영향을 받았다. `data-field` 요소는 `input`에서 다시 그리지 않도록 `frontend/src/workspace/controller.jsx` 수정. 검증: 2026-10-15 브라우저에서 실제 사용자 순서(input → change)로 재현 확인, `npm test` 4 통과. 수정 후 화면 재확인은 frontend 재빌드 뒤 진행 예정.
