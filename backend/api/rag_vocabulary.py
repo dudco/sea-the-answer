@@ -34,5 +34,5 @@ STOPWORDS = frozenset({
     "a", "an", "the", "and", "or", "of", "to", "in", "on", "at", "for", "by", "with", "from",
     "is", "are", "was", "were", "be", "been", "being", "this", "that", "these", "those",
     "what", "which", "how", "please",
-    "및", "또는", "그리고", "대해", "대한", "해당", "경우", "무엇", "어떻게", "뭐",
+    "및", "또는", "그리고", "대해", "대한", "해당", "무엇", "어떻게", "뭐",
 })

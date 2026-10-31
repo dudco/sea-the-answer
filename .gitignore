@@ -9,6 +9,8 @@ data/
 .env.*
 !.env.example
 .verification/
+.rag-models/
+.rag-vectors/
 *.log
 frontend/AGENTS.md
 frontend/CLAUDE.md

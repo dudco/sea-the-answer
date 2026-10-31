@@ -62,7 +62,7 @@ def test_browser_health_auth_and_question_contract(monkeypatch):
     health = client.get("/api/health")
     assert health.status_code == 200
     assert health.json()["storage"] == "postgresql"
-    assert health.json()["retrieval"] == "bm25-ko-en"
+    assert health.json()["retrieval"] == "hybrid-rrf"
     assert health.json()["user"]["role"] == "guest"
     assert health.json()["documents"] == 0
     assert health.json()["publicAccess"] is False

@@ -74,12 +74,44 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-haedap}:${POSTGRES_PASSWORD:-haedap-local}@db:5432/${POSTGRES_DB:-haedap}
       # Extra public hostnames/IPs users open (LAN, server domain). localhost is always allowed.
       HAEDAP_ALLOWED_HOSTS: ${HAEDAP_ALLOWED_HOSTS:-}
+      HAEDAP_RAG_CANDIDATES: ${HAEDAP_RAG_CANDIDATES:-30}
+      HAEDAP_RRF_K: ${HAEDAP_RRF_K:-60}
+      HAEDAP_EMBED_MODEL_DIR: /opt/models/e5-small
+      HAEDAP_CHROMA_HOST: chroma
+      HAEDAP_CHROMA_PORT: "8000"
+      HF_HUB_DISABLE_TELEMETRY: "1"
     volumes:
       - backups:/data/backups
     depends_on:
       migrate: { condition: service_completed_successfully }
     restart: unless-stopped
     # Not published: only reachable through the frontend's /api proxy.
+
+  # Automatic indexing runs after document commits, independently of searches.
+  rag-worker:
+    build: { context: ./backend, target: prod }
+    command: ["python", "-m", "api.rag_worker", "run"]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-haedap}:${POSTGRES_PASSWORD:-haedap-local}@db:5432/${POSTGRES_DB:-haedap}
+      HAEDAP_CHROMA_HOST: chroma
+      HAEDAP_CHROMA_PORT: "8000"
+      HAEDAP_EMBED_MODEL_DIR: /opt/models/e5-small
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      chroma: { condition: service_healthy }
+    healthcheck:
+      disable: true
+    stop_grace_period: 60s
+    restart: unless-stopped
+
+  # Internal vector index; never publishes a host port.
+  chroma:
+    build: { context: ./backend, dockerfile: Dockerfile.chroma }
+    environment:
+      ANONYMIZED_TELEMETRY: "False"
+    volumes:
+      - rag-vectors:/data/chroma
+    restart: unless-stopped
 
   frontend:
     build: { context: ./frontend, target: prod }
@@ -153,3 +185,5 @@ services:
 volumes:
   db-data:
   backups:
+  # Legacy rag-models volume is intentionally not mounted or deleted.
+  rag-vectors:

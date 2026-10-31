@@ -13,6 +13,10 @@ dependencies = [
     "python-dotenv>=1,<2",
     "rank-bm25>=0.2.2",
     "kiwipiepy>=0.24.0",
+    "chromadb>=1.5.9",
+    "sentence-transformers>=6.2.0",
+    # CPU retrieval: do not pull CUDA runtimes into the Linux Docker image.
+    "torch>=2.14.1",
 ]
 
 [dependency-groups]
@@ -24,6 +28,14 @@ data = ["openpyxl==3.1.5", "pandas>=2.2,<3"]
 # Application, not a library: `uv sync` installs dependencies only; modules run from this folder.
 package = false
 default-groups = ["dev"]
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux' or sys_platform == 'win32'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [tool.pytest.ini_options]
 pythonpath = [".", ".."]

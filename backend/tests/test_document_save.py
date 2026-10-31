@@ -32,9 +32,10 @@ def test_metadata_preserves_revision_chunks_and_files_and_historical_scope(monke
     assert store.save_document(metadata_payload()) == {"id": "manual-current", "status": "updated"}
     preprocessing.assert_not_called()
     assert "FOR UPDATE" in store.one.call_args.args[0]
-    assert store.run.call_count == 2
+    assert store.run.call_count == 3
+    assert "INSERT INTO rag_index_jobs" in store.run.call_args_list[-1].args[0]
     saved = {}
-    for call in store.run.call_args_list:
+    for call in store.run.call_args_list[:-1]:
         query, (doc_id, body) = call.args
         assert query.startswith("INSERT INTO document_meta")
         saved[doc_id] = body.obj
@@ -46,12 +47,13 @@ def test_metadata_preserves_revision_chunks_and_files_and_historical_scope(monke
     assert saved["manual-previous"]["scope"] == "admin"
 
 
-def test_unchanged_metadata_has_no_writes():
+def test_unchanged_metadata_only_requests_index_repair():
     store = metadata_store()
     data = metadata_payload()
     data["meta"] = {"issuer": "Old issuer"}
     assert store.save_document(data)["status"] == "unchanged"
-    store.run.assert_not_called()
+    store.run.assert_called_once()
+    assert "INSERT INTO rag_index_jobs" in store.run.call_args.args[0]
 
 
 @pytest.mark.parametrize("key,value", [("expectedId", "stale"), ("expectedMetaRevision", 9)])

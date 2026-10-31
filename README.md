@@ -15,7 +15,7 @@
 
 업무 기능은 개인 계정으로 로그인한 뒤 사용합니다. 일반 선원은 문서·운항 조회와 자기 보고서 업무를, 관리자는 계정 발급과 원본 자료 변경·승인·백업을 수행합니다. 공용 기본 비밀번호는 없으며 최초 관리자 설정과 기존 버전 전환은 [계정 운영 안내](docs/user-guide.md#2-역할과-승인)를 따릅니다.
 
-**현재 구현 범위**: 문서 검색은 열람 가능한 PostgreSQL 청크를 한영 토큰화·동의어 확장 후 BM25로 정렬하고, 답변은 기본적으로 원문 발췌입니다. 선택적 LLM은 OpenAI 호환 Chat Completions로 연결하며 주소·모델·키 설정으로 OpenAI·동국 AI Chat·로컬 Ollama를 전환할 수 있습니다. 공통 호출은 모의 HTTP로 검증했고 동국 AI Chat 실제 호출은 2026-10-14에 검증했습니다. 로컬 Ollama 실제 검증 결과는 [변경 이력](docs/changelog.md)에 별도로 기록합니다. 벡터·하이브리드 RAG, 공식 CII 계산, 규정 적용 자동 판정, DOCX·PPT 등록은 아직 연결 전입니다. 범위와 연결 계획은 [`docs/plans/2026-10-08-team-module-integration.md`](docs/plans/2026-10-08-team-module-integration.md)를 보세요.
+**현재 구현 범위**: 문서 검색은 열람 가능한 PostgreSQL 청크의 BM25·로컬 E5 벡터 결과를 RRF로 결합하며, 모델·색인 준비 실패 시 BM25로 대체합니다. BM25 분석 토큰은 제한된 메모리 캐시에 재사용합니다. Docker 이미지에 고정 E5 모델이 포함되며, 저장 후 worker가 자동 색인하고 기존 문서는 명시적 초기 색인이 필요합니다. 답변은 기본적으로 원문 발췌입니다. 선택적 LLM은 OpenAI 호환 Chat Completions로 연결하며 주소·모델·키 설정으로 OpenAI·동국 AI Chat·로컬 Ollama를 전환할 수 있습니다. 동국 AI Chat 실제 호출은 2026-10-14에 검증했고 로컬 Ollama 실제 검증 결과는 [변경 이력](docs/changelog.md)에 기록합니다. 공식 CII 계산, 규정 적용 자동 판정, DOCX·PPT 등록은 아직 연결 전입니다. 범위와 연결 계획은 [`docs/plans/2026-10-08-team-module-integration.md`](docs/plans/2026-10-08-team-module-integration.md)를 보세요.
 
 ## 프로젝트 구조
 
@@ -23,7 +23,7 @@
 
 ```text
 sea-the-answer/
-├─ compose.yaml          db + migrate + backend + frontend (운영), profile "e2e" (테스트 스택)
+├─ compose.yaml          db + migrate + backend + frontend + rag-worker + chroma, profile "e2e"
 ├─ compose.dev.yaml      개발 오버레이: 소스 마운트, 핫 리로드, DB·API 포트를 127.0.0.1에 공개
 ├─ .env.example          설정 예시 → .env 로 복사
 ├─ frontend/             Next.js 16 + React 19 — 사용자가 접속하는 유일한 진입점   [npm]
@@ -49,7 +49,7 @@ sea-the-answer/
 구조와 요청 흐름은 [`docs/architecture.md`](docs/architecture.md)에 있습니다.
 
 해사 질문 평가셋으로 현재 검색을 측정하는 방법과 범위는 [검색 평가 안내](docs/retrieval-evaluation.md)를 참고하세요. 운영 DB·LLM 연결 없이 기본 문서 스냅샷으로 실행합니다.
-내용이 같은 문서 분석 토큰만 크기를 제한해 재사용하는 [검색 지연 개선과 측정 결과](docs/search-optimization-results.md)도 함께 확인할 수 있습니다. 권한·선택 문서 확인과 검색 인덱스 생성은 매 요청 수행합니다.
+내용이 같은 문서 분석 토큰만 크기를 제한해 재사용합니다. 권한·선택 문서 확인과 검색 인덱스 생성은 매 요청 수행합니다. 상세 규칙은 [검색 계약](docs/specs/api.md#문서-검색-bm25)을 따릅니다.
 
 ## 실행하기 (Docker)
 
@@ -128,7 +128,7 @@ docker compose run --rm migrate rollback             # 마지막 파일 되돌�
 
 BM25 검색은 backend의 `rank-bm25`와 한국어 형태소 분석기 `kiwipiepy`를 사용합니다. Docker에서는 `docker compose up --build -d`로 반영하고, 직접 실행할 때는 `backend/`에서 `uv sync` 후 백엔드를 재시작하세요. Kiwi 모델은 의존성 설치에 포함되며 별도 API 키가 필요하지 않습니다. 첫 검색은 모델·별칭 초기화로 늦을 수 있습니다. 검색 개선은 기존 청크에도 적용됩니다. DB 없는 회귀 테스트는 `backend/`에서 `uv run pytest tests/test_rag_preprocessing.py tests/test_rag_retrieval.py tests/test_debug_bm25.py -q`로 실행합니다. 알고리즘·한계는 [검색 계약](docs/specs/api.md#문서-검색-bm25)에 있습니다.
 
-목차 항목 묶음과 연속 제목 청킹 개선은 새 문서·새 내용의 개정에 적용됩니다. **기존 DB 청크는 자동으로 바뀌지 않으며, 같은 입력을 다시 저장해도 `unchanged`이면 재청킹하지 않습니다.** 확인하려면 원본 PDF를 새 테스트 문서로 등록하세요. 기존 문서 수정 화면에서 가져온 sections는 저장된 청크이므로 원본 페이지 추출본으로 간주하면 안 됩니다. 기존 문서 전체의 재색인은 별도 작업입니다.
+목차 항목 묶음과 연속 제목 청킹 개선은 새 문서·새 내용의 개정에 적용됩니다. **기존 DB 청크는 자동으로 바뀌지 않으며, 같은 입력을 다시 저장해도 `unchanged`이면 재청킹하지 않습니다.** 정보만 수정하면 기존 청크를 유지하고, 본문·버전 개정에는 PDF 재추출 또는 원문 전체 입력이 필요합니다. 기존 조회 청크를 원본 페이지 추출본으로 재사용하지 않습니다. 벡터 재색인은 저장된 청크를 사용하며 재청킹과는 별개입니다.
 
 | 범위 | 위치 | 명령 |
 |---|---|---|
@@ -235,7 +235,7 @@ LLM_RESPONSE_FORMAT=text
 
 25초를 넘는 추론은 실패 전환되므로 로컬 모델을 미리 적재해 확인하세요. 기본 호환 요청은 공급자별 선택 필드를 생략하여 기존 2,200 출력 토큰 한도도 보내지 않습니다. 생성 한도는 모델 서버 설정에 따르며 앱은 최대 5개 답변 문장과 인용을 검증합니다. 상세 형식·제약은 [공급자 계약](docs/specs/llm-provider.md)에 있습니다.
 
-CI 워크플로는 [별도 PR #14](https://github.com/dudco/sea-the-answer/pull/14)로 분리했습니다. 수행한 검증과 미검증 범위는 [변경 이력](docs/changelog.md)에 기록합니다.
+push·PR에는 [GitHub Actions 검증](.github/workflows/verify.yaml)이 연결됩니다. backend 테스트(임시 PostgreSQL 포함), frontend 단위 테스트·빌드, Compose 구성 검사와 격리 브라우저 E2E를 실행합니다. 실제 외부 모델 키는 사용하지 않습니다. CI PR #14의 워크플로를 이 브랜치에도 통합했으며 실제 수행한 검증은 [변경 이력](docs/changelog.md)에 기록합니다.
 
 ## API
 
@@ -270,6 +270,68 @@ uv run --locked --project backend python -m scripts.load_data --data-dir data/ma
 ```
 
 적재기는 기본 미리보기에서는 DB에 연결하지 않으며 `--apply`에서만 migration 이력을 확인하고 이미 생성된 빈 해사 테이블에 CSV를 넣습니다. DDL은 실행하지 않습니다. `MARITIME_DATA_API_TOKEN`을 설정하면 같은 backend에 `/api/maritime-data/*`가 마운트됩니다(서버 전용 Bearer 토큰 필요, 화면 어댑터는 아직 없음). 별도 해사 DB를 선택한 경우에는 해당 DB에도 기본 init과 해사 마이그레이션이 필요합니다. 자세한 설정·검증·기존 스키마 채택 및 선박 연결은 [사용 안내 10절](docs/user-guide.md#10-해사-데이터-tool-선택), 호출 형식은 [API 명세](docs/specs/tools.md), 이번 변경 범위는 [ADR 0011 제안](docs/adr/0011-tools-runtime-and-data-preparation.md)을 보세요.
+
+## 로컬 벡터·하이브리드 검색
+
+웹 검색은 BM25·벡터 결과를 RRF로 결합합니다. `intfloat/multilingual-e5-small`(고정 revision, 384차원,
+CPU, 약 1.18억 파라미터)은 Docker 빌드 시 다운로드·검증해 이미지에 포함합니다.
+문서 저장과 함께 PostgreSQL에 작업을 기록하고 `rag-worker`가 커밋 후 자동 색인합니다.
+검색 요청과 독립적으로 실행되며 기존 문서 전체를 소급해서 자동 색인하지는 않습니다.
+모델 파일 약 0.5GB 외에 PyTorch 등 설치 공간과 실행 RAM이 필요합니다. 개발 PC는 여유 RAM
+2~4GB 이상부터 검증하세요(동시 요청·청크 길이·프로세스 수에 따라 증가, 보장 최소값 아님).
+문서 본문은 외부 임베딩 API로 보내지 않습니다. 모델 다운로드만 인터넷을 사용합니다.
+
+임베딩은 backend에서 실행하고 Chroma 서버는 공식 `chromadb/chroma:1.5.9` 기반의
+`backend/Dockerfile.chroma`로 별도 빌드합니다. 이 서버 이미지에는 앱 코드·PyTorch를 추가하지 않습니다.
+`rag-vectors:/data/chroma`와 비 root UID 10001을 유지하며, 서버 포트는 호스트에 공개하지 않습니다.
+
+프로젝트 루트 PowerShell에서 실행합니다. `up`은 새 migration 적용과 서비스 재생성을 포함하므로
+실제 앱에 적용할 시점을 정해 실행하세요. 빌드만으로 실행 중인 서비스는 바뀌지 않습니다.
+
+```powershell
+# 모델 포함 이미지 빌드 (처음에는 인터넷·추가 약 0.5GB 필요)
+docker compose build backend rag-worker chroma
+# 사용자가 적용할 시점에: migration + backend/worker/Chroma + frontend
+docker compose up -d
+# 새 문서는 UI 저장 후 자동 처리. 작업 상태/실패 코드 확인
+docker compose run --rm --no-deps rag-worker python -m api.rag_worker status --limit 20
+# 기존 문서 초기 색인 또는 모델 변경/색인 누락 복구: 먼저 미리보기
+docker compose run --rm --no-deps rag-worker python -m api.rag_worker enqueue --limit 10000
+# 위 미리보기에서 확인한 문서를 작업 큐에 등록 (청크 원문은 수정하지 않음)
+docker compose run --rm --no-deps rag-worker python -m api.rag_worker enqueue --limit 10000 --apply
+# 실패 작업 수동 재시도 (기본 100건, 필요하면 --limit 조정)
+docker compose run --rm --no-deps rag-worker python -m api.rag_worker retry --apply
+# worker 중지/재시작 (웹앱은 유지, 미완료 작업은 재개)
+docker compose stop rag-worker
+docker compose up -d --no-deps rag-worker
+docker compose logs -f rag-worker
+
+# 기존 수동 일괄 색인·비교 CLI도 유지. scripts는 읽기 전용 마운트.
+# DB 읽기 전용 미리보기 (guest 공개 문서 범위)
+docker compose run --rm --no-deps -v ./scripts:/app/scripts:ro backend python scripts/rag_index.py index --dry-run
+# 먼저 제한된 문서로 검증. 전체 준비 시 필터/limit를 빼고 실행.
+docker compose run --rm --no-deps -v ./scripts:/app/scripts:ro backend python scripts/rag_index.py index --document-title "Part-5D" --limit 20 --apply
+# 같은 제한 corpus에서 각 방식 비교 (본문은 출력 안 함)
+docker compose run --rm --no-deps -v ./scripts:/app/scripts:ro backend python scripts/debug_retrieval.py "heavy deck cargo" --document-title "Part-5D" --limit 20 --top-k 5
+# 모든 사용자 범위를 준비하려면 실제 활성 관리자 계정 지정. PostgreSQL에는 쓰지 않음.
+docker compose run --rm --no-deps -v ./scripts:/app/scripts:ro backend python scripts/rag_index.py index --username "관리자아이디" --apply --batch-size 16
+```
+
+웹 검색은 하이브리드 Top-5를 사용하고, 방식별 비교는 위 개발자 CLI에서 합니다.
+모델 미준비·Chroma 장애 또는 현재 요청에 허용된 청크 중 하나라도 미색인/오래됨이면 BM25로 대체합니다.
+`docker compose logs backend`의 `rag_fallback` 또는 비교 CLI의 `effective_mode`/`fallback_reason`으로 확인합니다.
+
+호스트에서 작업할 때는 `uv sync --locked --project backend` 후
+`uv run --locked --project backend python scripts/rag_index.py prepare`로 모델을 준비하고
+`uv run --locked --project backend python scripts/rag_index.py ...`로 일괄 색인을 실행합니다.
+자동 worker는 backend 폴더에서 `uv run --env-file ../.env python -m api.rag_worker run`으로 실행합니다.
+호스트에서는 `HAEDAP_EMBED_MODEL_DIR`을 준비한 모델의 절대 경로로 지정하세요.
+자동 worker와 CLI를 동시에 쓰려면 같은 Chroma HTTP 서버에 연결하세요(PersistentClient 파일 공유 금지).
+Docker 개발은 `docker compose -f compose.yaml -f compose.dev.yaml up --build`이며 worker도 소스를 마운트합니다.
+worker는 핫 리로드하지 않으므로 코드 변경 후 `docker compose restart rag-worker`가 필요합니다.
+호스트의 `DATABASE_URL`이 실제 읽을 DB를 가리켜야 합니다. 기본 Docker DB는 외부 포트를 공개하지 않으므로
+위의 일회성 컨테이너 명령을 권장합니다. 모델/Chroma 경로 및 동기화·복구 정책은
+[운영 안내](docs/user-guide.md#로컬-벡터-색인-운영), [검색 계약](docs/specs/rag-vector.md)을 보세요.
 
 ## 문서
 

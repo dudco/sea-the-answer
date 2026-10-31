@@ -4,6 +4,223 @@
 
 ## 변경 이력
 
+### 2026-10-29 — 웹 하이브리드 검색 통일
+
+- 웹 검색·답변은 BM25·벡터 후보의 RRF Top-5를 사용한다. CLI의 세 방식 비교와 BM25 fallback은 유지하며,
+  health는 `hybrid-rrf` 정책을 표시한다. fallback 후에도 현재 DB의 권한·내용을 재확인한다.
+- `uv run --locked --project backend pytest backend/tests/test_rag_vector.py backend/tests/test_debug_bm25.py -q --tb=short`: **58 통과**.
+- `uv run --locked --project backend python .verification/bm25-db-tests.py`: 임시 PostgreSQL 17에서
+  backend 전체 `python -m pytest -q -rs --tb=short`, **591 통과·4 건너뜀(105.95초)**.
+  건너뛴 기존 해사 실데이터 테스트 4건은 `MARITIME_DATA_TEST_DATABASE_URL` 미설정이다.
+  실제 임시 Chroma·모의 임베딩으로 환경변수 없음/기존 값 잔존, API hybrid 호출·개정·권한·인용·fallback을 검증했다.
+- `docker compose -p haedap-web-hybrid-check --profile e2e up --build --force-recreate --exit-code-from e2e e2e`:
+  **8 통과(1.2분)**. 이 스택은 벡터 색인이 없어 BM25 fallback으로 화면을 검증한다. 같은 프로젝트 `down` 및 임시 DB 종료 완료.
+  개발 Compose `config --quiet`와 `git diff --check` 통과. 실제 E5 검색 품질·실제 앱 데이터 평가는 수행하지 않았다.
+  개인 `.env`·실제 앱·PDF·벡터 색인은 변경하지 않았다. [계획](plans/2026-10-29-web-hybrid-search.md).
+
+### 2026-10-29 — 경우 토큰 유지·일회성 RAG 보고서 정리
+
+- 요청에 따라 `경우`를 불용어에서 제거했다. Kiwi가 추출한 해당 토큰을 질문·청크 양쪽에 유지한다.
+  조사/어미 제거·나머지 불용어·동의어·권한 필터·벡터/RRF 규칙은 유지한다.
+  단어가 같은 청크가 추가로 검색될 수 있으며 정확도가 항상 향상된다는 뜻은 아니다.
+- 일회성 PDF 검색 평가 보고서, 초기 검색 기준선 보고서, 캐시 개선 결과 보고서 총 3개를 삭제하고
+  README·계획·사용법·변경 이력의 참조를 정리했다. 평가 질문·실행 도구·사용법과
+  설계/명세/완료 계획 및 이 문서의 기존 검증 요약은 보존했다. 삭제 파일은 Git 이력에서 복구할 수 있다.
+- 적용하려면 backend 코드를 반영하고 프로세스를 재생성해 기존 메모리 토큰 캐시를 비워야 한다.
+  PostgreSQL 청크나 Chroma 임베딩은 바뀌지 않아 재청킹·재임베딩은 필요하지 않다.
+- 관련 BM25/캐시/디버그 테스트: `uv run --locked --project backend pytest backend/tests/test_rag_retrieval.py backend/tests/test_debug_bm25.py backend/tests/test_retrieval_token_cache.py -q --tb=short` **81 통과**.
+- 전체 backend: `uv run --locked --project backend python .verification/bm25-db-tests.py`에서
+  임시 PostgreSQL 17로 `python -m pytest -q -rs --tb=short` 실행, **579 통과·4 건너뜀(180.31초)**.
+  건너뛴 4건은 기존 해사 실데이터용 `MARITIME_DATA_TEST_DATABASE_URL` 미설정이다. 임시 DB 종료 완료.
+- `docker compose -p haedap-stopword-check --profile e2e up --build --force-recreate --exit-code-from e2e e2e`:
+  이미지 빌드 및 브라우저 E2E **8 통과(1.8분)**, 종료 코드 0. 같은 프로젝트 `down` 정리 완료.
+  삭제한 파일의 남은 Markdown 링크와 `git diff --check`를 확인했다. 실제 앱·PDF·DB·색인은 변경하지 않았다.
+
+### 2026-10-29 — 혼합 벡터 색인 수정·팀 main/CI 통합
+
+- `upstream/main` e388a2a와 `cxo/feature/ci-verification` cfa7fb5의 변경을 통합했다.
+  두 원격 부모를 가진 미완료 머지 상태로 유지하며 커밋·푸시는 하지 않았다.
+  실제 3-way 병합 결과를 기준으로 README·문서·테스트 fixture 충돌을 양쪽 내용을 보존해 해결했다.
+  CI의 `.github/workflows/verify.yaml`은 원격과 동일하다. 프런트·인증·LLM·BM25 캐시 코드는 main과 동일하게 유지했다.
+- Chroma에서 읽은 ndarray와 E5가 만든 list가 같은 upsert 배치에 들어가면 첫 항목에 따라 실패하던
+  문제를 모든 벡터의 float 리스트 변환으로 수정했다. 임베딩 값·모델 fingerprint·record ID는 유지하므로
+  완료된 벡터는 재사용하고 실패 작업 retry로 나머지를 처리할 수 있다.
+- main의 `mode: metadata` 저장에도 같은 트랜잭션의 enqueue를 연결했다. 원문/청크/PDF와 응답은 유지하며
+  재활성화·색인 누락·변경 없는 저장도 작업을 요청한다. UI가 변경 없는 요청을 생략하면 enqueue도 없다.
+  인증 및 색인 migration을 모두 적용하는 fixture, 로그인 필수 벡터 API 검증을 반영했다.
+- 팀 ADR 0016/0017과의 번호 중복을 피하려고 이 브랜치의 RAG ADR 0016/0017/0018을
+  0019/0020/0021로 재번호화했다. 결정 본문은 보존하고 번호·참조만 정리했다.
+  기존 평가 JSON/보고서는 stash 백업과 blob 해시가 동일함을 확인했다.
+
+검증 및 적용 범위:
+
+- 수정 전 혼합 배치 회귀: **1 실패·1 통과**로 오류 재현. 수정 후 `uv run --locked --project backend pytest backend/tests/test_rag_vector.py -q --tb=short`: **25 통과**.
+- frontend `npm.cmd test`: **20 통과**. Docker Next.js production 빌드 성공.
+- `docker compose -p haedap-rag-merge-check --profile e2e up --build --force-recreate --exit-code-from e2e e2e`:
+  **8 통과(1.0분)**, 종료 코드 0. 같은 프로젝트의 `down`으로 테스트 컨테이너·네트워크 정리 완료.
+- 해당 새 backend 이미지에서 `docker run --rm --network none ... python /app/check_mixed.py`:
+  실제 고정 E5 CPU·임시 Chroma로 재사용+신규 혼합 배치 저장, 재실행 중복 없음(3개 record),
+  vector/hybrid가 fallback 없이 기대 문서·페이지 반환. 외부 다운로드·앱 DB 없이 검증했다.
+- 첫 backend 전체 검증은 **575 통과·2 실패·4 건너뜀**이었다. 두 실패는 main의 로그인 필수 정책에
+  맞지 않는 기존 벡터 API 테스트였으며 선원 로그인과 익명 401·scope 제외 검증으로 보정했다.
+- 최종 `uv run --locked --project backend python .verification/bm25-db-tests.py`:
+  Windows/Python 3.13/임시 PostgreSQL 17의 `python -m pytest -q -rs --tb=short` **578 통과·4 건너뜀(137.08초)**.
+  네 건은 `MARITIME_DATA_TEST_DATABASE_URL`이 필요한 기존 해사 데이터셋 계산 2·조회 2이며
+  RAG/인증/메타데이터 저장/작업 큐/캐시/벡터 API 테스트는 실행했다. 임시 DB는 종료했다.
+  운영·개발·E2E `docker compose ... config -q` 모두 통과. GitHub Actions 서버에서의 실행은 미검증이다.
+- 실제 앱 재빌드/재시작·작업 retry·기존 PDF 대량 색인·질의 이력 저장은 수행하지 않았다.
+  실제 데이터의 전체 색인 완료 및 질문 10개 벡터 정확도 재평가는 배포·retry 이후 별도 확인이 필요하다.
+
+### 2026-10-14 — CI 워크플로 분리 (cxo 브랜치에서 가져온 기록)
+
+PR #11 검토에 따라 `.github/workflows/verify.yaml`을 CI PR #14로 분리했다.
+해당 브랜치의 기존 기록: 2026-10-14 커밋 8112816의 fork Actions에서 backend 151 통과·4 건너뜀,
+frontend 4개·Next.js 빌드, Compose 구성 3종과 Docker E2E 1개 통과.
+이는 당시 원격 브랜치의 검증 기록이며 이번 통합 결과는 위 2026-10-29 항목을 따른다.
+
+### 2026-10-29 — 등록 PDF 질문 10개 검색 평가 (코드 수정 없음)
+
+- 실제 등록 PDF 3개와 로컬 원본 일치 확인 후 질문 세트·평가 보고서를 추가했다.
+  guest 허용 7문서 5,485청크, 질문 10개 × BM25/vector/hybrid, 문서 필터 10개·영어 대조 6개를 읽기 전용 실행했다.
+- 기대 조항 후보 Hit@1 5/10, Hit@5 8/10, MRR@5 0.62. 전체 BM25 평균 8.110초, DB snapshot 조회 0.202초.
+  PDF 물리 페이지/조항 후보 검색 평가이며 법규 해석·LLM 답변 정답률·전문가 확정 정답 세트는 아니다.
+- 실제 PDF 색인 작업은 모두 5회 실패했고 1,686/5,485청크만 현재 Chroma에 있었다.
+  vector/hybrid 각각 10/10회 `index_incomplete_or_stale`로 BM25 fallback하여 독립 정확도는 평가할 수 없었다.
+- 재사용 ndarray·신규 list 혼합 배치의 Chroma 입력 검증 ValueError를 세 실제 누락 배치에서 재현했다.
+  메모리에서 list로 통일하면 로컬 검증이 통과했다. 제품 코드 수정·Chroma 저장·작업 retry는 하지 않았다.
+- Q08(SOx scrubber 제출자료)은 한국어 79위/영어 대조 2위, Q10(BWMS 승인)은 53위/1위였다.
+  목차 상위 노출, 반복 머리말/꼬리말 heading과 반복 토큰화 비용도 기록했다.
+- 실행: `uv run --locked --project backend python .verification/run-registered-eval.py`.
+  메타데이터 전용 로컬 결과는 `.verification/registered-rag-evaluation.json`이며 원문 본문은 저장하지 않았다.
+  PDF 메타데이터 확인은 임시 pypdf/pypdfium2 환경을 사용했고 pyproject/uv.lock은 변경하지 않았다.
+  실제 DB·원본 PDF·질의 이력·.env·서비스 상태·브랜치 변경 및 커밋/푸시 없음.
+  문서/평가 자료만 추가했으므로 관련 없는 전체 단위 테스트/E2E는 다시 실행하지 않았다.
+  상세 기준·한계·질문은 평가 보고서(보고서 정리로 삭제, 요약은 변경 이력에 보존) 참고.
+
+### 2026-10-29 — 저장 후 자동 색인·이미지 내 E5 (1.4.0 유지)
+
+- 신규 `rag_index_jobs` migration으로 문서 저장과 같은 트랜잭션에 작업을 기록한다.
+  `documents.py`는 import와 enqueue 호출만 추가했다. 별도 `rag_worker`가 커밋된 작업만 처리하며
+  generation/claim token과 PG 세션 advisory lock으로 중복 worker·중단 복구·오래된 완료를 처리한다.
+  실패는 최대 5회 자동 재시도하며 상태·안전한 오류 코드·enqueue/retry CLI를 제공한다.
+- 기존 `VectorIndex.index`를 수동 CLI/worker가 공유한다. 새 record의 실제 입력 해시로 개정/페이지/ID만 다른
+  청크의 임베딩 값을 재사용하며 title/reference/heading/text 변경은 재계산한다. 이전 metadata 형식도 검색 호환된다.
+  검색 권한·활성·상태·kind·선택 문서·최종 DB 확인과 BM25 fallback/RRF 계약은 유지했다.
+- backend/worker 이미지의 모델 stage에서 pinned E5를 다운로드·검증하고 `/opt/models/e5-small`로 포함한다.
+  CPU 의존성과 고정 revision/384차원/정규화/긴 입력 규칙을 유지했고 새 의존성은 추가하지 않았다.
+  운영/개발 이미지가 모델 레이어를 공유하며 앱 코드 변경 후 재빌드에서 모델 단계 `CACHED`를 확인했다.
+  기존 `rag-models` 볼륨은 마운트만 해제하고 삭제하지 않는다. Chroma 전용 이미지는 유지했다.
+- Docker inspect 보고값: 이전 모델 없는 backend 2,802,092,996바이트(약 2.80GB),
+  모델 포함 backend 약 3.58GB, 전용 Chroma 826,147,540바이트(약 826MB).
+  이미지 내 모델 파일 합계 492,803,681바이트(약 493MB), 다운로드·검증 단계 95.2초(의존성 레이어 캐시 사용).
+  이미지 보고 크기는 전체 PC 추가 디스크 점유와 다르며 backend/worker 레이어는 공유된다.
+
+검증 (2026-10-29, 실제 앱 데이터 사용 없음):
+
+- `uv run --locked --project backend python .verification/bm25-db-tests.py`: 임시 PostgreSQL 17 클러스터에서
+  backend의 `python -m pytest -q -rs --tb=short` 실행. 최종 **456 passed, 4 skipped, 122.89초**.
+  네 건은 기존 해사 데이터셋의 `MARITIME_DATA_TEST_DATABASE_URL` 미설정(계산 2·조회 2)이며,
+  RAG PostgreSQL/작업 큐 테스트는 실행했다. 중간 신규 FK 정리 테스트의 삭제 순서를 기존 FK에 맞춰 고쳤다.
+- DB 없는 `test_rag_vector.py`: **23 passed, 6.74초**. 실제 임시 Chroma+모의 encoder로
+  입력 재사용·새 메타데이터·legacy 호환·순위·권한·fallback·CLI 회귀를 검증했다.
+- 운영 이미지 `docker run --rm --network none ...`: 실제 baked E5로 384차원·정규화·CPU(`torch.version.cuda is None`) 확인.
+  개발 이미지도 `./backend:/app:ro` 마운트와 network none에서 같은 모델 추론 통과.
+- `docker compose -p haedap-auto-index-check --profile e2e run --rm --no-deps
+  -e HAEDAP_CHROMA_HOST=chroma -v ./backend/tests:/app/verification:ro -v ./migrations:/migrations:ro
+  e2e-backend python -m verification.verify_auto_index`: 격리 e2e-db의 임시 schema와 Chroma HTTP 서버,
+  합성 문서 3개 청크에서 커밋 전 작업 비가시성→실제 worker→색인→벡터/하이브리드 정답 p.1 확인.
+  실제 HTTP 연결 실패 후 PG 원문 유지·retry 복구, 동일 입력 재시작·중복 방지,
+  두 별도 worker 프로세스의 개정 처리·삭제 후 후보 제외도 통과했다. 실제 모델 검증이며 모의 응답이 아니다.
+- Docker E2E: `docker compose -p haedap-auto-index-check --profile e2e up --build --force-recreate --exit-code-from e2e e2e`,
+  문서·운항·보고서·승인·백업 시나리오 통과. 종료 후 같은 격리 프로젝트 `down`으로 정리.
+- 실제 앱 컨테이너는 기존 상태(backend/frontend 7일, db 11일 실행)를 유지했다.
+  실제 PDF·앱 DB·질의 이력·.env 변경, 실제 데이터 전체 색인, 커밋·푸시·브랜치 머지 없음.
+
+한계: 대량 실제 문서 처리량/최대 RAM/검색 정확도는 이번 소량 합성 검증으로 보장하지 않는다.
+PG 세션이 살아 있는 정지 worker는 재시작이 필요하며 네트워크 단절 감지 지연이 있을 수 있다.
+오래된 Chroma record/모델 collection은 자동 삭제하지 않는다. 기존 문서·모델 변경·JSON 복원 후에는 명시적 enqueue가 필요하다.
+기존 형식 record는 입력 해시가 없어 개정 간 벡터 재사용 대상이 아니지만 현재 검색은 유지된다.
+
+### 2026-10-29 — Chroma 서버 전용 이미지 분리 (1.4.0 유지)
+
+- `compose.yaml`의 Chroma 서비스를 backend 이미지 재사용에서 `backend/Dockerfile.chroma`로 변경했다.
+  공식 `chromadb/chroma:1.5.9` 위에 기존 UID/GID 10001, `/data/chroma`와 HTTP 헬스체크만 추가했다.
+  공식 이미지에 Python/curl이 없으므로 bash 내장 TCP로 heartbeat의 HTTP 200을 검사한다.
+  Python/임베딩/PyTorch·E5·BM25·RRF 코드는 기존 backend에 유지하며 검색 기본값도 bm25로 유지했다.
+- 이미지 inspect 기준 기존 서버용 backend 이미지 2,808,942,616바이트(약 2.81GB), 새 서버 이미지
+  826,147,542바이트(약 826MB). backend 이미지 축소나 전체 PC 디스크 절감량을 뜻하지 않는다.
+  기존에는 이미지 레이어를 공유했고 이전 이미지·테스트 이미지는 삭제하지 않았다.
+- 기존 `rag-vectors` 볼륨명·마운트 루트 경로·내부 hostname/port·외부 포트 미공개를 유지했다.
+  현재 앱 컨테이너·PostgreSQL·사용자 PDF·`.env`는 변경하지 않았고 실제 서비스 전환/커밋/푸시는 하지 않았다.
+  [ADR 0017](adr/0020-dedicated-chroma-image.md)이 0016의 서버 이미지 선택을 대체하고 나머지 검색 결정을 계승한다.
+
+검증(2026-10-29, Windows Docker Desktop / Linux 컨테이너):
+
+- `docker compose -p haedap-chroma-split-check --profile vector build chroma`: 성공.
+  공식 멀티 아키텍처 이미지 manifest/`run --help` 확인 후 실제 amd64에서 실행 검증했다(arm64 실행 미검증).
+- 격리 테스트 볼륨에 **이전 backend 기반 이미지**의 PersistentClient 1.5.9로 합성 벡터 2개 저장 →
+  새 서버가 HTTP로 2개 조회·검색 → 추가 벡터 1개 쓰기 → 컨테이너 강제 재생성 후 3개 보존 확인.
+  새로 생성한 빈 볼륨과 이전 형식 볼륨 모두 UID/GID 10001로 쓰기 가능, SQLite 파일 소유권 유지.
+  허용 ID 제한 검색·RRF·미색인 BM25 fallback 통과. 실제 앱 DB는 사용하지 않았다.
+- 같은 전용 서버에 준비된 로컬 E5 모델로 공개 합성 청크 3개를 실제 임베딩·색인했다.
+  vector/hybrid 검색, 긴 문서 구간 임베딩·단위 벡터, 긴 질문 거부 확인. 모델 다운로드 없이 offline 실행.
+  이는 실제 모델 검증이며 위의 3차원 합성 encoder 호환성 테스트와 구분한다.
+- `uv run --locked --project backend pytest backend/tests/test_rag_vector.py backend/tests/test_rag_retrieval.py backend/tests/test_debug_bm25.py -q --tb=short`:
+  **91 passed (18.50초)**. 이 작업에서 Python 검색 코드/API를 수정하지 않았다.
+- `docker compose -p haedap-chroma-split-check --profile e2e up --build --force-recreate --exit-code-from e2e e2e`:
+  **1 passed (48.9초)**, 화면 시나리오 38.0초. 이후 같은 격리 프로젝트의 `--profile vector --profile e2e down`으로 정리했다.
+  호환성·모델 테스트는 별도 합성 데이터로 수행했으며 실제 앱 전체 문서의 검색 품질 재평가는 수행하지 않았다.
+
+### 2026-10-27 — 선택적 로컬 벡터 검색과 RRF (1.4.0 유지)
+
+- `feature/rag-vector`의 dfb262f 기준. 사용자의 후속 지시에 따라 BM25 토큰 캐시 커밋 9a14ff1은 병합하지 않았다.
+  기존 BM25/청킹/저장/개정/프론트엔드는 유지하고 독립 임베딩·Chroma·RRF·모드 모듈을 추가했다.
+  사용자 설치 chromadb 1.5.9/sentence-transformers 6.2.0을 보존하고 Docker용 CPU PyTorch 2.14.1을 지정했다.
+  기본 모드는 bm25, 허용 후보의 전체 색인 검증 실패 시 경고와 함께 BM25 fallback한다.
+- 실제 모델: 공식 multilingual-e5-small revision `614241f622f53c4eeff9890bdc4f31cfecc418b3`, CPU, 384차원.
+  로컬 파일 약 492.8MB, `query:`/`passage:` 입력과 정규화, 512토큰 초과 문서의 무손실 문자 분할→평균/재정규화.
+  모델 다운로드 첫 시도는 네트워크 연결 재설정으로 실패했고, 단일 다운로드 worker 및 `HF_HUB_DISABLE_XET=1` 재시도로 성공했다.
+  실제 추론은 HF/Transformers offline 설정에서도 성공했다. 외부 임베딩 API 호출은 없다.
+- 새 CLI: 명시적 prepare, 기본 dry-run/제한/배치/재실행 index, 동일 corpus의 세 검색 방식 비교.
+  PostgreSQL 읽기 전용, Chroma만 쓰기. 기존 앱의 문서·청크·질의 이력, PDF와 `.env`는 변경하지 않았다.
+
+검증(2026-10-27, Windows Python 3.13 / Docker Linux CPU):
+
+- `uv run --locked --project backend pytest backend/tests/test_rag_vector.py backend/tests/test_rag_retrieval.py backend/tests/test_debug_bm25.py -q --tb=short`: 최종 91 passed (5.56초).
+- 전체 backend는 `.verification/bm25-db-tests.py`가 만든 임시 PostgreSQL cluster에서 `python -m pytest -q -rs --tb=short` 실행.
+  이 helper는 `.env`를 읽지 않고 테스트 연결만 주입하며 종료 시 PostgreSQL을 중단한다.
+  최종 **438 passed, 4 skipped (97.74초)**. 4개는 `MARITIME_DATA_TEST_DATABASE_URL`로 별도 실제 해사 데이터셋을 제공해야 하는
+  기존 `test_tools_calculations.py` 2개/`test_tools_query.py` 2개다. 앱 DB 기반 RAG 테스트는 건너뛰지 않았다.
+  추가 API 테스트 작성 중 삭제 함수에 dict를 전달한 fixture 오류 2건은 문서 ID 인자로 수정 후 전체 재검증했다.
+  신규 API 테스트는 실제 PostgreSQL/Chroma와 **모의 임베딩**을 사용하며 `/search`, `/ask` 인용, 권한·종류·선택·개정·삭제를 검증한다.
+- `docker compose -p haedap-rag-vector-check --profile e2e up --build --force-recreate --exit-code-from e2e e2e`:
+  **1 passed**, 전체 시나리오 36.6초(Playwright 전체 47.3초). 실제 앱과 별도 DB/네트워크 사용.
+- 같은 격리 프로젝트의 Chroma HTTP 서버에 **실제 로컬 모델**로 공개 합성 청크 3개를 색인했다.
+  vector/hybrid 검색, 512토큰 초과 입력 처리·384차원 단위 벡터, 긴 query 거부를 확인했다.
+  Chroma 재시작 후 새 클라이언트에서도 3개 모두 재사용(indexed=0)·검색 성공. app UID로 모델 읽기·Chroma volume 쓰기 확인.
+  검증 종료 후 `docker compose -p haedap-rag-vector-check --profile vector --profile e2e down`으로 테스트 서비스만 정리했다.
+
+실제 등록 DB 소량 검증:
+
+- 공개 허용 후보 5,485개 중 **36개만**, Part 5D 물리 페이지 17–19·KR 2025 물리 페이지 20–22·IMO 요약 2종(총 문서 4개).
+  DB READ ONLY 조회 후 호스트 메모리에서 처리하고 `.verification/`의 격리 Chroma에만 색인했다. 본문은 출력하지 않았다.
+  총 36개 생성 후 같은 입력 재실행은 새 생성 0개/재사용 36개.
+- 동일 질문과 후보로 비교한 결과(작은 부분 corpus이며 전체 검색 정확도 아님):
+
+| 질문 | BM25 1위 | 벡터 1위 | RRF 결과 |
+|---|---|---|---|
+| 선급이 자동으로 정지되는 경우는? | KR p.21 | KR p.21 (다른 청크) | KR p.21 1위 |
+| Part 5D heavy deck cargo 강화 적용 기준 | p.17 용어 정의 | p.18 §3 강화 조항 | p.17 적용 범위 1위, p.18 §3 2위 |
+| 연료 황 함유량 기준 | IMO 황 함유량 요약 | 같은 요약 | 같은 요약 1위 (원래 page=null) |
+
+- 두 실행에서 읽기 전용 DB+컨테이너 전달 약 2.05–2.10초, 모델 첫 import/로드 16.42–22.54초,
+  36개 색인 2.87–6.11초. 로드 이후 벡터 질의 0.017–0.070초, hybrid 0.10–0.20초.
+  첫 BM25/Kiwi 초기화 포함 3.16–4.38초, 이후 소량 corpus BM25 약 0.10–0.14초.
+  별도 테스트 병행 중의 소규모 측정이며 API 전체 응답 시간/전체 5,485개 검색 시간/최대 RAM 측정은 아니다.
+- 남은 한계: 전체 corpus 색인·성능·정답률 평가 미수행, 실제 웹앱 모드 전환 미수행(임의 재시작 금지).
+  하이브리드가 항상 벡터보다 정확한 것은 아니며, BM25 캐시 미포함으로 큰 corpus의 BM25 비용은 남는다.
+  권한 후보 전수 metadata 확인·최종 DB 재조회 비용, 긴 청크 평균의 의미 희석, 수동 재색인/오래된 벡터 정리도 남는다.
+  라이브러리/모델이 바뀌면 새 fingerprint collection으로 전체 재색인이 필요하다.
 - **PR #20 최신 main 충돌 해결 / 2026-10-29**: `origin/main`의 `7c0ba46`(PR #19)을 한국어 LLM 검증 브랜치에 병합했다. `docs/README.md`·`docs/plans/README.md`·변경 이력의 충돌 3곳에서 한국어 평가·Docker 기록과 검색 토큰 재사용·해사 검색 평가 기록을 모두 보존했다. LLM·보고서 코드는 기존 PR과, 검색 런타임·검색 평가 도구는 최신 main과 동일함을 확인했다.
   - Windows·Python 3.13.16·격리 PostgreSQL 18.6에서 병합 후 backend/scripts 전체 **533 통과·4 건너뜀(200.87초)**. 건너뛴 4건은 별도 해사 데이터셋이 필요한 기존 테스트이며 기존 Starlette/httpx 경고 1건이 남는다. 검증 실행기의 Windows 기동 대기·한글 경로 읽기 문제는 테스트 시작 전 중단으로 구분하고, 실행기 보정 후 새 DB에서 위 결과를 확인했다. 임시 DB와 이번에 시작한 PostgreSQL은 정리했다.
   - Next.js 16.3.8 Docker production 빌드와 Compose e2e **8건 통과(1.8분)**: 실제 브라우저→API→PostgreSQL 업무 흐름 1건과 모의 API UI 회귀 7건. Compose 실행·정리 모두 종료 코드 0이며 이번 재검증에서 실제 모델은 호출하지 않았다. 화면 소스가 기존 PR과 같아 frontend 단위 테스트 20건은 앞선 결과를 유지한다. `npm ci`는 기존 잠금 의존성에서 critical 1건 경고를 출력했으며 의존성 변경 없이 별도 점검 대상으로 기록한다.
@@ -33,12 +250,12 @@
   - PR 전 최신 main·열린 #14와 중복 점검: 새 검색 구현을 복제하지 않았고 기존 진단 CLI·응답 점검 스킬과 평가 목적이 다름을 확인했다. #14는 CI·공통 문서만 변경한다. 선택하지 않은 문서가 warm cache에서 결과·점수에 섞이지 않는 테스트를 보강하여 관련 **120 통과(7.63초)**. 런타임 코드는 이 재점검에서 변경하지 않았다. README 날짜 변경 제거, 공통 문서 병합 조정 가능성은 비교 결과에 기록했다.
   - 같은 문서 955청크·질문 20개·k=5·질문별 1회에서 결과 순서·float 점수·메타데이터가 모두 기준선과 일치했다. Hit@5/Recall@5 1.0·MRR@5 0.96875 유지. warm p50 **7.009초 → 0.057초**, p95 **7.664초 → 0.078초**. 첫 검색은 **9.300초**이며 전체 API·LLM 지연이나 선내 장비 성능 보증은 아니다.
   - Windows·Python 3.13.7·잠금 의존성·격리 PostgreSQL 18에서 backend/scripts 전체 **496 통과·4 건너뜀(247.87초)**. 선택 해사 데이터셋 등 환경이 필요한 기존 4개 건너뜀과 Starlette/httpx 경고 1건은 유지한다. 관련 표적 테스트는 119 통과이며 전체 결과에 중복 합산하지 않는다.
-  - 별도 Compose 운영 빌드·마이그레이션·Chromium **7 통과(2.2분)**, 종료 코드 0: 실제 DB 전체 업무 흐름 1개와 모의 API UI 6개를 구분한다. 실제 외부/로컬 LLM 호출은 하지 않았다. 임시 DB·검증 컨테이너 정리, 개인 DB·기존 체험 앱 변경 없음. 로컬 구현이며 PR·push 없음. [비교·재현 결과](search-optimization-results.md), [ADR 0017 제안](adr/0017-bounded-chunk-token-reuse.md).
+  - 별도 Compose 운영 빌드·마이그레이션·Chromium **7 통과(2.2분)**, 종료 코드 0: 실제 DB 전체 업무 흐름 1개와 모의 API UI 6개를 구분한다. 실제 외부/로컬 LLM 호출은 하지 않았다. 임시 DB·검증 컨테이너 정리, 개인 DB·기존 체험 앱 변경 없음. 로컬 구현이며 PR·push 없음. 비교·재현 결과(보고서 정리로 삭제, 요약은 변경 이력에 보존), [ADR 0017 제안](adr/0017-bounded-chunk-token-reuse.md).
 
 - **해사 질문 평가셋·검색 기준선 / 2026-10-28**: 기본 문서 스냅샷을 대상으로 `scripts/evaluate_retrieval.py`와 질문–원문 인용 라벨 20건을 추가했다. 운영 전처리·BM25 함수를 그대로 사용하고 JSON·CSV·Markdown으로 지표·검색 후보·시간·해시를 기록한다. 실제 앱·DB·API·검색 알고리즘은 변경하지 않았다.
   - Windows 11·Python 3.13.7·Intel Core i5-1335U, `uv sync --frozen` 환경에서 관련 pytest **110 통과**. International 조건을 명확히 한 후 평가 도구 테스트 **15 재통과**(중복 합산 안 함).
   - 문서 10개·955청크, 답 있는 질문 16개 Hit@5/Recall@5 **1.0**, MRR@5 **0.96875**, 근거 1위 **15/16**. 답 없는 질문 4개 모두 후보 노출: 최종 답변 오류·환각으로 판정하지 않고 수동 검토 대상으로 분리했다.
-  - 최종 실행은 질문별 **1회** 측정: 첫 검색 **12.965초**, 이후 질문 분포 p50 **7.009초**, p95 **7.664초**. HTTP·DB·LLM 지연·실제 선내 장비 성능은 검증하지 않았다. 작성자 초기 평가셋이며 독립 전문가·미공개 질문 평가와 전체 backend/Docker 검증은 이번 범위가 아니다. [사용법](retrieval-evaluation.md), [결과·한계·재현 해시](retrieval-evaluation-baseline.md).
+  - 최종 실행은 질문별 **1회** 측정: 첫 검색 **12.965초**, 이후 질문 분포 p50 **7.009초**, p95 **7.664초**. HTTP·DB·LLM 지연·실제 선내 장비 성능은 검증하지 않았다. 작성자 초기 평가셋이며 독립 전문가·미공개 질문 평가와 전체 backend/Docker 검증은 이번 범위가 아니다. [사용법](retrieval-evaluation.md), 결과·한계·재현 해시(보고서 정리로 삭제, 요약은 변경 이력에 보존).
 
 - **PR #18 최신 main 충돌 해결 / 2026-10-22**: `origin/main`의 `826563e`(PR #17)를 개인 계정 인증 브랜치에 병합했다. API 명세·변경 이력·로그인 화면의 충돌 3곳을 해결하고 BM25/Kiwi·업무 스킬·문서 정보 수정/본문 개정·관리자 보고서 삭제와 개인 계정·비밀번호 변경·소유권 검사를 함께 유지했다. 자동 병합된 문서의 이전 단어 포함 검색 설명을 제거해 현재 BM25 계약과 맞췄다. 새 API/UI 테스트는 익명 401·선원/열람자 403·관리자 허용으로 구분했다.
   - Windows·Python 3.13.16·PostgreSQL 18.6의 새 임시 DB에서 backend **472 통과·4 건너뜀(222.35초)**. 별도 해사 데이터셋을 요구하는 4개와 기존 Starlette/httpx 경고 1건은 유지한다. 첫 실행은 신규 문서 테스트의 두 번째 개정에 생성용 빈 `expectedId`가 남아 **471 통과·1 실패·4 건너뜀**이었고, 실제 첫 개정 ID를 넣어 전체 재실행을 통과했다. 버전 잠금·오래된 정보 409 검사는 변경하지 않았다.

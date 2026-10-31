@@ -18,6 +18,12 @@
 
 ## 전체 목록
 
+- [벡터 색인 복구·팀 브랜치 통합 검증](plans/2026-10-29-vector-index-repair-integration.md): 완료 (머지 커밋 대기).
+
+- [등록 PDF 검색 평가 질문 10개](rag-evaluation-questions.json): 문서·물리 페이지·조항 후보 기준의 재사용 가능한 평가 자료.
+
+- [자동 색인 계획](plans/2026-10-29-automatic-vector-indexing.md): 완료 · [작업 계약](specs/rag-index-jobs.md): 구현됨 · [ADR 0021](adr/0021-durable-index-jobs.md): 채택.
+
 ### 기본 문서
 
 - [`architecture.md`](architecture.md) — 실행 구조, 요청 흐름, 모듈 책임, 보안 경계, 교체 지점
@@ -25,8 +31,6 @@
 - [`user-guide.md`](user-guide.md) — 화면별 사용법, 역할·권한, CSV, 백업·복구, LAN·서버, 버전 교체, 문제 해결
 - [`changelog.md`](changelog.md) — 변경 이력, 검증 기록
 - [`retrieval-evaluation.md`](retrieval-evaluation.md) — 실제 문서 스냅샷의 해사 질문 평가셋·검색 지표·실행 방법
-- [`retrieval-evaluation-baseline.md`](retrieval-evaluation-baseline.md) — 2026-10-28 초기 검색 측정 결과와 재현 정보
-- [검색 지연 개선 결과](search-optimization-results.md) — 동일 질문의 순서·점수·처리 시간 비교
 
 ### specs — 구현 계약
 
@@ -42,6 +46,12 @@
 | [`specs/prepare-data.md`](specs/prepare-data.md) — 데이터 선택·출처·품질·집계 적격성 계약 | 구현됨 |
 
 ### plans — 작업 계획
+
+- [웹 하이브리드 검색 통일](plans/2026-10-29-web-hybrid-search.md): 완료.
+
+- [Chroma 서버 이미지 분리](plans/2026-10-29-chroma-image.md): 완료.
+
+- [벡터·RRF 구현](plans/2026-10-27-vector-hybrid.md): 완료. [계약](specs/rag-vector.md) 구현됨, 현재 결정은 [ADR 0021](adr/0021-durable-index-jobs.md) (0019·0020 계승).
 
 - [한국어 근거 답변과 실제 모델 검증](plans/2026-10-28-korean-llm-validation.md) — 완료 (Docker e2e·모델 연결 검증, 일반 한국어 품질은 후속)
 - [해사 질문 검색 평가](plans/2026-10-28-maritime-retrieval-evaluation.md) — 초기 평가 완료
@@ -64,6 +74,8 @@
 | [`plans/2026-10-13-mrv-reference-intensity.md`](plans/2026-10-13-mrv-reference-intensity.md) — 공개 DWT 후보 연결·MRV 참고 집약도 | 완료 (로컬·미제출) |
 
 ### adr — 설계 결정
+
+- [0020 Chroma 전용 이미지](adr/0020-dedicated-chroma-image.md): 대체됨(0021). 전용 서버 분리는 유지.
 
 - [0017 문서 분석 토큰의 제한된 메모리 재사용](adr/0017-bounded-chunk-token-reuse.md) — 제안·로컬 구현
 

@@ -24,6 +24,8 @@ def isolated_workspace(dsn):
             # schema. Never run down or the public maritime migration here.
             app_sql = migration.read_text(encoding="utf-8").split("-- migrate:up", 1)[1].split("-- migrate:down", 1)[0]
             connection.execute(app_sql)
+            jobs = migration.parent / "20261029000000_rag_index_jobs.sql"
+            connection.execute(jobs.read_text(encoding="utf-8").split("-- migrate:up", 1)[1].split("-- migrate:down", 1)[0])
             auth_migration = migration.parent / "20261021000000_user_password_change.sql"
             connection.execute(auth_migration.read_text(encoding="utf-8").split("-- migrate:up", 1)[1].split("-- migrate:down", 1)[0])
             store = object.__new__(Workspace)

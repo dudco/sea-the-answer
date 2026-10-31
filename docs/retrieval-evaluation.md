@@ -12,7 +12,7 @@ uv sync --frozen
 uv run python ../scripts/evaluate_retrieval.py --repeats 3
 ```
 
-기본 결과는 저장소의 `output/retrieval-evaluation/`에 생성된다. `output/`은 Git 제외다. 질문별 진행 상태를 표시하며 실제 검색 함수를 사용한다. 첫 검색은 문서를 분석하고, 이후 같은 내용의 청크 토큰은 크기 제한 메모리에서 재사용한다. 문서 규모와 캐시 수용 여부에 따라 실행 시간이 달라진다. 과거 기준선은 [보존 결과](retrieval-evaluation-baseline.md), 이후 개선은 [비교 결과](search-optimization-results.md)로 구분한다. 이전 실행을 보존하려면 아래처럼 `--output`을 다르게 지정한다.
+기본 결과는 저장소의 `output/retrieval-evaluation/`에 생성된다. `output/`은 Git 제외다. 질문별 진행 상태를 표시하며 실제 검색 함수를 사용한다. 첫 검색은 문서를 분석하고, 이후 같은 내용의 청크 토큰은 크기 제한 메모리에서 재사용한다. 문서 규모와 캐시 수용 여부에 따라 실행 시간이 달라진다. 과거 측정 요약은 [변경 이력](changelog.md)에 남긴다. 이전 실행을 보존하려면 아래처럼 `--output`을 다르게 지정한다.
 
 - `results.md`: 요약, 질문별 결과, 실패·부분 검색과 답 없는 질문 후보 목록, 재현 환경.
 - `results.json`: 정답 라벨, 검색 청크 ID·제목·페이지·점수, 반복 시간, 지표, 입력·코드 SHA-256 해시와 패키지 버전.
@@ -61,4 +61,4 @@ BM25는 일부 단어가 맞으면 답 없는 질문에도 후보를 반환할 �
 
 ## 관련 문서
 
-[초기 측정 결과](retrieval-evaluation-baseline.md), [진행 계획](plans/2026-10-28-maritime-retrieval-evaluation.md), [BM25 계획](plans/2026-10-14-bm25-retrieval.md), [구조](architecture.md).
+[진행 계획](plans/2026-10-28-maritime-retrieval-evaluation.md), [BM25 계획](plans/2026-10-14-bm25-retrieval.md), [구조](architecture.md).

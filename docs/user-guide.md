@@ -354,3 +354,88 @@ uv run --locked --project backend python -m scripts.load_capacity_candidates --c
 #### 기존 데이터 버전
 
 2026-09-30 로컬 적재 기록: MRV 80,552행 중 조회 대상 79,032행, Partial 1,520행은 보존하되 기본 조회에서 제외. 합성 Noon 4,380행·238항차이며 거리 0인 기록 557행은 연료량을 보존합니다. 이 수치는 저장소에 데이터가 포함되거나 이번 작업에서 DB를 재검증했다는 의미가 아닙니다. 다른 데이터 버전에서는 `scripts/verify_load.sql`의 기대값을 검토하세요.
+## 로컬 벡터 색인 운영
+
+준비·실행 명령은 [README](../README.md#로컬-벡터하이브리드-검색)에 모았습니다.
+웹 검색은 BM25·벡터 결과를 RRF로 결합하며 준비 실패 시 BM25로 대체합니다. 방식별 비교는 개발자 CLI에서 합니다.
+문서 저장 후 자동 색인은 검색 요청과 독립적으로 실행됩니다.
+Docker 기본 실행에 Chroma와 `rag-worker`가 포함됩니다. 기존 문서 전체의 초기 색인은 명시적으로 요청해야 합니다.
+
+- 모델은 이미지의 `/opt/models/e5-small`, 벡터는 `rag-vectors` 볼륨 `/data/chroma`에 남습니다.
+  모델은 빌드 시 다운로드·검증하고 비 root 사용자에게 읽기만 허용합니다. Chroma는 UID 10001로 기록합니다.
+  Chroma 서버는 공식 1.5.9 기반 전용 이미지이며 PyTorch/E5는 backend/worker에서 실행합니다.
+  서버와 클라이언트는 내부 HTTP로 통신합니다.
+  재시작 시 모델을 RAM에 다시 로드하지만 다운로드·전체 색인은 하지 않습니다. `down -v`는 볼륨을 삭제하므로 사용하지 마세요.
+- 2026-10-29 이전 backend 기반 Chroma 서버에서 전용 이미지로 적용할 때는
+  `docker compose --profile vector up -d --build --no-deps chroma`를 실행합니다.
+  Chroma만 재생성하므로 짧은 서버 중단이 있으며 그동안 vector/hybrid 요청은 BM25로 돌아갈 수 있습니다.
+  같은 Compose 프로젝트명·`rag-vectors` 볼륨과 `/data/chroma`를 유지하세요. 같은 버전/형식이라 재임베딩은 필요하지 않습니다.
+  중요 인덱스를 별도 보관하려면 기존 Chroma를 중지한 상태에서 해당 볼륨을 백업한 뒤 전환하세요.
+  헬스체크는 서버 이미지에 Python/curl이 없어 bash 내장 TCP로 heartbeat의 HTTP 200을 확인합니다.
+- 호스트 개발 기본 경로는 실행 디렉터리의 `.rag-models/e5-small`, `.rag-vectors`입니다. Git에서 제외됩니다.
+  호스트 PersistentClient는 단일 프로세스 개발/검증용입니다. Docker 서버와 파일을 공유하지 마세요.
+- 문서 등록·본문/메타데이터 저장 시 작업을 자동 등록합니다. 내용이 같은 벡터는 건너뛰고 누락·새 내용만 처리합니다.
+  수동 `index --apply`도 유지하며 worker와 같은 색인 로직을 사용합니다.
+  `--limit`은 소량 검증용이지 전체 준비 완료를 뜻하지 않습니다. 제한 corpus의 정상 결과를 전체 corpus의 준비 상태로 오해하지 마세요.
+- 삭제·활성 개정 변경·권한 변경은 매 검색의 PostgreSQL 필터가 즉시 반영합니다. 오래된 벡터가 남아도 허용 ID 밖에서는 검색하지 않습니다.
+  DB와 Chroma는 동시 트랜잭션이 아닙니다. 색인 중 실패하면 완료한 배치는 남으며 같은 명령을 재실행합니다.
+- 모델·입력 형식·주요 라이브러리 버전이 바뀌면 별도 collection을 사용합니다. 새 버전의 모델 준비/색인이 완료되기 전에는 BM25 fallback합니다.
+  오래된 collection은 자동 삭제하지 않습니다. 저장 공간 정리가 필요하면 별도 새 Chroma 볼륨에 전체 재색인 후 설정을 전환하고,
+  검증·롤백 기간 이후 예전 볼륨을 정리하세요. 앱 PostgreSQL 볼륨과 혼동하지 마세요.
+- 호스트 prepare 다운로드가 연결 재설정으로 실패하면 재실행하거나 `HF_HUB_DISABLE_XET=1`로 일반 HTTP 다운로드를 사용하세요.
+  모델은 공개 모델이므로 기본 사용에 HF 토큰은 필수가 아닙니다. 비밀 토큰을 명령/문서에 붙이지 마세요.
+- vector/hybrid인데 CLI에 `effective_mode=bm25`라면 `fallback_reason`을 확인하세요.
+  `model_not_prepared`: 호스트는 prepare, Docker는 이미지 재빌드/모델 경로 확인, `index_not_ready`: 해당 모델 collection 없음,
+  `index_incomplete_or_stale`: 현재 허용 청크 재색인 필요, `vector_backend_failure`: Chroma/모델/설정 점검.
+  모델·벡터 없이 첫 검색을 시도해도 자동 다운로드나 색인은 하지 않습니다.
+
+검색 결과 점수는 답변의 신뢰도가 아닙니다. 벡터는 관련 없는 질문에도 결과를 반환할 수 있고,
+긴 청크의 구간 평균은 세부 조항 의미를 희석할 수 있습니다. 문서명·페이지를 정답과 비교해 평가하세요.
+실제 검증 범위와 수치는 [변경 이력](changelog.md)을 참고하세요.
+
+### 자동 작업 상태와 복구
+
+저장은 문서/청크/작업을 한 트랜잭션으로 커밋한 후 응답합니다. worker는 별도 프로세스이므로
+임베딩 완료를 기다리지 않습니다. `python -m api.rag_worker status`는 문서 ID, 모델 fingerprint,
+현재 모델 여부, 활성 개정 여부, 문서 상태, 작업 상태, 시도 횟수와 오류 코드를 보여 줍니다.
+웹 로그인 기능이 아니라 DB 자격 증명을 가진 개발자 전용 명령입니다. 본문·비밀값은 출력하지 않습니다.
+
+| 상태 | 의미와 조치 |
+|---|---|
+| pending | worker 대기. `docker compose ps rag-worker` 확인 |
+| processing | 처리 중 또는 중단됨. 죽은 worker의 PG 세션이 해제되면 다른 worker가 자동 재획득 |
+| done | 해당 개정/모델의 당시 내용 색인 완료. Chroma 볼륨을 지웠거나 모델을 바꾸면 enqueue로 재확인 |
+| failed | 최대 5회까지 5/10/20/40초 간격 자동 재시도. 이후 `retry --apply` |
+| cancelled | 처리 시점에 비활성·폐기·삭제 개정. 현재 개정 상태를 확인 |
+
+`status`, `enqueue`, `retry`는 `--document-id <전체 개정 ID>`, `--limit N`(기본 100)을 지원합니다.
+enqueue/retry는 `--apply`가 없으면 미리보기입니다. enqueue는 활성·사용 중 문서만 선택하며,
+이미 done인 문서도 다시 점검해 누락 벡터를 복구합니다. scope만 바뀌고 임베딩 입력이 같으면 벡터를 재사용합니다.
+새 개정에서도 제목·reference·heading·본문이 같으면 입력 해시로 벡터 값을 재사용합니다.
+페이지/개정 ID는 새 record의 현재 정보로 보존합니다. 이전 버전의 벡터에는 입력 해시가 없어
+그 벡터 자체의 검색은 유지되지만 개정 간 재사용에는 사용하지 않습니다.
+모델이 바뀌면 새로운 fingerprint 작업/collection을 만들며 이전 작업은 status의 current_model=false로 구분됩니다.
+같은 모델 worker만 해당 작업을 처리합니다. 이전 collection/작업을 자동 삭제하지 않습니다.
+
+worker가 살아 있으나 멈춘 경우에는 해당 프로세스를 재시작하세요. 잠금은 세션이 종료되어야 해제되며,
+네트워크 단절 감지 시간에 따라 복구가 늦어질 수 있습니다. SIGTERM은 현재 작업 종료를 기다리고
+Compose는 60초 이후 강제 종료합니다. 완료되지 않은 작업은 재시작 시 재처리합니다.
+여러 worker는 `docker compose up -d --no-deps --scale rag-worker=2 rag-worker`로 실행할 수 있지만
+각 프로세스가 모델 RAM을 별도로 사용하므로 기본 1개를 권장합니다. 수동 CLI도 같은 Chroma HTTP 서버를 쓰세요.
+
+Chroma 장애 시 저장된 원문은 유지됩니다. 성공한 배치는 남고 재시도 때 건너뜁니다.
+대기 중 문서 개정/삭제는 실행 전·배치 사이·완료 전에 확인하며, 새 저장의 generation을 이전 작업이 완료 처리하지 못합니다.
+이전 벡터가 잠시 또는 계속 남아도 현재 PostgreSQL 권한·활성·종류·선택 문서 필터 밖에서는 반환하지 않습니다.
+현재 검색 범위에 미색인 청크가 하나라도 있으면 기존 전체 BM25 fallback 정책이 적용됩니다.
+
+### 모델 볼륨에서 이미지 모델로 이전
+
+새 이미지 빌드 후 사용자 적용 시점에 `docker compose up -d`를 실행합니다. 새 migration이 필요합니다.
+기존 `rag-models` 볼륨은 마운트에서만 빠지고 삭제하지 않습니다. 이전 모델 파일은 보존되며 새 모델 경로를 가리지 않습니다.
+현재 고정 revision·입력 규칙·라이브러리 계약이 같으면 기존 `rag-vectors`를 그대로 재사용합니다.
+`enqueue --apply`로 확인하면 같은 벡터는 건너뜁니다. 롤백을 위해 이전 모델 볼륨을 보관할 수 있습니다.
+임의 `down -v`나 볼륨 삭제로 이전하지 마세요. 이미지 모델을 바꾸려면 코드/고정 revision과 잠금 의존성을 함께 검토하고 빌드하세요.
+호스트 개발은 기존 prepare를 유지합니다. 이미지의 런타임은 offline 환경이므로 prepare를 다시 실행할 필요가 없습니다.
+
+앱 JSON 백업에는 작업·벡터가 들어가지 않습니다. 복원 후 활성 문서 전체를 enqueue하거나 수동 index로 복구하세요.
+기존 문서·모델 변경을 자동 전체 스캔하지 않는 것은 원치 않는 대량 CPU 사용을 막기 위한 운영 경계입니다.

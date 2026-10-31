@@ -17,6 +17,8 @@
 
 ## 목록
 
+- [벡터·RRF 검색](rag-vector.md): 구현됨.
+
 | 문서 | 내용 | 상태 |
 |---|---|---|
 | [`authentication.md`](authentication.md) | 선원·관리자 인증·비밀번호·계정 회수 | 구현됨 |
@@ -25,3 +27,5 @@
 | [`integrated-answer.md`](integrated-answer.md) | `POST /api/ask` 입력·출력, CII 표시, 기준 비교 | 구현됨 (1.3.1) |
 | [`tools.md`](tools.md) | backend Tool 조회·계산·조회 도우미, 독립 실행 호환 | 구현됨 (Tool 계약 v1) |
 | [`prepare-data.md`](prepare-data.md) | 실제·합성 구분, 출처·품질·집계 적격성, migration·적재 경계 | 구현됨 (데이터 계약 v1) |
+
+- [자동 색인 작업 계약](rag-index-jobs.md) — 구현됨

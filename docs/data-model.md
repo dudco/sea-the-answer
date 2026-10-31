@@ -337,3 +337,31 @@ CLI는 REAL 선박·IMO, 출처별 DWT·선택값·충돌 상태를 검증하고
 CSV loader는 DDL을 실행하지 않습니다. 마이그레이션이 적용되어 있고 6개 대상 테이블이 모두 빈 경우에만 한 트랜잭션 안에서 검증 후 적재합니다. 하나라도 데이터가 있으면 삭제·재적재하지 않고 거절합니다. CSV·원본·출처 해시는 별도 데이터 버전으로 보존합니다. 실행 절차와 이전 환경의 설정 전환은 [운영 안내](user-guide.md#10-해사-데이터-tool-선택)에 있습니다.
 
 기본 앱의 JSON 백업에는 해사 테이블과 원본 파일이 포함되지 않습니다. 앱 복구는 현재 해사 선박 연결을 보관한 뒤 앱 선박을 교체하고, 동일한 정체성의 선박만 재연결합니다. 삭제·불일치 연결은 NULL로 두며 처리 건수를 복구 결과·감사에 남깁니다. 이 보존 절차는 과거 연결까지 복원하는 해사 백업을 대체하지 않습니다. 별도로 PostgreSQL 백업과 원본·전처리 산출물을 보관해야 합니다. 공개 제원·환경성능 참조 자료는 별도 데이터 폴더에 관리하며, 현재 위 여섯 운영 테이블에 자동 적재하거나 공식 CII 입력으로 사용하지 않습니다.
+## 파생 벡터 색인과 작업 큐
+
+선택적 Chroma collection은 PostgreSQL의 문서·청크·권한을 대체하지 않는다.
+청크 ID/문서 ID/제목/페이지/heading/내용 해시/모델 계약 fingerprint와 정규화 벡터만 저장하고 본문은 중복 저장하지 않는다.
+모델/입력 규칙별 collection, 내용별 immutable record ID를 사용한다. PostgreSQL 백업에는 벡터/모델 파일이 포함되지 않는다.
+새 Chroma metadata의 `embedding_input_hash`는 모델 계약+실제 입력 해시다. 개정 ID/페이지만 달라져도
+같은 입력의 벡터 값을 재사용하고 record의 문서·페이지는 현재 값으로 유지한다. 기존 metadata도 검색 호환성을 유지한다.
+DB를 복원한 뒤 원본 청크에서 재색인할 수 있다. 상세 스키마와 일관성 계약은 [rag-vector](specs/rag-vector.md)를 따른다.
+
+`20261029000000_rag_index_jobs.sql`은 원본 문서/청크 컬럼을 바꾸지 않고 작업 테이블을 추가한다.
+
+| 컬럼 | 의미 |
+|---|---|
+| id | bigint identity PK |
+| document_id | documents.id FK, 물리 삭제 시 CASCADE |
+| fingerprint | 모델·입력 규칙·라이브러리 계약 해시, document_id와 UNIQUE |
+| generation | enqueue마다 +1, 이전 작업의 완료 무효화 |
+| state | pending / processing / done / failed / cancelled |
+| attempts | 이번 세대의 실행 횟수, enqueue/retry 시 0 |
+| claim_token | 실행별 UUID, 세대와 함께 조건부 완료에 사용 |
+| error_code | 안전한 고정 코드; 본문/DSN/외부 예외 원문 저장 금지 |
+| next_attempt_at / updated_at | 재시도 시각 / 상태 변경 시각 |
+
+pending → processing → done, 실패는 failed(5회까지 재시도), 비활성·삭제 개정은 cancelled다.
+processing 중 프로세스가 죽으면 PG 세션 잠금 해제 후 재획득한다. 새 저장은 pending으로 새 세대를 요청한다.
+원본과 작업 생성은 하나의 트랜잭션, Chroma 저장과 작업 완료는 별도이며 실패 시 멱등 재처리한다.
+앱 JSON 백업의 16개 테이블 계약은 유지한다. 작업은 복원 시 문서 물리 삭제와 함께 제거되므로
+복원 후 enqueue가 필요하다. migration down은 큐만 삭제한다(진행 작업 상태가 소실되므로 worker 중지 후 적용).

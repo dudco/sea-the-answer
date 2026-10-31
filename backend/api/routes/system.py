@@ -9,7 +9,7 @@ from ..web import security
 
 def health(ctx):
     user = ctx.user
-    return {"ok": True, "storage": "postgresql", "retrieval": "bm25-ko-en", "llmConfigured": config.llm_configured(),
+    return {"ok": True, "storage": "postgresql", "retrieval": "hybrid-rrf", "llmConfigured": config.llm_configured(),
             "csrfToken": security.csrf_token, "user": user, "setupRequired": False,
             "documents": len(ctx.db.allowed_document_ids(user)) if user["role"] != "guest" and not user.get("must_change_password") else 0,
             "version": config.VERSION, "authenticated": user["role"] in ("admin", "operator", "viewer"),

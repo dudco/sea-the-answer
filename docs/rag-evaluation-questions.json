@@ -1,0 +1,17 @@
+{
+  "date": "2026-10-29",
+  "purpose": "현재 등록 PDF의 근거 검색 평가 초안. 법규 답변 정답 세트가 아니라 물리 페이지/조항 검색 기준이다.",
+  "page_numbering": "PDF physical page, one-based",
+  "questions": [
+    {"id":"Q01","query":"선급이 자동으로 정지되는 경우는?","document":"2025 제1편","pages":[21],"section":"901. 선급정지 및 회복","body_patterns":["자동"],"expected":"자동 정지 조건을 설명하는 본문 청크"},
+    {"id":"Q02","query":"정지된 선급은 어떤 조건에서 회복될 수 있어?","document":"2025 제1편","pages":[21,22],"section":"901. 선급정지 및 회복","body_patterns":["회복"],"expected":"선급 회복 조건 본문"},
+    {"id":"Q03","query":"KR 연차검사는 검사기준일 전후 언제까지 받아야 해?","document":"2025 제1편","pages":[40],"section":"제2장 제2절 201. 검사시기","body_patterns":["201\\s*\\.","3\\s*개월"],"expected":"연차검사 시기와 허용 기간"},
+    {"id":"Q04","query":"KR 선체·의장·소방설비 정기검사의 주기와 검사시기는?","document":"2025 제1편","pages":[55,56],"section":"제2장 제4절 401. 검사시기","body_patterns":["401\\s*\\.","5\\s*년"],"expected":"정기검사 검사시기 조항"},
+    {"id":"Q05","query":"Part 5D에서 heavy deck cargo 강화 규정이 적용되는 기준은 뭐야?","document":"Part-5D","pages":[17,18],"section":"5D-1-4 / 1.3.1 Application 및 3 Strengthening","heading_patterns":["1\\.3\\.1 Application","/ 3 Strengthening for Heavy Deck Cargoes"],"expected":"강화 규정 적용 조항","english_query":"Part 5D application requirements for strengthening for heavy deck cargoes"},
+    {"id":"Q06","query":"Part 5D에서 heavy deck cargo를 운송하려면 어떤 자료를 제출해야 해?","document":"Part-5D","pages":[17],"section":"5D-1-4 / 1.5.1 Heavy Deck Cargoes","heading_patterns":["1\\.5\\.1 Heavy Deck Cargoes"],"expected":"Submission of Data 하위 제출 자료 조항","english_query":"Part 5D heavy deck cargoes submission of data"},
+    {"id":"Q07","query":"Part 5D에서 heavy liquid cargo의 설계수두 Design Head는 어떻게 정해?","document":"Part-5D","pages":[18],"section":"5D-1-4 / 5.1 Design Head","heading_patterns":["5\\.1 Design Head"],"expected":"중량 액체화물 설계수두 조항","english_query":"Part 5D strengthening heavy liquid cargoes design head"},
+    {"id":"Q08","query":"Part 6의 SOx scrubber 설계 검토를 위해 제출해야 하는 도면과 자료는?","document":"Part-6","pages":[331],"section":"6-3-2 / 3 Plans and Data to be Submitted","heading_patterns":["/ 3 Plans and Data to be Submitted"],"expected":"SOx scrubber 제출 도면·자료 조항","english_query":"SOx scrubbers plans and data to be submitted"},
+    {"id":"Q09","query":"Part 6에서 육상전원 shore connection의 비상정지 emergency shutdown 작동 요건은?","document":"Part-6","pages":[412],"section":"6-4-2 / 25 LVSC and HVSC Emergency Shutdown","heading_patterns":["25 LVSC and HVSC Emergency Shutdown"],"expected":"육상전원 비상정지 조항","english_query":"LVSC HVSC shore connection emergency shutdown requirements"},
+    {"id":"Q10","query":"Part 6에서 평형수 처리장치 BWMS의 ABS 승인과 형식승인은 어떻게 구분돼?","document":"Part-6","pages":[439],"section":"6-6-1 / 7.7.1 ABS Approval 및 7.7.2 Type Approval","heading_patterns":["7\\.7\\.1 ABS Approval","7\\.7\\.2 ABS Type Approval"],"expected":"두 승인 절차의 관련 청크; 한 청크 적중으로 답변 완전성을 보장하지 않음","english_query":"BWMS ABS approval and ABS type approval program"}
+  ]
+}

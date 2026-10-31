@@ -29,8 +29,8 @@ def test_tokenizer_normalizes_mixed_language_and_retains_frequency():
 
 def test_kiwi_particles_endings_compounds_and_no_artificial_bigrams():
     tokens = tokenize("선급이 자동으로 정지되는 경우는? 평형수의 검사를 실시한다.")
-    assert {"선급", "자동", "정지", "평형수", "검사"} <= set(tokens)
-    assert not {"으로", "동으", "되는", "경우", "형수", "선", "급"} & set(tokens)
+    assert {"선급", "자동", "정지", "경우", "평형수", "검사"} <= set(tokens)
+    assert not {"으로", "동으", "되는", "형수", "선", "급"} & set(tokens)
     assert tokenize("연료를 연료의") == ["연료", "연료"]
 
 
@@ -62,8 +62,16 @@ def test_expansion_uses_whole_terms_and_phrases_not_substrings_or_cascades():
 
 def test_grammatical_overlap_no_longer_matches_unrelated_document():
     corpus = [chunk("target", "선급이 자동으로 정지된다."),
-              chunk("unrelated", "갑자기 수동으로 변경되는 경우다.")]
+              chunk("unrelated", "갑자기 수동으로 변경된다.")]
     assert [r["id"] for r in retrieve("선급이 자동으로 정지되는 경우는?", corpus)] == ["target"]
+
+
+def test_case_word_is_searchable_in_query_and_corpus():
+    from api.rag_retrieval import chunk_tokens
+    source = chunk("case", "검사를 생략하는 경우에는 별도의 승인이 필요하다.")
+    assert "경우" in query_tokens("어떤 경우에 검사를 생략하나?")
+    assert "경우" in chunk_tokens(source)
+    assert retrieve("경우", [source])[0]["id"] == "case"
 
 
 @pytest.mark.parametrize(("query", "focused", "broad", "unrelated"), [

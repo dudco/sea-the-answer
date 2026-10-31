@@ -1,0 +1,13 @@
+# Dedicated vector server. CPU embeddings and the Python client stay in backend.
+FROM chromadb/chroma:1.5.9
+
+# Keep the previous backend-based server's volume layout and ownership.
+RUN mkdir -p /data/chroma && chown -R 10001:10001 /data
+USER 10001:10001
+EXPOSE 8000
+
+# The official Rust server image has bash but no Python or curl.
+HEALTHCHECK --interval=5s --timeout=3s --start-period=10s --retries=20 \
+    CMD bash -ec 'exec 3<>/dev/tcp/127.0.0.1/8000; printf "GET /api/v2/heartbeat HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n" >&3; IFS= read -r status <&3; [[ "$status" == *" 200 "* ]]'
+
+CMD ["run", "--host", "0.0.0.0", "--port", "8000", "--path", "/data/chroma"]

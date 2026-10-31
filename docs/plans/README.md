@@ -14,6 +14,14 @@
 
 ## 목록
 
+- [2026-10-29 웹 하이브리드 검색 통일](2026-10-29-web-hybrid-search.md): 완료.
+
+- [2026-10-29 벡터 색인 복구·통합 검증](2026-10-29-vector-index-repair-integration.md): 완료 (머지 커밋 대기).
+
+- [2026-10-29 Chroma 이미지 분리](2026-10-29-chroma-image.md): 완료.
+
+- [2026-10-27 벡터·RRF](2026-10-27-vector-hybrid.md): 완료.
+
 | 문서 | 내용 | 상태 |
 |---|---|---|
 | [`2026-10-28-korean-llm-validation.md`](2026-10-28-korean-llm-validation.md) | 한국어 평가·브라우저 회귀·Docker 및 실제 모델 연결 검증 | 완료 (일반 한국어 품질은 후속) |
@@ -30,3 +38,5 @@
 | [`2026-10-08-tools-pr-update.md`](2026-10-08-tools-pr-update.md) | 역할4 PR 최신 main 반영 및 제출 | 완료 |
 | [`2026-10-13-tools-and-data-preparation-integration.md`](2026-10-13-tools-and-data-preparation-integration.md) | 해사 runtime·준비 작업·마이그레이션·선박 연결 통합 | 완료 |
 | [`2026-10-13-mrv-reference-intensity.md`](2026-10-13-mrv-reference-intensity.md) | 공개 제원 후보 연결·MRV 참고 집약도 | 완료 (로컬·미제출) |
+
+- [자동 색인과 이미지 모델](2026-10-29-automatic-vector-indexing.md) — 완료
