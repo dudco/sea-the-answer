@@ -6,6 +6,7 @@ import json
 
 from .. import config
 from ..errors import require
+from .. import operation_uploads as uploads
 
 
 def operations(ctx):
@@ -32,3 +33,6 @@ def example(ctx):
 
 GET = {"operations": operations}
 POST = {"operations/validate": validate, "operations/example": example}
+POST.update({'operations/import/'+name:uploads.endpoint(action) for name,action in {
+    'start':uploads.start,'chunk':uploads.chunk,'preview':uploads.preview,
+    'commit':uploads.commit,'reference':uploads.reference,'cancel':uploads.cancel}.items()})

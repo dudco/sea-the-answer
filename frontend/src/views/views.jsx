@@ -5,6 +5,7 @@ import { validatedPresentation } from '../lib/answer-presentation';
 import SkillsPanel from '../components/skills-panel';
 import * as helpers from '../components/common';
 import NavigationAnswer from '../components/navigation-answer';
+import QuestionWorkflow from '../components/question-workflow';
 export function createMainViews(model, views) {
   const noop = () => {};
   const { state, canWrite, isAdmin } = model;
@@ -123,7 +124,7 @@ export function createMainViews(model, views) {
                 ? '답변 근거를 확인해 주세요'
                 : '답변과 확인 근거'}
           </h2>
-          {badge(a.navigation ? '항구 참조 비교' : a.skill ? '업무 스킬' : a.generation === 'llm' ? 'AI 초안' : '문서 검색', 'teal')}
+          {badge(a.navigation ? '항구 참조 비교' : a.workflow ? '업무 조회·계산' : a.skill ? '업무 스킬' : a.generation === 'llm' ? 'AI 초안' : '문서 검색', 'teal')}
         </div>
         <p className={'small muted'}>{a.notice}</p>
         {/* Only model warnings mean the AI answer failed; e.g. OPERATIONS_CONTEXT_REQUIRED has its own notice. */}
@@ -164,7 +165,7 @@ export function createMainViews(model, views) {
           );
         })}
         <AnswerPresentation answer={a} presentation={presentation} />
-        {!a.evidence.length && !a.skill && !a.operations?.count && presentation?.source !== 'operations'
+        {!a.evidence.length && !a.workflow && !a.skill && !a.operations?.count && presentation?.source !== 'operations'
           ? notice(
               en
                 ? 'Insufficient document evidence. Ask the responsible officer.'
@@ -201,6 +202,7 @@ export function createMainViews(model, views) {
         )}
         </>}
         {a.navigation && <NavigationAnswer answer={a} />}
+        {a.workflow && <QuestionWorkflow answer={a} />}
         <div className={'answer-actions'}>
           {canWrite() && (a.statements.length || a.operations?.count || a.toolRuns.length)
             ? btn(en ? 'Add to report' : '보고서에 담기', 'answerReport', 'primary', 'edit')

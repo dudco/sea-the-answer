@@ -1,5 +1,13 @@
 # 데이터 모델
 
+## 웹 운항 자료 등록 (2026-11-06)
+
+새 영구 테이블·migration 없이 기존 operations와 maritime_data 원본/품질/후보 테이블을 사용한다. 행 충돌은 등록 전체를 롤백하고 동일 행은 변경하지 않는다. vessels의 기존 ship_id는 보존하며 명시 확인한 동일 IMO·유일 실제 앱 선박에만 새 연결을 허용한다. 임시 업로드 ID/소유자는 한 서버 프로세스에 귀속되고 파일은 제한된 임시 저장소에 둔다. 감사 기록에는 등록 해시·종류별 건수·연결 건수를 남긴다. AIS 참조는 별도 운영 볼륨의 JSON이며 DB/앱 JSON 백업에 합치지 않는다. [입출력 계약](specs/operation-data-import.md).
+
+## 자연어 업무 실행 JSON (2026-11-06)
+
+새 SQL 테이블이나 migration 없이 기존 `queries.response.workflow`에 검증 범위·되묻기·실행 결과·산술 비교·부모 응답 ID를 저장한다. `query_owner`로 후속/이력 열람을 제한한다. scope에는 선박 id/name/version/IMO, 연도/기간, MRV 매핑, 선택 문서 ID와 원래 질문을 보존하며 이력의 숫자를 다음 질문 답변으로 재사용하지 않는다. 출처 원본·MRV·선박/운항 기록은 조회만 한다. 정확한 필드와 상태는 [통합 답변 계약](specs/integrated-answer.md#자연어-업무-실행-확장-2026-11-06-구현됨)에 둔다. 기존 JSON 백업에 질문/소유자 자료가 포함되며 별도 백업 형식을 추가하지 않는다.
+
 ## 외부 선석 참조 snapshot (2026-11-04)
 
 새 DB 테이블을 만들지 않는다. 준비한 `catalog.json`은 실제 MRV IMO와 공개 AIS metadata의 교집합, 선석별 게시 제한·조건·중복 변형, 출처 SHA256·수집 시각을 보관하는 별도 읽기 전용 참조 파일이다. 형식·수량 단위·노후화 정책은 [선석 참조 계약](specs/port-references.md)에 정의한다. API는 현재 `maritime_data.vessels`의 REAL ID를 확인하지만 AIS 순간값을 연간 보고 값에 채우거나 기존 계정·운항·제원 테이블을 갱신하지 않는다. 이 외부 파일은 앱 JSON 백업에 포함되지 않으므로 원본·manifest·준비 절차와 함께 별도 보존/배포해야 한다. 복구 후에도 자료의 경과 시간은 요청 시 다시 검사한다.
@@ -8,12 +16,21 @@
 
 참조 snapshot 1.1은 항구별 `source_id`·`reference_scope`를 추가하고 source variants의 조건/위치와 최종 제한값 일치를 검사한다. 오프라인 묶음은 catalog·SHA256 manifest·출처 안내로 구성하며 이전 catalog는 해시 이름의 별도 파일로 보존한다. 이 확장은 PostgreSQL 테이블·운항 JSON 필드·기존 MRV 행을 바꾸지 않고 앱 JSON 백업에도 포함되지 않는다. [필드·오프라인 계약](specs/port-references.md)을 따른다.
 
+snapshot 1.2는 `ais_no`/`schema_no`(노르웨이 공개 위치 보고/명세), `aalborg_berths`(덴마크 Oil Terminals p.7)를 추가한다. 관측값의 선택적 `position_reported_at`·`raw_reported_fields`는 단위/정적 시각이 미확인인 원문 값이다. 기존 `reported_*_m`·`metadata_received_at`로 승격하지 않는다. 동일 IMO의 복수 source는 `observation_candidates`와 개수를 보존하고 단일 관측값 비교는 보류한다. 상세/질문 결과는 `readiness`의 7개 실제 확인 항목과 선석별 `operational_checks`를 추가한다. 가정 입력 `scenario`는 실제 계측·기상·예선 배정·승인 데이터 테이블을 생성하지 않으며 기존 선박/운항 필드를 바꾸지 않는다. 질문 이력은 당시 미확인 사유와 원문 출처를 JSON에 보존한다.
+
 통합 질문에서 만든 항구 참조 답변은 기존 `queries.response` JSON의 `navigation`에 저장하고 `query_owner`로 사용자에게 연결한다. `generation=tool`, `task=navigation`, `reference_only=true`, `admission=not_assessed`와 선택 선박·매핑 문맥·항구별 건수·상세 수치·출처/시점·부족 사유를 보존한다. `evidence`·`statements`·`toolRuns`는 빈 배열이며 외부 항만 URL을 등록 문서 인용이나 CO₂ 실행 기록으로 만들지 않는다. Query 감사 기록과 소유자별 이력을 재사용하므로 추가 migration은 없다. 저장된 결과는 당시 수집본·비교 시점의 기록이며 현재 입항 허가로 갱신되는 값이 아니다.
+
+2026-11-05 질문 조건 확장은 `navigation.query`(수치 필터·상태·항구별 정렬·표시 설명), `selection`(`port_ids`, `berth_id`), 비교/표시/수치 미확인 제외 건수를 추가한다. 항구별 `available_berth_count`는 필터 전 개수이고 기존 `berth_count`는 표시 개수다. 검증된 후속 질문만 `previous_query_id`를 저장한다. `no_reference_matches`, `unsupported_condition`, `needs_reference_scope`, `needs_previous_query`를 추가하며 과거 JSON에 이 필드가 없어도 화면 열람은 가능하다. 이전 숫자는 재사용하지 않고 같은 소유자·선박 버전·IMO·현재 매핑을 확인한 뒤 새로 비교한다. SQL 테이블 변경은 없다.
 > 테이블·필드·상태 값을 바꾸면 같은 작업에서 이 문서를 고치고, 되돌리기 어려운 변경이면 ADR을 남깁니다.
 
 > 문서 전처리 통합은 `migrations/`의 PostgreSQL 테이블/컬럼을 바꾸지 않는다. `chunks.document_id`로 문서 제목을, `chunk_pages.id`로 물리 페이지를 조회한다. 기존 `haedap-chunk-v1` 문서 해시와 청크 ID를 유지하고 기존 개정본의 청크는 재작성하지 않는다. 새 문서·새 내용 개정의 분할 규칙만 [전처리 계약](specs/api.md#python-문서-전처리-계약-2026-10-13-확정)에 따라 달라진다.
 
+snapshot 1.3은 과거 등록 제원 `static_references`(현재 확인된 IMO/MMSI, 등록 IMO, 길이/폭/등록 흘수, 등록 유효기간, source locator/issue), 요청 기간 `static_reference_period`, 고정 지역 관측 `environment_observations`(station/parameter, 단위, 관측시각/품질, 좌표, 기준면·station metadata 해시)을 추가한다. `static_reference`/선석별 `static_reference_checks`는 길이/폭의 별도 과거 참고 비교다. 기존 AIS 신고값·기존 선석 상태는 유지한다. `environment`는 관측/수집 나이와 품질을 제공하지만 가정 입력·UKC·입항 판정에 자동 사용하지 않는다. 1.0–1.2 읽기와 기존 PostgreSQL 스키마/JSON 백업 범위를 유지한다. 상세 제약은 [참조 계약](specs/port-references.md#등록-제원지역-관측-참조-확장-2026-11-05-확정)에 정의한다.
+
+참조 snapshot 1.4의 `port_guidance`는 최대 6개 고정 공식 문서와 `guidance_review_sha256`을 추가한다. 문서별 항구/URL·출처·raw/main 본문 SHA256·수집 시각·표시 개정일·명시 적용일, 조건별 한국어 요약/적용 범위·수치/단위·원문 발췌/정규화 본문 위치·지정 선석을 보존한다. 상세/질문 응답의 `official_guidance`는 항상 적용성 확인 필요이며 기존 자동 비교에 사용하지 않는다. 같은 항구의 다른 경로나 선종 조건을 현재 선박에 적용된 것으로 표시하지 않는다. 기존 sources 12개·AIS/등록/관측 자료·SQL 스키마·앱 백업 계약은 유지하며 지침은 별도 묶음으로 배포한다.
+
 ## 1. 저장소 개요
+
 
 - **엔진**: PostgreSQL(compose 서비스 `db`, `postgres:18-alpine`). FastAPI가 요청마다 `psycopg`로 연결하고 요청 단위 트랜잭션으로 커밋·롤백합니다.
 - **위치**: `DATABASE_URL`. compose에서는 `db` 컨테이너, 데이터는 볼륨 `haedap_db-data`.
@@ -184,7 +201,7 @@ erDiagram
 
 앱과 같은 PostgreSQL DB 안의 `maritime_data` 스키마입니다. 루트 dbmate 마이그레이션이 구조를 만들고, 별도 전처리·CSV 적재를 거친 자료만 조회합니다. 아래 여섯 원본·출처·품질 테이블과 두 조회 View가 기본 저장 모델이며, 별도 제원 후보 참조 테이블 하나를 추가합니다. 기존 `public.ships`는 선택적 외래키로 재사용하며 보고기간 MRV·합성 Noon·출처·품질은 독립적으로 보존합니다. 실제/합성·단위 정책은 [데이터 명세](specs/prepare-data.md), 조회·계산 입력은 [API 명세](specs/tools.md)에 정의합니다.
 
-DDL의 원본은 [`20261013010000_maritime_data.sql`](../migrations/20261013010000_maritime_data.sql)입니다. 데이터 필드 사전은 `scripts/prepare_maritime_data.py`의 `FIELDS`에서 생성하며, 사전 생성은 DDL을 만들거나 마이그레이션 파일을 덮어쓰지 않습니다. SQL의 NOT NULL·CHECK·외래키는 아래 표의 필드 규칙에 추가 적용됩니다. 앱 테이블을 이 구조로 교체하거나 두 데이터를 자동 결합하지 않습니다([ADR 0011 제안](adr/0011-tools-runtime-and-data-preparation.md)).
+DDL의 원본은 [`20261013010000_maritime_data.sql`](../migrations/20261013010000_maritime_data.sql)입니다. 데이터 필드 사전은 `backend/tools/data_contract.py`의 공유 `FIELDS`에서 생성하며 준비 스크립트도 같은 값을 사용합니다. 사전 생성은 DDL이나 migration을 변경하지 않습니다. SQL의 NOT NULL·CHECK·외래키는 아래 표의 필드 규칙에 추가 적용됩니다. 앱 테이블을 이 구조로 교체하거나 두 데이터를 자동 결합하지 않습니다([ADR 0011 제안](adr/0011-tools-runtime-and-data-preparation.md)).
 
 ### ERD
 

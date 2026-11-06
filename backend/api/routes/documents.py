@@ -9,6 +9,7 @@ from fastapi import Response
 from ..errors import ApiError, require
 from ..web import security
 from ..navigation_query import try_answer as navigation_answer
+from ..question_workflows import try_answer as workflow_answer
 
 
 def documents(ctx):
@@ -34,6 +35,8 @@ def history(ctx):
 def ask(ctx):
     db, user = ctx.db, ctx.user
     answer = navigation_answer(ctx)
+    if answer is None:
+        answer = workflow_answer(ctx)
     if answer is None:
         answer = db.answer(user, ctx.body)
     require(security.current_user(db, ctx.request, ctx.guest)["id"] == user["id"],

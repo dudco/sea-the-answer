@@ -25,6 +25,7 @@
 |---|---|---|
 | `LLM_API_BASE_URL` | 미설정·빈 값이면 `https://api.openai.com/v1` | API 접두 주소. `/chat/completions`는 포함하지 않으며, `/v1`이 필요한 공급자는 그 경로까지 지정 |
 | `OPENAI_MODEL` | 빈 값이면 모델 비활성 | 공급자가 제공하는 정확한 모델 ID. 자동으로 다른 모델로 치환하지 않음 |
+| `HAEDAP_PLANNER_MODEL` | 빈 값이면 `OPENAI_MODEL` | auto 업무 실행의 action 선택만 별도 모델로 지정. 나머지 날짜/선박/계산 검증은 서버 담당. 호출 제한·대체 처리는 [자연어 실행 계약](integrated-answer.md#자연어-업무-실행-확장-2026-11-06-구현됨) 참고 |
 | `OPENAI_API_KEY` | 호스트가 정확히 `api.openai.com`이면 필수 | OpenAI 호스트에서만 `Authorization: Bearer ...` 전송 |
 | `DONGUK_AI_CHAT_API_KEY` | 호스트가 `dongguk.edu`·그 하위 도메인 또는 정확히 `factchat-cloud.mindlogic.ai`이면 필수 | 동국 호스트에서만 `Authorization: Bearer ...` 전송. `DONGUK` 철자를 그대로 사용 |
 | `LLM_RESPONSE_FORMAT` | `text`(기본), `json_object`, `json_schema` 중 하나 | `text`는 요청의 `response_format` 생략. 나머지는 해당 서버·모델이 지원할 때만 선택 |

@@ -2,7 +2,7 @@
 import { test, expect } from '@playwright/test';
 
 async function setup(page) {
-  const state = { calls: [], errors: [], delay: null, needsShip: false, unsupported: false };
+  const state = { calls: [], errors: [], delay: null, needsShip: false, unsupported: false, filtered: false };
   page.on('pageerror', e => state.errors.push(e.message));
   const ship = { id: 'real-ship', name: 'VIKING CINDERELLA', imo: '8719188', dwt: 4228, type: 'Passenger ship', version: 1 };
   await page.route('**/api/**', async route => {
@@ -34,6 +34,12 @@ async function setup(page) {
               { kind: 'length', vessel_reported_m: '189', berth_listed_m: '360', status: 'within_listed_reference', reasons: [] },
               { kind: 'beam', vessel_reported_m: '34', berth_listed_m: null, status: 'unavailable', reasons: ['BERTH_LIMIT_NOT_PUBLISHED'] },
             ] }] }));
+        if (state.filtered) {
+          nav.query = { description: { ko: '공개 흘수 제한 8 m 이상', en: 'Published draught limit at least 8 m' } };
+          nav.compared_berth_count = 8; nav.matched_berth_count = 4; nav.excluded_unknown_count = 1;
+          nav.ports.forEach(p => { p.available_berth_count = 4; });
+          nav.previous_query_id = body.context.previousQueryId;
+        }
       }
       return json({ id: 'nav-'+state.calls.length, question: body.question, language: 'ko', generation: 'tool',
         status: nav.results.length ? 'reference_found' : 'needs_input', notice: state.unsupported ? '요청한 항구 자료가 없습니다.' : '일부 공개 수치 비교입니다. 실제 입항 허가 판정은 아닙니다.',
@@ -75,7 +81,27 @@ test('question alone compares available ports and exact IMO aligns the existing 
   await expect(answer).toBeVisible();
   expect(state.calls[0].body.context.ship).toBe('sample');
   expect(state.calls[1].body.context.ship).toBe('real-ship');
+  expect(state.calls[1].body.context.previousQueryId).toBe('nav-1');
   expect(state.calls.every(c => c.headers.authorization === undefined && c.headers['x-haedap-token'] === 'nav-csrf')).toBe(true);
+  expect(state.errors).toEqual([]);
+});
+
+test('followup sends only the displayed ship answer ID and shows applied reference conditions', async ({ page }) => {
+  const state = await setup(page);
+  await ask(page, 'IMO 8719188 선박이 입항 가능한 항구는?');
+  await expect(page.locator('[data-navigation-answer]')).toBeVisible();
+  state.filtered = true;
+  await ask(page, '그럼 헬싱키는?');
+  await expect.poll(() => state.calls.length).toBe(2);
+  expect(state.calls[1].body.context.previousQueryId).toBe('nav-1');
+  await expect(page.locator('[data-navigation-conditions]')).toContainText('공개 흘수 제한 8 m 이상');
+  await expect(page.locator('[data-navigation-conditions]')).toContainText('8 / 4');
+  await expect(page.locator('[data-navigation-conditions]')).toContainText('미확인으로 필터에서 제외: 1');
+  await expect(page.locator('[data-navigation-conditions]')).toContainText('현재 자료를 다시 조회');
+  await page.locator('#ship').selectOption('another');
+  await ask(page, '그럼 예테보리는?');
+  await expect.poll(() => state.calls.length).toBe(3);
+  expect(state.calls[2].body.context.previousQueryId).toBeUndefined();
   expect(state.errors).toEqual([]);
 });
 

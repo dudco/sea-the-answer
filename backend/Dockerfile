@@ -11,7 +11,7 @@ ENV PYTHONUNBUFFERED=1 \
     PATH=/opt/venv/bin:$PATH \
     HAEDAP_BACKUP_DIR=/data/backups
 WORKDIR /app
-RUN useradd --create-home --uid 10001 app && mkdir -p /data/backups /data/models /data/chroma && chown -R app:app /data
+RUN useradd --create-home --uid 10001 app && mkdir -p /data/backups /data/imports /data/models /data/chroma && chown -R app:app /data
 EXPOSE 8000
 # Only reachable on the compose network (never published), so trust X-Forwarded-For from Next.js
 # for per-client login rate limiting.

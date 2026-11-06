@@ -1,5 +1,7 @@
 const reasons = {
   AIS_OBSERVATION_UNAVAILABLE: '이 자료에 해당 선박의 AIS 신고값이 없음',
+  AIS_STATIC_TIME_UNVERIFIED: '위치 보고 시각만 있어 제원·흘수 신고 시각은 미확인',
+  AIS_UNITS_UNVERIFIED: '공식 명세에서 치수 단위가 확정되지 않아 수치 비교 보류',
   AIS_IDENTITY_AMBIGUOUS: 'IMO·MMSI 식별자가 중복되거나 불명확함',
   AIS_RECORD_STALE: 'AIS 기록이 24시간 기준을 지남',
   AIS_CAPTURE_STALE: 'AIS 수집 자료가 24시간 기준을 지남',

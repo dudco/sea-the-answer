@@ -375,6 +375,8 @@ test('workspace: documents, operations, reports, admin review, backup', async ({
     });
     await submit('#csvForm');
     await action('commitCsv').click();
+    await expect(page.locator('[data-import-database]')).toBeVisible();
+    await close();
     await dialogClosed();
     expect(await records()).toHaveLength(22);
   });

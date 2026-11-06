@@ -1,5 +1,17 @@
 # 아키텍처
 
+## 관리자 운항 자료 가져오기 (2026-11-06)
+
+기존 CSV 버튼의 `OperationImport`가 관리자 세션/CSRF로 파일을 나눠 전송한다. `api/operation_uploads.py`는 소유자·크기·TTL·순서·미리보기 해시를 관리한다. `tools/operation_import.py`는 알려진 CSV/준비 ZIP·JSON을 판별하고 기존 테이블의 고정 열·FK·출처·실제/가상 경계를 검증한다. 미리보기는 savepoint에서 실제 제약을 검사한 뒤 롤백하며 등록은 단일 DB 트랜잭션이다. 같은 키의 다른 행은 거절하고 같은 행은 보존한다. 임의 경로·DDL·실행 파일·SQL·LLM 도구는 공개하지 않는다.
+
+순수 준비 필드 계약은 `tools/data_contract.py`, 후보 검증은 `tools/capacity_data.py`를 오프라인 scripts와 공유한다. 전처리·원시 파일 다운로드는 계속 scripts의 별도 작업이다. 런타임은 scripts나 pandas/openpyxl에 의존하지 않는다. 참조 JSON은 DB 등록과 별도 단계로 관리자 저장 위치에 원자 설치하고 이전 파일을 보존한다. 기본 참조 경로는 웹 관리 저장소이며 서버 지정 환경변수 경로가 우선한다. Docker는 `maritime-imports` 볼륨을 별도로 유지한다. [상세 계약](specs/operation-data-import.md).
+
+## 자연어 업무 실행 (2026-11-06)
+
+`routes/documents.ask`는 항구 질문 → `question_workflows.try_answer` → 기존 `db.answer` 순으로 실행한다. `question_intent`가 서버의 날짜·작업 규칙과 선택적 모델의 action 제안을 담당한다. 모델에는 질문/기준일과 폐쇄형 작업 후보만 전달하며 SQL·선박 ID·날짜·숫자 결과를 맡기지 않는다. `question_workflows`는 기존 `workflow_skills.operation_result`, `reference_intensity.calculate_reference`, 선택 문서 함수를 재사용한다. 새 범용 도구나 SQL 생성 경로는 없다.
+
+현재 소유자의 지정 부모 응답만 후속 범위로 검증하고, 결과는 기존 queries/query_owner와 감사 기록에 저장한다. 매 요청 현재 도구를 다시 실행하며 반환 전 인증·선박 버전·매핑·문서 권한을 재확인한다. 브라우저의 기존 질문 화면은 `QuestionWorkflow`로 해석 범위·보완 양식·여러 도구 결과·산술 비교를 표시하고 선택 변경/새 질문 뒤 늦은 응답을 버린다. [입출력·제한](specs/integrated-answer.md#자연어-업무-실행-확장-2026-11-06-구현됨).
+
 > 대상 버전: 1.4.0 · 최종 확인: 2026-11-04 (main 통합 코드 대조)
 
 ## 외부 AIS·선석 참조 API (2026-11-04 로컬 시범)
@@ -12,7 +24,19 @@
 
 기존 통합 질문의 `/api/ask`는 `api/navigation_query.py`에서 자동 유형의 제한된 항구 비교 질문을 처리한다. 질문의 명시 IMO/앱 선박명 또는 기존 선택 선박을 확인한 뒤, 항구가 생략된 목록 질문은 제공 항구 전체를 비교한다. `api/navigation_service.py`를 상세 API와 공유하고 `NavigationAnswer`가 기존 답변 영역에 항구별 건수·숫자·출처·부족 항목을 표시한다. 질문에서 확인한 선박은 대기 중 선택이 바뀌지 않았을 때만 기존 문맥에 반영한다. 명시 문서 전용·규정/정의 설명과 다른 유형은 기존 `db.answer` 경로를 유지한다. 일반 RAG store·모델 호출 함수는 수정하지 않으며, 이 분기는 규칙과 도구로 실행되는 한정 경로다. 범용 LLM 의도 분류·실제 입항 허가 판정은 구현하지 않는다. 답변은 기존 소유자별 질문 이력에 저장한다.
 
+`api/navigation_intent.py`는 이 경로의 공개 제한값 필터·상태 필터·항구별 정렬을 담당한다. 원본 비교 결과를 복사한 뒤 조건을 적용하며 소스 수치·판정 계산을 변경하지 않는다. 브라우저가 현재 표시한 답변의 `previousQueryId`를 보내면 짧은 후속 질문에만 사용한다. 서버는 기존 `queries`/`query_owner`에서 소유자를 확인하고 같은 선박 버전·IMO·현재 매핑을 재검증한다. 이력 숫자나 최신 질문을 암묵적으로 재사용하지 않고 현재 자료로 다시 계산한다. 지원 범위 밖의 명시 조건·실제 입항 불가 요청은 확인 상태로 반환한다.
+
+`scripts.prepare_navigation_sources`는 별도 명시 수집/오프라인 확장 명령으로 노르웨이 공개 AIS·덴마크 Aalborg PDF를 기존 MRV/WPI 해시에 연결한다. PDF 추출 라이브러리는 준비 명령에서만 필요하며 서버 의존성에는 추가하지 않는다. 1.2 묶음도 기존 `navigation_bundle`로 검사·설치한다. 런타임의 `tools/navigation_readiness.py`는 검토된 원문 패턴의 예선/선저 여유/최신 측심 조건과 입항 전 추가 확인 항목을 반환한다. 선택적 가정값은 별도 `scenario`이고 실제 관측/측정/승인으로 저장·사용하지 않는다. 상세 화면과 질문 답변은 같은 `NavigationReadiness`/`OperationalChecks` 표시를 공유한다. 범용 LLM 도구 선택·동적 UKC 계산·실제 입항 허가는 추가하지 않는다.
+
 > 이 문서는 **현재 구현**을 설명합니다. 앞으로 바꿀 계획은 [`plans/`](plans/), 바뀌지 않을 결정의 이유는 [`adr/`](adr/)에 있습니다.
+
+### 과거 등록 제원·지역 관측 경계 (2026-11-05)
+
+`scripts.prepare_navigation_quality`는 보존된 1.2를 기반으로 월 단위 노르웨이 등록 이력과 고정 SMHI 관측소의 원문·명세·좌표·기준면 증거를 별도 수집/검증한다. 명시 준비 작업에서만 네트워크를 사용한다. `backend/tools/navigation_context.py`는 일치하는 등록 후보의 길이/폭 참고값과 관측 품질/나이를 제공한다. 등록 흘수는 현재 흘수에 사용하지 않는다. `NavigationContext`/`HistoricalChecks`를 기존 질문·운항 상세 화면에서 공유하며 기존 AIS 판정·가정 입력·실제 입항 확인 상태는 바꾸지 않는다. Routeinfo 자료는 적용 항구/유효기간 검사 결과만 별도 보관하고 카탈로그/항로 추천에 연결하지 않는다.
+
+### 공식 항만 지침의 명시 갱신
+
+`scripts.prepare_port_guidance`는 고정 공식 HTML 수집 → main 본문/원문 해시 비교 → 조건·단위·적용 범위 검토 보고서 → 정확한 검토 SHA256을 지정한 새 1.4 준비 순서로 동작한다. 런타임 `tools/navigation_guidance.py`는 해당 항구·지정 선석의 참고 문서만 반환한다. 수집일/표시 개정일/명시 적용일을 구분하며 기존 비교·가정 조건·입항 상태에 자동 적용하지 않는다. 질문/운항 화면은 공통 `OfficialGuidance`를 사용한다. 출처 문서가 바뀌어도 일반 RAG·모델 라우팅·DB 원본을 갱신하지 않으며, 네트워크는 관리자 준비 단계에서만 사용한다.
 
 ## 현재 Python 문서 경로 (2026-10-13)
 

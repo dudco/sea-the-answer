@@ -30,7 +30,7 @@ export function createApiClient() {
               }),
         },
         body: body === undefined ? undefined : JSON.stringify(body),
-        signal: AbortSignal.timeout(32000),
+        signal: AbortSignal.timeout(path.startsWith('/api/operations/import/') ? 120000 : 32000),
       });
     } catch (error) {
       throw new ApiError(

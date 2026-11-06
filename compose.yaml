@@ -44,6 +44,7 @@ x-backend-env: &backend-env
   OPENAI_API_KEY: ${OPENAI_API_KEY:-}
   DONGUK_AI_CHAT_API_KEY: ${DONGUK_AI_CHAT_API_KEY:-}
   OPENAI_MODEL: ${OPENAI_MODEL:-}
+  HAEDAP_PLANNER_MODEL: ${HAEDAP_PLANNER_MODEL:-}
   LLM_API_BASE_URL: ${LLM_API_BASE_URL:-}
   LLM_RESPONSE_FORMAT: ${LLM_RESPONSE_FORMAT:-text}
   # Optional: mounts /api/maritime-data/* (ADR 0008). Empty = disabled.
@@ -80,8 +81,10 @@ services:
       HAEDAP_CHROMA_HOST: chroma
       HAEDAP_CHROMA_PORT: "8000"
       HF_HUB_DISABLE_TELEMETRY: "1"
+      HAEDAP_IMPORT_DIR: /data/imports
     volumes:
       - backups:/data/backups
+      - maritime-imports:/data/imports
     depends_on:
       migrate: { condition: service_completed_successfully }
     restart: unless-stopped
@@ -157,7 +160,8 @@ services:
       HAEDAP_BOOTSTRAP_PASSWORD: E2e-initial-only-2026
       OPENAI_API_KEY: ""
       OPENAI_MODEL: ""
-    tmpfs: ["/data/backups:uid=10001,gid=10001"]
+      HAEDAP_IMPORT_DIR: /data/imports
+    tmpfs: ["/data/backups:uid=10001,gid=10001", "/data/imports:uid=10001,gid=10001"]
     depends_on:
       e2e-migrate: { condition: service_completed_successfully }
 
@@ -185,5 +189,6 @@ services:
 volumes:
   db-data:
   backups:
+  maritime-imports:
   # Legacy rag-models volume is intentionally not mounted or deleted.
   rag-vectors:

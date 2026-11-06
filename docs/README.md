@@ -1,5 +1,7 @@
 # 해답 문서 안내
 
+- [운항 자료 통합 등록](plans/2026-11-06-operation-data-import.md): 완료 (로컬·미제출, 실제 MRV/독립 JSON·권한·재시작 검증). [구현 계약](specs/operation-data-import.md).
+
 프로젝트의 모든 문서는 이 `docs/` 폴더에 모읍니다. 문서 위치·작성 규칙의 원본은 최상위 [`AGENTS.md`](../AGENTS.md)이며, 이 파일은 목록과 요약입니다.
 
 ## 어떤 문서를 먼저 볼까
@@ -17,6 +19,10 @@
 | 무엇이 언제 바뀌었고 무엇을 검증했는지 | [`changelog.md`](changelog.md) |
 
 ## 전체 목록
+
+- [자연어 조건·되묻기·다단계 조회](plans/2026-11-06-natural-language-workflows.md): 완료 (로컬·미제출).
+
+- [공식 항만 조건 수집·변경 확인](plans/2026-11-06-port-condition-updates.md): 완료(6개 문서·21개 조건·명시 갱신 검토·실제 DB/API/화면 검증).
 
 - [벡터 색인 복구·팀 브랜치 통합 검증](plans/2026-10-29-vector-index-repair-integration.md): 완료 (머지 커밋 대기).
 
@@ -49,6 +55,12 @@
 | [`specs/prepare-data.md`](specs/prepare-data.md) — 데이터 선택·출처·품질·집계 적격성 계약 | 구현됨 |
 
 ### plans — 작업 계획
+
+- [등록 제원·지역 환경 관측 품질](plans/2026-11-05-navigation-reference-quality.md) — 완료(로컬 자료·API·화면·실제 DB 검증).
+
+- [입항 검토 조건·다국가 자료](plans/2026-11-05-navigation-readiness-and-sources.md) — 완료(로컬 구현·데이터 확보·검증, 실제 입항 승인/운영 배포 제외).
+
+- [항구 질문 조건·후속 질문](plans/2026-11-05-navigation-question-conditions.md) — 완료(로컬 보완·검증, 원격 미반영).
 
 - [교수 피드백: 표·차트와 입력량 검증](plans/2026-11-03-answer-presentation-and-load-validation.md) — 완료
 - [한국어 평가 사람 검토](plans/2026-11-03-korean-llm-human-review.md) — 완료

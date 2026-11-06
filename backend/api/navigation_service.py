@@ -10,6 +10,7 @@ from tools.port_reference import positive
 from . import config
 from .errors import ApiError, require
 from .maritime_context import resolve_real_ship
+from .operation_uploads import reference_path
 
 
 def unavailable(exc):
@@ -20,7 +21,7 @@ def unavailable(exc):
 
 def load_snapshot():
     try:
-        return load_catalog(os.getenv("MARITIME_PORT_REFERENCES_PATH"))
+        return load_catalog(reference_path())
     except HTTPException as exc:
         raise unavailable(exc) from None
 
@@ -38,7 +39,7 @@ def latest_draught(db, ship):
         "notice": "운항 기록의 입력값입니다. 측정 시각·현재 적재 상태 확인이 필요합니다."}
 
 
-def compare_ship(db, ship, *, port_ids=None, berth_id=None, snapshot=None):
+def compare_ship(db, ship, *, port_ids=None, berth_id=None, snapshot=None, scenario=None):
     engine = None
     try:
         engine = create_engine_for(os.getenv("MARITIME_DATA_DATABASE_URL") or config.database_url())
@@ -55,7 +56,7 @@ def compare_ship(db, ship, *, port_ids=None, berth_id=None, snapshot=None):
         require(bool(selected) and len(selected) <= 20 and len(set(selected)) == len(selected), "항구 범위를 확인해 주세요.")
         require(not berth_id or len(selected) == 1, "선석을 지정하려면 항구 하나를 확인해 주세요.")
         results = [screen_from_database(engine, NavigationScreenRequest(vessel_id=resolved.vessel_id,
-                    port_id=port, berth_id=berth_id), data, sha256) for port in selected]
+                    port_id=port, berth_id=berth_id, scenario=scenario), data, sha256) for port in selected]
         record = latest_draught(db, ship)
         current = resolve_real_ship(db, engine, ship)
         require(current.version == resolved.version and current.vessel_id == resolved.vessel_id

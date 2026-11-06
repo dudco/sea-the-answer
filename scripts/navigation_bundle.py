@@ -28,9 +28,9 @@ class Manifest(BaseModel):
     catalog_file: Literal["catalog.json"]
     catalog_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     catalog_bytes: int = Field(gt=0, le=LIMIT)
-    catalog_version: Literal["NAVIGATION-REFERENCES-1.0", "NAVIGATION-REFERENCES-1.1"]
+    catalog_version: Literal["NAVIGATION-REFERENCES-1.0", "NAVIGATION-REFERENCES-1.1", "NAVIGATION-REFERENCES-1.2", "NAVIGATION-REFERENCES-1.3", "NAVIGATION-REFERENCES-1.4"]
     packed_at: AwareDatetime
-    sources: list[Source] = Field(min_length=3, max_length=4)
+    sources: list[Source] = Field(min_length=3, max_length=12)
 
 
 def sha(data):
@@ -75,6 +75,11 @@ def export_bundle(catalog_path, directory):
             "Captured: " + source.retrieved_at.isoformat(),
             "Original SHA256: " + source.sha256,
             "License: " + (str(source.license_url) if source.license_url else "No open license asserted; retain source terms"), ""])
+    for doc in catalog.port_guidance:
+        lines.extend([doc.attribution+' / '+doc.title, str(doc.url),
+            'Captured: '+doc.retrieved_at.isoformat(), 'Original SHA256: '+doc.raw_sha256,
+            'Main-text SHA256: '+doc.content_sha256, 'Displayed revision: '+str(doc.displayed_updated_on),
+            'Effective date: '+str(doc.effective_on), 'No open license asserted; retain source terms', ''])
     atomic_write(directory / "SOURCES.txt", "\n".join(lines).encode("utf-8"))
     dump(directory / "manifest.json", manifest.model_dump(mode="json"))
     return inspect_bundle(directory)
@@ -104,6 +109,8 @@ def inspection(catalog, digest):
         "reference_only": True, "admission": "not_assessed", "generated_at": summary["generated_at"],
         "freshness": summary["freshness"], "ports": summary["ports"],
         "ais_observation_count": summary["ais_observation_count"],
+        "official_guidance_documents":summary['official_guidance_documents'],
+        "guidance_review_sha256":catalog.guidance_review_sha256,
         "notice": "Inspection uses the current clock. Installing does not renew source timestamps."}
 
 

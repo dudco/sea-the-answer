@@ -1,7 +1,7 @@
 # HTTP API
 
 - 상태: 구현됨 (1.4.0)
-- 최종 확인: 2026-10-21 (`backend/api/` 대조)
+- 최종 확인: 2026-11-06 (운항 자료 등록 경로 추가·대조, 상세는 해당 명세)
 - 관련: [`../architecture.md`](../architecture.md), [`../data-model.md`](../data-model.md), [`integrated-answer.md`](integrated-answer.md), [ADR 0016](../adr/0016-crew-admin-authentication.md)
 
 ## 1. 목적
@@ -41,6 +41,7 @@
 | GET `/api/documents/:id/pdf` | 로그인 계정(범위 검사) | 허용된 저장 원본 PDF |
 | GET `/api/operations` | 로그인 계정 | 선박과 일별 운항 기록 |
 | POST `/api/operations/validate` | 관리자 | CSV 행 검증 `{rows:[...]}` |
+| POST `/api/operations/import/{start,chunk,preview,commit,reference,cancel}` | 관리자·소유 업로드 | 기존 CSV 버튼의 자료 판별·블록 전송·검증·종류별 등록. [계약](operation-data-import.md) |
 | POST `/api/operations/example` | 관리자 | 빈 작업공간에 가상 예시 등록 |
 | POST `/api/changes` | 관리자 | `{kind, payload}` 변경 즉시 반영. 일반 사용자는 403 |
 | GET `/api/changes` | 관리자 | 변경·승인 목록 (최근 200) |
