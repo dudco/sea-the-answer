@@ -6,6 +6,7 @@
 - 화면의 답변 방식 선택과 요청 `mode`를 제거했다. 모델 미설정은 `503 MODEL_NOT_CONFIGURED`, 모델 실패·검증 실패·도구 2개 이상은 되묻기로 응답한다. 기존 규칙 경로는 `HAEDAP_QUESTION_ROUTER=legacy`에서만 쓴다. 답변 카드에 사용한 도구(`routing.toolCalls`)와 데이터 도구 답변의 관련 문서(`relatedEvidence`)를 표시한다. `GET /api/tools`에 `assistantTools`를 추가했다.
 - 검증(2026-11-12, Linux VM, Python 3.13 venv, torch 미설치): backend `uv run pytest` **1,098 passed / 203 skipped / 4 failed**. 실패 4건은 모두 `test_document_save.py`의 torch 패키지 부재로, 변경 전 기준선(1,068 passed / 203 skipped / 4 failed)과 같다. 신규 테스트는 모의 모델 응답만 사용하며 실제 모델의 도구 선택 정확도를 측정하지 않았다.
 - 2026-11-12 추가: `get_last_recorded_position` 도구로 "지금 ○○호 어디야?"에 일별 운항기록의 마지막 위치를 답한다(실시간 추적 아님, 아직 끝나지 않은 UTC 날짜의 24:00 위치는 제외). 시뮬레이션 예상 기록은 위치·운항 합계 모두 `[예상 기록]`·`PROJECTED_OPERATIONS`·"예상 기록 N일 포함"으로 표시한다. 날짜 해석기가 `전날`을 어제로 해석한다. 평가 세트의 위치 질문 기대값을 거절에서 이 도구로 바꾸고, 실시간 추적 거절 1문항(평가)·전날 거리 1문항(홀드아웃)을 추가했다. 실제 모델로 다시 평가하지 않았다.
+- 2026-11-12 추가: 차트·표를 요청한 운항 질문은 그 차트·표만 먼저 보이고, 운항 데이터 요약·기간별 합계·해석한 실행 범위·일반 안내 문구는 **근거·상세 정보** 토글로 옮겼다. 다른 업무 조회도 해석한 실행 범위는 토글 안에 둔다. frontend `npm test` 40 passed(신규 2건), `npm run build` 성공. e2e 셀렉터는 `[data-question-workflow="answer"]`로 바꿨고 Docker e2e는 실행하지 않았다.
 - frontend `npm test` **38 passed**(답변 방식 테스트 2건을 `mode` 미전송 테스트 1건으로 교체), `npm run build` 성공. Node 22.23.4로 실행했으며 `engines`의 Node 24 조건과 다르다.
 - 미실행: Docker E2E 화면 검사(수정한 두 스펙은 문법 검사만 수행, e2e 스택은 모델이 없어 `HAEDAP_QUESTION_ROUTER=legacy`로 설정), 실제 모델 평가(`scripts/evaluate_tool_selection.py`, 25문항), 모델 서버의 `tools` 파라미터 지원 확인(로컬 Ollama·동국 AI Chat 모두 미확인).
 

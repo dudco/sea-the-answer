@@ -24,7 +24,7 @@ async function ask(page,text) {
  await page.locator('#question').fill(text);const count=await page.locator('.chat-turn').count();
  await page.getByRole('button',{name:'질문 보내기',exact:true}).click();
  await expect(page.locator('.chat-turn')).toHaveCount(count+1);
- await expect(page.locator('.chat-turn').nth(count).locator('[data-question-workflow]')).toBeVisible();
+ await expect(page.locator('.chat-turn').nth(count).locator('[data-question-workflow="answer"]')).toBeVisible();
 }
 
 test('clarification submits only current parent and shows blocked years without invented ratings',async({page})=>{
@@ -39,8 +39,8 @@ test('clarification submits only current parent and shows blocked years without 
  await expect(page.locator('[data-workflow-result]')).toHaveCount(2);
  expect(state.calls[1].workflowInput).toBeUndefined();
  expect(state.calls[1].context.previousQueryId).toBe(first);
- await expect(page.locator(`[data-answer-id="${second}"] [data-question-workflow]`)).toContainText('계산 불가');
- await expect(page.locator(`[data-answer-id="${second}"] [data-question-workflow]`)).toContainText('공식 CII·등급은 산출하지 않습니다.');
+ await expect(page.locator(`[data-answer-id="${second}"] [data-question-workflow="answer"]`)).toContainText('계산 불가');
+ await expect(page.locator(`[data-answer-id="${second}"] [data-question-workflow="answer"]`)).toContainText('공식 CII·등급은 산출하지 않습니다.');
  await ask(page,'그럼 2023년은?');expect(state.calls[2].context.previousQueryId).toBe(second);
  expect(state.errors).toEqual([]);
 });
@@ -99,10 +99,10 @@ test('question box alone fills missing ship and period without opening tool form
  },{status:'completed',notice:'조회 완료'}));
  await ask(page,'우리 배 연료 사용량을 알려줘');
  expect(state.calls[0].context.ship).toBe('');expect(state.calls[0].context.from).toBeUndefined();
- await expect(page.locator('[data-question-workflow] select')).toHaveCount(0);
+ await expect(page.locator('[data-question-workflow="answer"] select')).toHaveCount(0);
  await ask(page,'해답호');
  expect(state.calls[1].context.previousQueryId).toBe(first);
- await expect(page.locator('[data-question-workflow] input')).toHaveCount(0);
+ await expect(page.locator('[data-question-workflow="answer"] input')).toHaveCount(0);
  await ask(page,'2025년 1월');
  expect(state.calls[2].context.previousQueryId).toBe(second);
  expect(state.calls.every(c=>c.workflowInput===undefined)).toBe(true);

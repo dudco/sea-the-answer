@@ -95,7 +95,11 @@ export function createMainViews(model, views) {
       related = Array.isArray(a.relatedEvidence) ? a.relatedEvidence : [],
       relatedSources = [...new Set(related.map((e) => e.document_id))],
       // Clarifications, refusals and tool results speak through the notice; document answers through statements.
-      noticeIsAnswer = !a.statements.length || a.status === 'needs_input' || ['clarification', 'unsupported', 'tool', 'position'].includes(a.task),
+      // A finished data lookup answers with its result; its generic notice belongs behind the toggle.
+      workflowDone = !!a.workflow && ['completed', 'partial'].includes(a.status),
+      noticeIsAnswer = !workflowDone && (!a.statements.length || a.status === 'needs_input' || ['clarification', 'unsupported', 'tool', 'position'].includes(a.task)),
+      // A requested chart/table is the whole answer; the summary and per-period results move behind the toggle.
+      presentationIsAnswer = !!presentation,
       showSources = !a.navigation && sources.length > 0,
       documentCount = (showSources ? sources.length : 0) + relatedSources.length;
     return (
@@ -157,7 +161,8 @@ export function createMainViews(model, views) {
               'warning',
             )
           : ''}</UiText>
-        {operationAnswer(a)}
+        {presentationIsAnswer && a.warnings.includes('PROJECTED_OPERATIONS') ? <p className={'small muted'}><UiText>{'시뮬레이션 예상 기록이 포함되어 있습니다. 실제 운항 실적이 아닙니다.'}</UiText></p> : ''}
+        {!presentationIsAnswer && operationAnswer(a)}
         {a.skill && <><h3>{a.skill.name}</h3><SkillResult answer={a} /></>}
         {a.toolRuns.map((t, __index) => (
           <React.Fragment key={__index}>
@@ -199,13 +204,15 @@ export function createMainViews(model, views) {
         )}
         {a.navigation && <NavigationAnswer answer={a} />}
         {a.dataStatus && <DatasetStatus value={a.dataStatus} />}
-        {a.workflow && <QuestionWorkflow answer={a} />}
+        {a.workflow && <QuestionWorkflow answer={a} part={'answer'} results={!presentationIsAnswer} />}
         <details className={'answer-details'} data-testid={'answer-details'}>
           <summary>
             <UiText>{en ? 'Evidence and details' : '근거·상세 정보'}</UiText>
             {documentCount ? <UiText>{en ? ` · ${documentCount} documents` : ` · 문서 ${documentCount}개`}</UiText> : ''}
           </summary>
           {!noticeIsAnswer && a.notice ? <p className={'small muted'}>{a.notice}</p> : ''}
+          {a.workflow && <QuestionWorkflow answer={a} part={'details'} results={presentationIsAnswer} />}
+          {presentationIsAnswer && operationAnswer(a)}
           {/* Tools the server ran after validating the model's choice (ADR 0024); not live progress. */}
           {toolCalls.length ? (
             <p className={'small muted tool-calls'} data-testid={'tool-calls'}>
