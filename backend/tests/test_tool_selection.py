@@ -144,7 +144,7 @@ class Store(DB):
 def ask(question, calls, monkeypatch, *, body=None, settings=SETTINGS):
     db = Store()
     monkeypatch.setattr(router.config, 'llm_settings', lambda: settings)
-    def fake_plan(q, *, today, summary=None, settings=None, client=None):
+    def fake_plan(q, *, today, summary=None, documents=None, settings=None, client=None):
         if isinstance(calls, Exception):
             raise calls
         return [registry.Call(*registry.parse_call(name, json.dumps(args, ensure_ascii=False))) for name, args in calls]
@@ -241,7 +241,7 @@ def test_follow_up_passes_an_owned_summary_and_accepts_names_from_it(monkeypatch
     db.owners[first['id']] = 'crew-1'
     seen = {}
     monkeypatch.setattr(router.config, 'llm_settings', lambda: SETTINGS)
-    def fake_plan(q, *, today, summary=None, settings=None, client=None):
+    def fake_plan(q, *, today, summary=None, documents=None, settings=None, client=None):
         seen['summary'] = summary
         return [registry.Call(*registry.parse_call('summarize_operations',
                 '{"ship_mentions":["해답호"],"period_text":"2025년 2월"}'))]
@@ -334,3 +334,42 @@ def test_documents_only_tool_means_no_data_tool_and_text_replies_are_previewed()
 def test_bare_json_tool_call_in_text_is_read():
     calls, _ = plan(reply(content='```json\n{"name":"get_dataset_status","arguments":{"datasets":["mrv"]}}\n```', finish='stop'))
     assert calls[0].tool.name == 'get_dataset_status'
+
+
+@pytest.mark.parametrize('text,name,args', [
+    # Shapes observed from qwen3.6:35b on Ollama with thinking off (2026-11-12).
+    ('decline_request(reason="realtime_position")', 'decline_request', {'reason': 'realtime_position'}),
+    ('request_clarification(missing=["task"])', 'request_clarification', {'missing': ['task']}),
+    ('{"function": "compare_port_conditions", "arguments": {"port_mentions": ["부산항"], '
+     '"sort": {"dimension": "length", "direction": "desc"}}}', 'compare_port_conditions', None),
+    ('calculate_mrv_reference(ship_mentions=["해답호"], period_text="작년", accept_reference=false)',
+     'calculate_mrv_reference', {'ship_mentions': ['해답호'], 'period_text': '작년', 'accept_reference': False}),
+])
+def test_text_call_shapes_are_read_as_literals(text, name, args):
+    calls, _ = plan(reply(content=text, finish='stop'))
+    assert calls[0].tool.name == name
+    if args:
+        assert {k: v for k, v in calls[0].args.model_dump().items() if k in args} == args
+
+
+@pytest.mark.parametrize('text', ['decline_request(reason=__import__("os").system("x"))',
+                                  'decline_request("realtime_position")', 'decline_request(**{"reason": "weather"})'])
+def test_call_syntax_never_executes_and_rejects_non_literals(text):
+    with pytest.raises(planner.PlanError):
+        plan(reply(content=text, finish='stop'))
+
+
+def test_arguments_only_json_is_not_guessed():
+    calls, _ = plan(reply(content='{"ship_mentions": ["해답호"], "period_text": "작년"}', finish='stop'))
+    assert calls == []
+
+
+def test_planner_receives_readable_document_titles_only(monkeypatch):
+    calls, body = plan(reply(content='문서', finish='stop'), documents=['선박 안전 문서'])
+    assert json.loads(body['messages'][-1]['content'])['documents'] == ['선박 안전 문서']
+    seen = {}
+    monkeypatch.setattr(router.config, 'llm_settings', lambda: SETTINGS)
+    monkeypatch.setattr(router.tool_planner, 'plan', lambda q, **kw: seen.update(kw) or [])
+    db = Store()
+    router.answer(SimpleNamespace(db=db, user={'id': 'crew-1'}, body={'question': 'CII가 뭐야?', 'task': 'auto', 'context': {}}))
+    assert seen['documents'] == ['doc-a', 'doc-b']

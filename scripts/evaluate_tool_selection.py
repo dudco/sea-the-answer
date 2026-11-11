@@ -27,6 +27,8 @@ from api import config, llm, tool_planner
 
 DEFAULT_CASES = Path(__file__).resolve().parent / "fixtures/tool-selection-eval.json"
 TODAY = "2026-11-12"
+# Titles a crew account might be able to read; only titles are ever sent to the planner.
+DOCUMENTS = ["선박 안전 문서", "MARPOL 부속서 VI 요약", "평형수 관리 지침", "IMO DCS·CII 안내"]
 
 
 def load_cases(path: Path = DEFAULT_CASES) -> list[dict]:
@@ -69,7 +71,8 @@ def evaluate(cases: list[dict], *, settings: config.LLMSettings, client=None) ->
         debug = {}
         try:
             calls = tool_planner.plan(case["question"], today=TODAY, summary=case.get("previous"),
-                                      settings=settings, client=client, debug=debug)
+                                      documents=case.get("documents", DOCUMENTS), settings=settings,
+                                      client=client, debug=debug)
             row.update(score(case, calls), error=None, text_preview=debug.get("text_preview") or None)
         except tool_planner.PlanError as exc:
             row.update(tools=None, tool_match=False, argument_match=False, error=exc.code,
@@ -105,6 +108,8 @@ def main(argv: list[str] | None = None) -> int:
         if not row["argument_match"]:
             reason = f" (finish_reason={row['finish_reason']})" if row.get('finish_reason') else ''
             text = f" text={row['text_preview']!r}" if row.get('text_preview') else ''
+            if row.get('tools') and row.get('tool_match'):
+                text += f" arguments={json.dumps(row['arguments'][0], ensure_ascii=False)}"
             print(f"  - {row['id']}: got {row['tools']} {row.get('error') or ''}{reason}{text}")
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)

@@ -198,7 +198,8 @@ def answer(ctx):
     calls=None;error=None
     with ThreadPoolExecutor(max_workers=1) as pool:
         planned=monotonic()
-        future=pool.submit(tool_planner.plan,q,today=question_intent.local_today(),summary=summary,settings=settings)
+        titles=[d.get('title','') for d in ctx.db.documents(ctx.user)]
+        future=pool.submit(tool_planner.plan,q,today=question_intent.local_today(),summary=summary,documents=titles,settings=settings)
         searched=monotonic()
         evidence=ctx.db.search(ctx.user,q,body.get('filter','all'))
         search_ms=round((monotonic()-searched)*1000,3)
