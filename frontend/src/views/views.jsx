@@ -8,6 +8,8 @@ import SkillsPanel from '../components/skills-panel';
 import * as helpers from '../components/common';
 import NavigationAnswer from '../components/navigation-answer';
 import QuestionWorkflow from '../components/question-workflow';
+import DatasetStatus from '../components/dataset-status';
+import {generationFailureMessage} from '../lib/generation-failure';
 export function createMainViews(model, views) {
   const noop = () => {};
   const { state, canWrite, isAdmin } = model;
@@ -103,15 +105,15 @@ export function createMainViews(model, views) {
                 ? '답변 근거를 확인해 주세요'
                 : '답변과 확인 근거'}</UiText>
           </h2>
-          {badge(a.navigation?.kind==='catalog-status' ? 'AIS 자료 현황' : a.navigation ? '항구 참조 비교' : a.workflow ? '업무 조회·계산' : a.skill ? '업무 스킬' : a.generation === 'llm' ? 'AI 초안' : '문서 검색', 'teal')}
+          {badge(a.dataStatus ? '자료 등록 현황' : a.routing?.route==='clarify' ? '질문 확인' : a.navigation?.kind==='catalog-status' ? 'AIS 자료 현황' : a.navigation ? '항구 참조 비교' : a.workflow ? '업무 조회·계산' : a.skill ? '업무 스킬' : a.generation === 'llm' ? 'AI 초안' : '문서 검색', 'teal')}
         </div>
         <p className={'small muted'}>{a.notice}</p>
         {/* Only model warnings mean the AI answer failed; e.g. OPERATIONS_CONTEXT_REQUIRED has its own notice. */}
         <UiText>{a.warnings.some((w) => w === 'MODEL_FAILED_EXTRACTIVE_FALLBACK' || w === 'MODEL_NOT_CONFIGURED')
           ? notice(
-              en
+              generationFailureMessage(a.generationFailure?.code,en) || (en
                 ? 'AI unavailable. Showing source excerpts.'
-                : 'AI 답변을 생성하지 못해 원문 근거를 표시합니다.',
+                : 'AI 답변을 생성하지 못해 원문 근거를 표시합니다.'),
               'warning',
             )
           : ''}</UiText>
@@ -144,7 +146,7 @@ export function createMainViews(model, views) {
           );
         })}
         <AnswerPresentation answer={a} presentation={presentation} />
-        <UiText>{!a.evidence.length && !a.workflow && !a.skill && !a.operations?.count && presentation?.source !== 'operations'
+        <UiText>{!a.evidence.length && !a.dataStatus && a.routing?.route!=='clarify' && !a.workflow && !a.skill && !a.operations?.count && presentation?.source !== 'operations'
           ? notice(
               en
                 ? 'Insufficient document evidence. Ask the responsible officer.'
@@ -181,6 +183,7 @@ export function createMainViews(model, views) {
         )}
         </>}
         {a.navigation && <NavigationAnswer answer={a} />}
+        {a.dataStatus && <DatasetStatus value={a.dataStatus} />}
         {a.workflow && <QuestionWorkflow answer={a} />}
         <div className={'answer-actions'}>
           <UiText>{canWrite() && (a.statements.length || a.operations?.count || a.toolRuns.length)

@@ -31,6 +31,9 @@
 | `OPENAI_API_KEY` | 호스트가 정확히 `api.openai.com`이면 필수 | OpenAI 호스트에서만 `Authorization: Bearer ...` 전송 |
 | `DONGUK_AI_CHAT_API_KEY` | 호스트가 `dongguk.edu`·그 하위 도메인 또는 정확히 `factchat-cloud.mindlogic.ai`이면 필수 | 동국 호스트에서만 `Authorization: Bearer ...` 전송. `DONGUK` 철자를 그대로 사용 |
 | `LLM_RESPONSE_FORMAT` | `text`(기본), `json_object`, `json_schema` 중 하나 | `text`는 요청의 `response_format` 생략. 나머지는 해당 서버·모델이 지원할 때만 선택 |
+| `LLM_GENERATION_TIMEOUT_SECONDS` | 기본 60, 정수 1–90 | 생성 대기 시간. 서버 전체 처리 예산과 브라우저 대기 시간에도 반영 |
+| `LLM_MAX_TOKENS` | 기본 공백, 정수 32–4096 | 명시한 경우에만 호환 서버에 `max_tokens` 전송 |
+| `LLM_ENABLE_THINKING` | 기본 공백, `true` / `false` | 명시한 경우에만 vLLM 호환 `chat_template_kwargs.enable_thinking` 전송. 해당 모델/서버의 지원 확인 필요 |
 
 기본 URL의 공백·끝 슬래시를 정리한 뒤 `/chat/completions`를 한 번 붙인다. `http`·`https` 외 스킴, URL에 포함된 사용자·비밀번호, 쿼리·fragment, 잘못된 주소는 설정 오류로 처리한다. 기본 OpenAI 주소의 끝 슬래시 유무로 키 필수 조건이 달라지지 않아야 한다.
 
@@ -99,7 +102,14 @@ Authorization: Bearer <URL 호스트에 맞는 공급자 키가 있을 때만>
 - 실제 system 지시에는 기존 `ko`·`en` 출력 언어도 반영한다.
 - `response_format`은 선택한 형식에 따라 생략하거나 `{"type":"json_object"}`, 또는 `{"type":"json_schema","json_schema":{"name":"grounded_answer","strict":true,"schema":...}}`로 전송한다. 기존 Responses의 `text.format`을 그대로 보내지 않는다.
 - `instructions`, `input`, `max_output_tokens`, `text.format` 등 Responses 전용 필드를 전송하지 않는다. 공급자 지원 확인 전에는 `store`, `temperature`, 토큰 한도 등 선택 필드를 공통 요청에 강제하지 않는다. 기존 2,200 출력 토큰 한도는 이 제안의 기본 요청에는 포함되지 않으며, 출력 길이·비용 제한이 필요하면 공급자 지원을 확인해 별도 확정한다. OpenAI의 `max_tokens`는 사용 중단 대상이며 Ollama와 토큰 한도 필드 지원도 다를 수 있다. [OpenAI 공식 Chat Completions 참조](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)
-- 기존 HTTP 타임아웃 25초를 우선 유지하고 자동 재시도는 하지 않는다. 긴 로컬 추론은 최초 적재 시간과 프록시 한도를 함께 검토한 뒤 조정한다.
+- 2026-11-11 보완: 기본 생성 읽기 한도는 60초, 연결 한도는 최대 5초다. 정수 1–90초로 조정한다. 일반 `/api/ask`는 검색·선행 처리를 포함해 설정 한도+3초 안의 남은 시간만 생성에 사용한다. 건강 상태의 `askTimeoutMs`(기본 설정 시 95,000ms)를 브라우저의 질문/스킬 요청에 적용해 이전의 고정 32초 취소와 충돌하지 않게 한다. 일반 CRUD는 32초, 업로드는 120초를 유지한다. 서버 앞단의 별도 reverse proxy 제한은 관리자가 확인해야 한다. 자동 재시도는 하지 않는다. 최초 모델 적재 시간은 별도 측정한다.
+
+### Qwen 호환성과 실패 원인 (2026-11-11)
+
+- 완성된 응답의 단일 JSON 코드 블록, 완결된 선행 `<think>…</think>` 표시를 제거한 뒤 **같은 JSON 스키마·출처 ID·인용 검증**을 적용한다. 추론 본문을 답변·로그에 저장하지 않는다. 일반 설명문에서 임의의 JSON 조각을 추출하거나 잘린 응답을 이어 붙이지 않는다.
+- 인용은 공백·줄바꿈 배치만 다를 때 원문의 정확한 구간으로 복원한다. 문자·숫자·기호 차이는 허용하지 않는다. 반환된 인용은 항상 실제 원문 부분 문자열이며 표의 인용도 같은 규칙을 따른다.
+- `generationFailure`에는 시간 초과·연결·인증·요청 거부·출력 잘림·최종 내용 부재·JSON 형식·인용 불일치를 구분한 안전한 `code`, `retryable`을 기록한다. 원시 공급자 오류·URL·키·추론 본문을 노출하지 않는다. 관리자 오류 로그에도 코드와 처리 시간만 남긴다. 근거 부족(`insufficient=true`)은 실패로 표시하지 않는다.
+- 설치된 로컬 Qwen2.5 3B의 제한 시험은 `json_schema`, 60초, `max_tokens=384`, thinking 옵션 미전송으로 수행했다. 이 설정을 팀 서버 모델에 대한 품질 보증으로 일반화하지 않는다. `LLM_ENABLE_THINKING=false`는 지원이 확인된 Qwen/vLLM 조합에만 설정한다. Qwen이라는 이름만으로 모든 버전에 동일 옵션을 강제하지 않는다. [Qwen vLLM 안내](https://qwen.readthedocs.io/en/v3.0/deployment/vllm.html), [vLLM 추론 출력 안내](https://docs.vllm.ai/en/stable/features/reasoning_outputs/).
 
 ### 응답
 
@@ -171,7 +181,7 @@ Chat Completions의 텍스트는 `choices[0].message.content`에서 읽는다. J
 
 - 동국 AI Chat API 기본 주소는 `https://factchat-cloud.mindlogic.ai/v1/gateway`, 검증 모델은 `gpt-6-luna`다(2026-10-14). 다른 모델과 출력 옵션은 공급자 지원 범위를 별도로 확인한다.
 - 선택적 JSON 형식은 `LLM_RESPONSE_FORMAT=text` 기본값으로 확정했다. 출력 토큰 제한 옵션이 필요한 환경에서는 해당 공급자·모델 지원을 확인해 후속 계약을 정한다. 특정 모델의 미지원 옵션을 다른 모델로 바꿔 회피하지 않는다.
-- 로컬 모델의 최초 적재·응답 시간이 25초를 넘는다면 시간 제한 정책을 프록시 설정과 함께 정한다.
+- 로컬 모델의 최초 적재·응답 시간이 설정한 생성 한도를 넘는다면 사전 적재와 시간 제한 정책을 프록시 설정과 함께 정한다(기본 60초).
 
 ## 7. 한국어 생성·고정 근거 평가 계약 (2026-10-28 확정)
 

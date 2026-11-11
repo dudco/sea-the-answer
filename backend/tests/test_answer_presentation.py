@@ -282,7 +282,7 @@ def test_remaining_generation_budget_includes_retrieval_and_operation_work(monke
     workspace = Workspace(summary=operations(), clock=clock, retrieval=6, preceding=2)
     result = answer(workspace, question="Explain fuel limits", task="integrated", outputFormat="text",
                     context={"ship": "ship-1", "from": "2026-11-01", "to": "2026-11-03"})
-    assert len(calls) == 1 and calls[0].extensions["timeout"]["read"] == 20
+    assert len(calls) == 1 and calls[0].extensions["timeout"]["read"] == 55
     assert result["timings"] == {"retrievalMs": 6000.0, "generationMs": 1500.0, "totalMs": 9500.0}
 
 
@@ -290,7 +290,7 @@ def test_exhausted_generation_budget_skips_http(monkeypatch, model):
     clock = {"now": 0.0}
     monkeypatch.setattr(answers, "monotonic", lambda: clock["now"])
     calls = model({})
-    result = answer(Workspace(clock=clock, retrieval=27.5), outputFormat="text")
+    result = answer(Workspace(clock=clock, retrieval=62.5), outputFormat="text")
     assert calls == [] and result["generation"] == "extractive"
     assert result["generationStats"]["modelCallAttempted"] is False
     assert result["warnings"] == ["MODEL_TIME_BUDGET_EXHAUSTED"]

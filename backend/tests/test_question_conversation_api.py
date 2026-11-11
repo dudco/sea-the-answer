@@ -47,9 +47,15 @@ def test_typed_replies_complete_one_conversation_and_requery_current_period(data
 def test_ais_status_wording_in_ai_mode_uses_actual_http_catalog_reader_not_generated_text(database,monkeypatch):
     catalog=NavigationCatalog.model_validate(expanded_data())
     monkeypatch.setattr(navigation_query.service,'load_snapshot',lambda:(catalog,'a'*64))
+    def unrelated_path(*args,**kwargs):
+        raise AssertionError('AIS snapshot questions must not invoke document search or generation')
+    monkeypatch.setattr(database,'search',unrelated_path)
+    monkeypatch.setattr(database,'grounded_response',unrelated_path)
     client=TestClient(main.app,base_url='http://localhost:5173');headers=login(client,'crew')
-    for question in ['AIS 있어?','AIS 관련 데이터 있어?','실시간 AIS 데이터야?',
-                     'AIS 정보는 최신이야?','수집한 AIS 데이터가 몇 건이야?','Do we have AIS data?']:
+    questions=['AIS 있어?','AIS 관련 데이터 있어?','실시간 AIS 데이터야?',
+               'AIS 정보는 최신이야?','수집한 AIS 데이터가 몇 건이야?','Do we have AIS data?',
+               'AIS 관련 정보를 알려줘','AIS 정보 알려줘','Please show me AIS data']
+    for question in questions:
         response=client.post('/api/ask',headers=headers,json={'question':question,'task':'auto','mode':'llm'})
         assert response.status_code==200,response.text
         answer=response.json()
@@ -59,7 +65,7 @@ def test_ais_status_wording_in_ai_mode_uses_actual_http_catalog_reader_not_gener
         assert '실시간 수신 여부' in answer['notice'] or 'live feed' in answer['notice']
         assert answer['navigation']['admission']=='not_assessed'
     history=client.get('/api/history').json()['history']
-    assert len(history)==6
+    assert len(history)==len(questions)
 
 
 def test_formula_explanation_does_not_attach_unrequested_operation_totals(database, prepared_lexical):

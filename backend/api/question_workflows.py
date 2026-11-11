@@ -264,13 +264,15 @@ def declines_reference(question):
     return bool(re.fullmatch(r'(?:아니요?|아뇨|no|동의하지\s*않아|참고값.{0,20}(?:안\s*해|안\s*할게|동의하지\s*않아|싫어))[.!?]*',norm(question)))
 
 
-def try_answer(ctx):
+def try_answer(ctx, *, action_hint=None, allow_model=True):
     body=ctx.body;q=body.get('question')
     if not isinstance(q,str) or not q.strip() or len(q)>2000 or body.get('task','auto')!='auto':return None
-    action=intent.classify(q)
+    if action_hint not in (None,'operations_summary','mrv_reference','combined','selected_document'):
+        raise ValueError('Invalid internal workflow hint')
+    action=action_hint or intent.classify(q)
     follow=bool(re.match(r'\s*(그럼|그러면|그중|then\b|what about\b)',q,re.I))
     linked=bool((body.get('context') or {}).get('previousQueryId'))
-    model_candidate=body.get('mode')=='llm' and bool(re.search(r'연료|탄소|기름|소모|consumption|fuel|intensity',q,re.I)) and bool(re.search(r'얼마|수치|통계|사용량|소비량|소모량|추이|비교|요약|합계',q))
+    model_candidate=allow_model and body.get('mode')=='llm' and bool(re.search(r'연료|탄소|기름|소모|consumption|fuel|intensity',q,re.I)) and bool(re.search(r'얼마|수치|통계|사용량|소비량|소모량|추이|비교|요약|합계',q))
     kind=output_format(q)
     operation_display=action=='operations_summary' and (kind=='chart' or kind=='table' and wants_operation_table(q,'auto'))
     if kind in ('chart','table') and not operation_display:return None
@@ -292,7 +294,7 @@ def try_answer(ctx):
     follow_scope=follow and (action!='unknown' or intent.slot_reply(q,dates=True) or bool(re.search(r'같은\s*기간.*다른\s*(?:선박|배)',q)))
     continuing=follow_scope or short_reply or document_follow or body.get('workflowInput') is not None
     if not continuing and action=='unknown' and not model_candidate:return None
-    routing={'method':'rules','model_attempted':False};scope=Scope(action=action)
+    routing={'method':'semantic_model' if action_hint else 'rules','model_attempted':bool(action_hint)};scope=Scope(action=action)
     if continuing:
         if not prior:return save(ctx,scope,'needs_input','현재 표시한 내 업무 답변에서 이어서 질문하거나 선박·기간을 다시 알려 주세요.',[],routing)
         scope=prior[1]
@@ -316,7 +318,7 @@ def try_answer(ctx):
             raise ValueError('한 번에 조회할 선박을 최대 두 척으로 지정해 주세요.')
         defaults={int(p.start[:4]) for p in scope.periods} or set(scope.years)
         slots=intent.Intent(action=scope.action) if scope.action=='selected_document' or reply and reply.ships is not None else intent.extract_rules(q,default_year=next(iter(defaults)) if len(defaults)==1 else None)
-        if body.get('mode')=='llm' and not continuing and action!='selected_document' and not operation_display:
+        if allow_model and action_hint is None and body.get('mode')=='llm' and not continuing and action!='selected_document' and not operation_display:
             routing['model_attempted']=True
             try:
                 proposal=intent.plan_with_model(q,today=intent.local_today())

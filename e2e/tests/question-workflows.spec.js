@@ -185,3 +185,18 @@ test('more choices keeps later revisions with the same title reachable',async({p
  expect(state.calls[1].workflowInput).toEqual({document_ids:['revision-9']});
  expect(state.errors).toEqual([]);
 });
+
+test('AI fallback explains timeout and citation rejection as different failures',async({page})=>{
+ const state=await setup(page,(body,n)=>({id:'failure-'+n,question:body.question,task:'documents',language:'ko',
+  generation:'extractive',status:'insufficient_evidence',notice:'원문 근거를 확인하세요.',
+  warnings:['MODEL_FAILED_EXTRACTIVE_FALLBACK'],statements:[],evidence:[],toolRuns:[],reportSuggested:false,
+  generationFailure:{code:n===1?'MODEL_TIMEOUT':'MODEL_CITATION_MISMATCH',retryable:n===1}
+ }),true);
+ await page.locator('#question').fill('조종불능선에 대해 설명해줘');
+ await page.getByRole('button',{name:'질문 보내기',exact:true}).click();
+ await expect(page.locator('.answer').last()).toContainText('모델 응답 대기 시간이 초과됐습니다');
+ await page.locator('#question').fill('다른 설명도 알려줘');
+ await page.getByRole('button',{name:'질문 보내기',exact:true}).click();
+ await expect(page.locator('.answer').last()).toContainText('인용을 원문에서 확인하지 못해');
+ expect(state.errors).toEqual([]);
+});

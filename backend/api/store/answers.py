@@ -104,19 +104,24 @@ class AnswerStore:
         # Observability describes the exact user-message projection, not token counts.
         selected, stats = llm.bound_evidence(question, evidence)
         stats["modelCallAttempted"] = False
+        failure=None
+        settings=config.llm_settings()
+        generation_limit=getattr(settings,'generation_timeout',25)
+        generation_budget=generation_limit+3
         if mode == "llm" and evidence and kind not in {"chart", "unsupported"} and not operation_table:
             if not config.llm_configured():
                 warnings.append("MODEL_NOT_CONFIGURED")
+                failure={'code':'MODEL_NOT_CONFIGURED','retryable':False}
             elif not selected:
                 warnings.append("MODEL_INPUT_TOO_LARGE")
                 notices.append("No complete source fits the model byte budget; showing source excerpts." if en else
                                "참고할 원문이 답변 입력 한도보다 커서 원문 발췌를 표시합니다. 질문 범위를 좁혀 주세요.")
-            elif 28 - (monotonic() - started) < 1:
+            elif generation_budget - (monotonic() - started) < 1:
                 warnings.append("MODEL_TIME_BUDGET_EXHAUSTED")
                 notices.append("Search and preceding work used the generation budget; showing source excerpts." if en else
                                "검색·선행 처리 후 남은 생성 시간이 부족해 원문 발췌를 표시합니다.")
             else:
-                timeout = min(25, 28 - (monotonic() - started))
+                timeout = min(generation_limit, generation_budget - (monotonic() - started))
                 generation_started = monotonic()
                 diagnostics = {}
                 try:
@@ -125,8 +130,9 @@ class AnswerStore:
                     statements = result["statements"]
                     presentation = result.get("presentation")
                     generation = "llm"
-                except (ValueError, KeyError, httpx.HTTPError):
+                except (ValueError, KeyError, TypeError, httpx.HTTPError) as exc:
                     warnings.append("MODEL_FAILED_EXTRACTIVE_FALLBACK")
+                    failure=llm.failure_details(exc)
                     if kind == "table":
                         notices.append("The model table could not be verified; showing cited source excerpts." if en else
                                        "모델 표의 형식·인용을 검증하지 못해 근거 원문 발췌 표를 표시합니다.")
@@ -160,6 +166,10 @@ class AnswerStore:
                   "timings": {"retrievalMs": round(retrieval_ms, 3), "generationMs": round(generation_ms, 3),
                               "totalMs": round(max(0, (monotonic() - started) * 1000), 3)},
                   "reportSuggested": task == "report" or bool(re.search(r"보고서|noon|mrv|report", question, re.I))}
+        if failure:
+            answer['generationFailure']=failure
+            self.audit(user,'error','AI 답변 생성 실패',answer_id,{
+                **failure,'generationMs':round(generation_ms,3),'modelCallAttempted':stats['modelCallAttempted']})
         if presentation:
             answer["presentation"] = presentation
         if notices:

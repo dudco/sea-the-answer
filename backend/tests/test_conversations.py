@@ -6,7 +6,6 @@ from fastapi.testclient import TestClient
 from psycopg.types.json import Jsonb
 from api import main, rag_jobs
 from api.errors import ApiError
-from api.routes import documents
 from rag_postgres_support import isolated_workspace, configure_api, login
 from test_maritime_migrations import postgres_dsn
 
@@ -24,8 +23,6 @@ def test_conversation_history_restore_delete_and_permissions(postgres_dsn, monke
         headers = login(client)
         # Run the normal document answer path, with deterministic empty retrieval.
         monkeypatch.setattr(request_db, 'search', lambda *a, **kw: [])
-        monkeypatch.setattr(documents, 'navigation_answer', lambda ctx: None)
-        monkeypatch.setattr(documents, 'workflow_answer', lambda ctx: None)
         first = client.post('/api/ask', headers=headers, json={'question':'첫 질문', 'task':'documents'}).json()
         root = first['id']
         for i in range(3):
