@@ -373,3 +373,54 @@ def test_planner_receives_readable_document_titles_only(monkeypatch):
     db = Store()
     router.answer(SimpleNamespace(db=db, user={'id': 'crew-1'}, body={'question': 'CII가 뭐야?', 'task': 'auto', 'context': {}}))
     assert seen['documents'] == ['doc-a', 'doc-b']
+
+
+def json_reply(value, finish='stop'):
+    content = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+    return {'choices': [{'finish_reason': finish, 'message': {'role': 'assistant', 'content': content}}]}
+
+
+def test_json_format_constrains_output_to_a_tool_enum_and_lists_tools_in_the_prompt():
+    calls, body = plan(json_reply({'tool': 'get_dataset_status', 'arguments': {'datasets': ['mrv']}}), fmt='json')
+    assert calls[0].tool.name == 'get_dataset_status' and 'tools' not in body
+    schema = body['response_format']['json_schema']['schema']
+    assert schema['properties']['tool']['enum'] == list(registry.TOOLS) and schema['required'] == ['tool', 'arguments']
+    system = body['messages'][0]['content']
+    assert all(f'- {name}:' in system for name in registry.TOOLS) and 'datasets*=' in system
+
+
+@pytest.mark.parametrize('content,result', [
+    ({'tool': 'answer_from_documents', 'arguments': {}}, []),
+    ('<think>짧게 판단</think>{"tool":"decline_request","arguments":{"reason":"weather"}}', ['decline_request']),
+])
+def test_json_format_reads_documents_only_and_strips_thinking(content, result):
+    calls, _ = plan(json_reply(content), fmt='json')
+    assert [c.tool.name for c in calls] == result
+
+
+@pytest.mark.parametrize('content,code', [
+    ('동의하시겠습니까?', 'MODEL_INVALID_JSON'),
+    ({'ship_mentions': ['해답호']}, 'MODEL_RESPONSE_INVALID'),
+    ({'tool': 'drop_tables', 'arguments': {}}, 'MODEL_UNKNOWN_TOOL'),
+    ({'tool': 'decline_request', 'arguments': {'reason': 'weather'}, 'note': 'x'}, 'MODEL_RESPONSE_INVALID'),
+])
+def test_json_format_rejects_text_missing_names_and_unknown_tools(content, code):
+    with pytest.raises(planner.PlanError) as error:
+        plan(json_reply(content), fmt='json')
+    assert error.value.code == code
+
+
+def test_format_is_chosen_by_environment(monkeypatch):
+    monkeypatch.setenv('HAEDAP_PLANNER_FORMAT', 'json')
+    _, body = plan(json_reply({'tool': 'answer_from_documents', 'arguments': {}}))
+    assert 'response_format' in body
+    monkeypatch.setenv('HAEDAP_PLANNER_FORMAT', 'something-else')
+    _, body = plan(reply(content='문서', finish='stop'))
+    assert body['tool_choice'] == 'auto'
+
+
+def test_examples_are_not_evaluation_questions():
+    from scripts import evaluate_tool_selection as evaluation
+    questions = {c['question'] for path in ('tool-selection-eval.json', 'tool-selection-holdout.json')
+                 for c in evaluation.load_cases(evaluation.DEFAULT_CASES.with_name(path))}
+    assert not questions & {q for q, _, _ in planner.EXAMPLES}

@@ -50,7 +50,7 @@ class MrvArgs(Args):
         description='질문에 적힌 선박 이름이나 IMO 표기 그대로, 최대 2개.')
     period_text: PeriodText = Field(default='', description='질문에 적힌 보고 연도 표현 그대로(예: 작년, 2024년).')
     accept_reference: bool = Field(default=False,
-        description='직전 답변이 참고값 계산 동의를 물었고 사용자가 동의한 경우에만 true.')
+        description='previous가 참고값 동의를 물었고(missing에 reference_ack) 사용자가 동의하는 답을 했을 때만 true. 그 밖에는 생략.')
 
 
 class CombinedArgs(Args):
@@ -58,7 +58,7 @@ class CombinedArgs(Args):
         description='질문에 적힌 선박 이름이나 IMO 표기 그대로, 최대 2개.')
     period_text: PeriodText = Field(default='', description='질문에 적힌 기간·연도 표현 그대로.')
     accept_reference: bool = Field(default=False,
-        description='직전 답변이 참고값 계산 동의를 물었고 사용자가 동의한 경우에만 true.')
+        description='previous가 참고값 동의를 물었고(missing에 reference_ack) 사용자가 동의하는 답을 했을 때만 true. 그 밖에는 생략.')
 
 
 Dimension = Literal['length', 'beam', 'draught']

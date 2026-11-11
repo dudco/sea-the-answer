@@ -63,7 +63,7 @@ def score(case: dict, calls: list) -> dict:
             "tool_match": tool_ok, "argument_match": args_ok}
 
 
-def evaluate(cases: list[dict], *, settings: config.LLMSettings, client=None) -> dict:
+def evaluate(cases: list[dict], *, settings: config.LLMSettings, client=None, fmt: str | None = None) -> dict:
     rows = []
     for case in cases:
         started = perf_counter()
@@ -72,7 +72,7 @@ def evaluate(cases: list[dict], *, settings: config.LLMSettings, client=None) ->
         try:
             calls = tool_planner.plan(case["question"], today=TODAY, summary=case.get("previous"),
                                       documents=case.get("documents", DOCUMENTS), settings=settings,
-                                      client=client, debug=debug)
+                                      client=client, debug=debug, fmt=fmt)
             row.update(score(case, calls), error=None, text_preview=debug.get("text_preview") or None)
         except tool_planner.PlanError as exc:
             row.update(tools=None, tool_match=False, argument_match=False, error=exc.code,
@@ -83,7 +83,7 @@ def evaluate(cases: list[dict], *, settings: config.LLMSettings, client=None) ->
         rows.append(row)
     total = len(rows)
     seconds = sorted(r["seconds"] for r in rows)
-    return {"model": settings.model, "cases": total,
+    return {"model": settings.model, "format": tool_planner.planner_format(fmt), "cases": total,
             "tool_match": sum(r["tool_match"] for r in rows), "argument_match": sum(r["argument_match"] for r in rows),
             "errors": sum(r["error"] is not None for r in rows),
             "median_seconds": seconds[total // 2] if total else None, "max_seconds": seconds[-1] if total else None,
@@ -95,14 +95,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--case", action="append", dest="case_ids", default=[])
     parser.add_argument("--cases", type=Path, default=DEFAULT_CASES)
     parser.add_argument("--output", type=Path, help="Create a new UTF-8 JSON file; never overwrite")
+    parser.add_argument("--format", choices=("tools", "json"), help="Override HAEDAP_PLANNER_FORMAT")
     args = parser.parse_args(argv)
     settings = config.llm_settings()
     if settings is None:
         print("Model is not configured (OPENAI_MODEL / LLM_API_BASE_URL).", file=sys.stderr)
         return 2
     cases = [c for c in load_cases(args.cases) if not args.case_ids or c["id"] in args.case_ids]
-    result = {"evaluated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), **evaluate(cases, settings=settings)}
-    print(f"{result['model']}: tool {result['tool_match']}/{result['cases']}, arguments {result['argument_match']}/{result['cases']}, "
+    result = {"evaluated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), **evaluate(cases, settings=settings, fmt=args.format)}
+    print(f"{result['model']} [{result['format']}, {args.cases.name}]: tool {result['tool_match']}/{result['cases']}, arguments {result['argument_match']}/{result['cases']}, "
           f"errors {result['errors']}, median {result['median_seconds']}s")
     for row in result["rows"]:
         if not row["argument_match"]:

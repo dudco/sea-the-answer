@@ -24,9 +24,10 @@ class Client:
 
 def test_checked_in_cases_load_and_reference_registered_tools():
     from api import tool_registry
-    cases = evaluation.load_cases()
-    assert len(cases) >= 20
-    assert all(set(c['expected']['tools']) <= set(tool_registry.TOOLS) for c in cases)
+    for name in ('tool-selection-eval.json', 'tool-selection-holdout.json'):
+        cases = evaluation.load_cases(evaluation.DEFAULT_CASES.with_name(name))
+        assert len(cases) >= 20
+        assert all(set(c['expected']['tools']) <= set(tool_registry.TOOLS) for c in cases)
 
 
 def test_scores_tool_and_argument_subsets_separately():
