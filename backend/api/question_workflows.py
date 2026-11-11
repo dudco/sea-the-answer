@@ -363,6 +363,20 @@ def try_answer(ctx, *, action_hint=None, allow_model=True):
             for field in ('years','periods','document_ids','reference_ack'):
                 if getattr(reply,field) is not None:setattr(scope,field,getattr(reply,field))
             scope=Scope.model_validate(scope.model_dump())
+        return execute(ctx,scope,routing,prior[0]['id'] if continuing and prior else None)
+    except (ValueError,ValidationError) as exc:
+        # A failed assignment (for example, three operation periods) must never
+        # persist an invalid continuation scope. Discard an invalid scope.
+        try:scope=Scope.model_validate(scope.model_dump())
+        except (ValueError,ValidationError):scope=Scope(action=action)
+        missing=missing_fields(scope)
+        return save(ctx,scope,'needs_input',str(exc)[:300] if not isinstance(exc,ValidationError) else '선박·기간·연도 입력 형식을 확인해 주세요.',missing,routing)
+
+
+def execute(ctx,scope,routing,parent=None):
+    """Validate a complete scope and run the existing tools; shared by rule and model plans."""
+    body=ctx.body;q=body['question']
+    try:
         if scope.action in ('operations_summary','combined') and not scope.periods:
             context=body.get('context') or {}
             if context.get('from') and context.get('to'):scope.periods=[intent.Period(start=context['from'],end=context['to'])]
@@ -375,10 +389,10 @@ def try_answer(ctx, *, action_hint=None, allow_model=True):
         if re.search(r'공식\s*CII|CII\s*등급|official CII|rating',q,re.I) and not re.search(r'(?:말고|대신|아닌|not).*?(?:참고|reference)',q,re.I):
             scope.reference_ack=False
         missing=missing_fields(scope)
-        if missing:return save(ctx,scope,'needs_input','',missing,routing,parent=prior[0]['id'] if continuing and prior else None)
+        if missing:return save(ctx,scope,'needs_input','',missing,routing,parent=parent)
         if scope.presentation_question and (len(scope.ships)!=1 or len(scope.periods)!=1):
             field='ships' if len(scope.ships)!=1 else 'periods'
-            return save(ctx,scope,'needs_input','운항 표·차트에는 한 선박·한 기간을 지정해 주세요.',[field],routing,parent=prior[0]['id'] if continuing and prior else None)
+            return save(ctx,scope,'needs_input','운항 표·차트에는 한 선박·한 기간을 지정해 주세요.',[field],routing,parent=parent)
         calls=len(scope.ships)*((len(scope.years) if scope.action in ('mrv_reference','combined') else 0)+(len(scope.periods) if scope.action in ('operations_summary','combined') else 0))
         if calls>4:raise ValueError('한 번에 최대 4회 조회할 수 있습니다. 선박·연도·기간 범위를 좁혀 주세요.')
         rows,evidence,statements,warnings,projection=run_tools(ctx,scope)
@@ -386,11 +400,11 @@ def try_answer(ctx, *, action_hint=None, allow_model=True):
         if scope.action=='selected_document' and not statements:status='insufficient_evidence'
         notice='선택 문서 안에서 답변 근거를 찾지 못했습니다.' if status=='insufficient_evidence' else '검증한 범위로 기존 도구를 실행했습니다. 자료 유형·단위·계산 불가 사유를 함께 확인하세요.'
         return save(ctx,scope,status,notice,[],routing,
-            rows=rows,evidence=evidence,statements=statements,warnings=warnings,parent=prior[0]['id'] if continuing and prior else None,projection=projection)
+            rows=rows,evidence=evidence,statements=statements,warnings=warnings,parent=parent,projection=projection)
     except (ValueError,ValidationError) as exc:
         # A failed assignment (for example, three operation periods) must never
         # persist an invalid continuation scope. Discard an invalid scope.
         try:scope=Scope.model_validate(scope.model_dump())
-        except (ValueError,ValidationError):scope=Scope(action=action)
+        except (ValueError,ValidationError):scope=Scope(action=scope.action)
         missing=missing_fields(scope)
         return save(ctx,scope,'needs_input',str(exc)[:300] if not isinstance(exc,ValidationError) else '선박·기간·연도 입력 형식을 확인해 주세요.',missing,routing)

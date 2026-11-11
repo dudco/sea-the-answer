@@ -57,10 +57,6 @@ export function createMainViews(model, views) {
         ></UiControl>
         <div className={'composer-bottom'}>
           <div className={'query-controls'}>
-            <UiControl as="select" aria-label="답변 방식" data-field="mode" value={state.mode} onChange={noop}>
-              {state.health?.llmConfigured && <option value="llm"><UiText>{'AI 답변'}</UiText></option>}
-              <option value="extractive"><UiText>{'원문 발췌'}</UiText></option>
-            </UiControl>
             <UiControl as="select"
               aria-label={'검색 범위'}
               data-field={'filter'}
@@ -94,7 +90,10 @@ export function createMainViews(model, views) {
     if (!a) return '';
     const en = a.language === 'en',
       sources = [...new Set(a.evidence.map((e) => e.document_id))],
-      presentation = validatedPresentation(a.presentation, a.evidence);
+      presentation = validatedPresentation(a.presentation, a.evidence),
+      toolCalls = Array.isArray(a.routing?.toolCalls) ? a.routing.toolCalls : [],
+      related = Array.isArray(a.relatedEvidence) ? a.relatedEvidence : [],
+      relatedSources = [...new Set(related.map((e) => e.document_id))];
     return (
       <article className={'card answer'} data-answer-id={a.id}>
         <div className={'inline wrap'}>
@@ -105,9 +104,23 @@ export function createMainViews(model, views) {
                 ? '답변 근거를 확인해 주세요'
                 : '답변과 확인 근거'}</UiText>
           </h2>
-          {badge(a.dataStatus ? '자료 등록 현황' : a.routing?.route==='clarify' ? '질문 확인' : a.navigation?.kind==='catalog-status' ? 'AIS 자료 현황' : a.navigation ? '항구 참조 비교' : a.workflow ? '업무 조회·계산' : a.skill ? '업무 스킬' : a.generation === 'llm' ? 'AI 초안' : '문서 검색', 'teal')}
+          {badge(a.task === 'clarification' ? '질문 확인' : a.task === 'unsupported' ? '지원 범위 밖' : a.task === 'tool' ? '계산 도구' : a.dataStatus ? '자료 등록 현황' : a.routing?.route==='clarify' ? '질문 확인' : a.navigation?.kind==='catalog-status' ? 'AIS 자료 현황' : a.navigation ? '항구 참조 비교' : a.workflow ? '업무 조회·계산' : a.skill ? '업무 스킬' : a.generation === 'llm' ? 'AI 초안' : '문서 검색', 'teal')}
         </div>
         <p className={'small muted'}>{a.notice}</p>
+        {/* Tools the server ran after validating the model's choice (ADR 0024); not live progress. */}
+        {toolCalls.length ? (
+          <p className={'small muted tool-calls'} data-testid={'tool-calls'}>
+            <UiText>{en ? 'Tools used: ' : '사용한 도구: '}</UiText>
+            {toolCalls.map((t, __index) => (
+              <React.Fragment key={__index}>
+                {__index ? ' → ' : ''}
+                <code className={t.status === 'needs_input' || t.status === 'unsupported' ? 'muted' : ''}>{String(t.name)}</code>
+              </React.Fragment>
+            ))}
+          </p>
+        ) : (
+          ''
+        )}
         {/* Only model warnings mean the AI answer failed; e.g. OPERATIONS_CONTEXT_REQUIRED has its own notice. */}
         <UiText>{a.warnings.some((w) => w === 'MODEL_FAILED_EXTRACTIVE_FALLBACK' || w === 'MODEL_NOT_CONFIGURED')
           ? notice(
@@ -146,7 +159,7 @@ export function createMainViews(model, views) {
           );
         })}
         <AnswerPresentation answer={a} presentation={presentation} />
-        <UiText>{!a.evidence.length && !a.dataStatus && a.routing?.route!=='clarify' && !a.workflow && !a.skill && !a.operations?.count && presentation?.source !== 'operations'
+        <UiText>{!a.evidence.length && !['clarification', 'unsupported', 'tool'].includes(a.task) && !a.dataStatus && a.routing?.route!=='clarify' && !a.workflow && !a.skill && !a.operations?.count && presentation?.source !== 'operations'
           ? notice(
               en
                 ? 'Insufficient document evidence. Ask the responsible officer.'
@@ -160,11 +173,23 @@ export function createMainViews(model, views) {
           <React.Fragment key={__index}>
             {
               <div className={'card pad mt'}>
-                {'CO₂ '}
-                {n(t.emission, 3)}
-                <UiText>{' t · 집약도 '}</UiText>
-                {n(t.intensity, 3)}
-                {' gCO₂/(DWT·nm)'}
+                {t.name === 'voyage_time' ? (
+                  <>
+                    <UiText>{en ? 'Elapsed ' : '경과 시간 '}</UiText>
+                    {n(t.elapsedHours, 2)}
+                    <UiText>{en ? ' h · ship clock ' : ' 시간 · 선내 시각 기준 '}</UiText>
+                    {n(t.clockHours, 2)}
+                    <UiText>{en ? ' h' : ' 시간'}</UiText>
+                  </>
+                ) : (
+                  <>
+                    {'CO₂ '}
+                    {n(t.emission, 3)}
+                    <UiText>{' t · 집약도 '}</UiText>
+                    {n(t.intensity, 3)}
+                    {' gCO₂/(DWT·nm)'}
+                  </>
+                )}
               </div>
             }
           </React.Fragment>
@@ -185,6 +210,18 @@ export function createMainViews(model, views) {
         {a.navigation && <NavigationAnswer answer={a} />}
         {a.dataStatus && <DatasetStatus value={a.dataStatus} />}
         {a.workflow && <QuestionWorkflow answer={a} />}
+        {relatedSources.length ? (
+          <div className={'answer-sources'}>
+            <h3><UiText>{en ? 'Related documents' : '관련 문서'}</UiText></h3>
+            {relatedSources.map((id, __index) => (
+              <React.Fragment key={__index}>
+                {sourceCard(id, related.find((e) => e.document_id === id)?.id)}
+              </React.Fragment>
+            ))}
+          </div>
+        ) : (
+          ''
+        )}
         <div className={'answer-actions'}>
           <UiText>{canWrite() && (a.statements.length || a.operations?.count || a.toolRuns.length)
             ? btn(en ? 'Add to report' : '보고서에 담기', 'answerReport', 'primary', 'edit')

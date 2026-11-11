@@ -20,10 +20,11 @@ LABELS={'ais':'AIS 수집본','mrv':'실제 MRV 연간 보고','dwt':'DWT 공개
         'noon':'Synthetic Noon','operations':'일별 운항 기록','documents':'열람 가능한 문서','ports':'항만·선석 공개 참조'}
 
 
-def answer(ctx, datasets):
+def answer(ctx, datasets, *, scope_text=None):
+    """scope_text: model-provided ship/period wording; defaults to the question (legacy rules)."""
     if not datasets or len(set(datasets))!=len(datasets) or any(d not in DATASETS for d in datasets):
         raise ValueError('Invalid inventory request')
-    q=ctx.body['question'];engine=None
+    q=ctx.body['question'] if scope_text is None else scope_text;engine=None
     result={'datasets':[],'scope':{'coverage':'server_inventory'},'assessed_at':utc_now()}
     try:
         years,periods=date_slots(q)

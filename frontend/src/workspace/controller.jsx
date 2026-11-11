@@ -213,8 +213,6 @@ export function createWorkspace() {
     state.user = null;
     state.ready = false;
     state.ship = '';
-    state.answerModePreference = '';
-    state.mode = 'extractive';
     state.compare = [];
     state.conflict = null;
     state.calc = null;
@@ -264,7 +262,6 @@ export function createWorkspace() {
       }
       await refreshAll();
       state.ready = true;
-      state.mode = health.llmConfigured ? state.answerModePreference || 'llm' : 'extractive';
       if (previous !== state.user.id) {
         try {
           state.draft = validateDraft(readLocal(draftKey()));
@@ -416,7 +413,6 @@ export function createWorkspace() {
       ...(state.conversationId ? {conversationId: state.conversationId} : {}),
       filter: state.filter,
       language: state.language,
-      mode: state.mode,
       task: state.task,
       ...(workflowInput ? {workflowInput} : {}),
       context: {
@@ -1867,9 +1863,8 @@ export function createWorkspace() {
         state[k] = old;
         toast('시작일과 종료일을 확인해 주세요.');
       }
-      if (k === 'mode' && ['llm','extractive'].includes(t.value)) state.answerModePreference = t.value;
       if (['ship', 'from', 'to'].includes(k)) state.criterion = null;
-      if (['ship', 'from', 'to', 'filter', 'language', 'mode', 'task'].includes(k)) {
+      if (['ship', 'from', 'to', 'filter', 'language', 'task'].includes(k)) {
         state.askSequence++;
         state.busy = false;
         state.slow = false;

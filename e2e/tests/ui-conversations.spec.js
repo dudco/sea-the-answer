@@ -26,11 +26,11 @@ test('six UI requirements: language, transcript, source, history and deletion', 
   await page.goto('/chat');
   await expect(page.locator('.composer')).toBeVisible();
   await expect(page.locator('.local-note')).toHaveCount(0);
-  await expect(page.locator('.query-controls select')).toHaveCount(2);
-  await expect(page.getByLabel('답변 방식',{exact:true})).toHaveValue('llm');
+  await expect(page.locator('.query-controls select')).toHaveCount(1);
+  await expect(page.getByLabel('답변 방식',{exact:true})).toHaveCount(0);
   await expect(page.getByLabel('검색 범위',{exact:true})).toHaveValue('all');
   await expect(page.locator('.query-context')).toHaveCount(0);
-  await expect(page.locator('.composer select')).toHaveCount(2);
+  await expect(page.locator('.composer select')).toHaveCount(1);
   await page.locator('#question').fill('입력 중 질문');
   await page.locator('.language-button').click();await page.getByRole('button',{name:'English',exact:true}).click();
   await expect(page.locator('[data-nav="docs"]')).toHaveText('Documents');

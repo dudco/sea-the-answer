@@ -58,6 +58,8 @@ class FakeWorkspace:
 
 
 def test_browser_health_auth_and_question_contract(monkeypatch):
+    # HTTP auth/CSRF contract on the legacy rule path; model routing is covered in test_tool_selection.py.
+    monkeypatch.setenv("HAEDAP_QUESTION_ROUTER", "legacy")
     monkeypatch.setattr(deps, "Workspace", FakeWorkspace)
     monkeypatch.setattr(deps, "initialized", False)
     security.sessions.clear()

@@ -39,7 +39,8 @@ def ask(ctx):
     answer = route_answer(ctx)
     require(security.current_user(db, ctx.request, ctx.guest)["id"] == user["id"],
             "사용자 상태가 바뀌었습니다. 다시 연결해 주세요.", "AUTH_REQUIRED", 401)
-    require(all(db.can_read_document(user, item["document_id"]) for item in answer["evidence"]),
+    require(all(db.can_read_document(user, item["document_id"])
+                for item in [*answer["evidence"], *answer.get("relatedEvidence", [])]),
             "문서 권한이 변경되었습니다. 다시 질문해 주세요.", "FORBIDDEN", 403)
     if conversation_id is not None:
         db.attach_conversation(answer, conversation_id)

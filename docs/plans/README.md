@@ -69,3 +69,5 @@
 - [통합 질문·언어·대화 이력 개선](2026-11-09-ui-conversations-language.md) — 완료 (대화 API·브라우저 회귀 검증, Docker 전체 스택 미실행).
 
 - [OpenSearch 전환](2026-11-11-opensearch-retrieval.md) — 완료
+
+- [질문 분석을 LLM 도구 선택으로 전환](2026-11-12-llm-tool-selection.md) — 초안

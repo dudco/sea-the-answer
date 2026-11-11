@@ -1,5 +1,13 @@
 # 변경 이력과 검증 기록
 
+## 2026-11-12 — LLM 도구 선택 전환 (초안, `feature/llm-tool-selection`)
+
+- 자동 질문은 문서 검색을 항상 실행하고, 모델이 OpenAI 호환 tool calling으로 데이터 도구 0~1개와 인자를 고른다. 서버는 `tool_registry.py`의 allowlist·Pydantic 스키마로 검증하고, 모델이 낸 선박·문서·항구 표기와 기간 표현을 등록 목록·열람 권한·기존 날짜 해석기로 바꾼 뒤 기존 실행기를 호출한다([ADR 0024 제안](adr/0024-llm-tool-selection.md), [계획](plans/2026-11-12-llm-tool-selection.md)).
+- 화면의 답변 방식 선택과 요청 `mode`를 제거했다. 모델 미설정은 `503 MODEL_NOT_CONFIGURED`, 모델 실패·검증 실패·도구 2개 이상은 되묻기로 응답한다. 기존 규칙 경로는 `HAEDAP_QUESTION_ROUTER=legacy`에서만 쓴다. 답변 카드에 사용한 도구(`routing.toolCalls`)와 데이터 도구 답변의 관련 문서(`relatedEvidence`)를 표시한다. `GET /api/tools`에 `assistantTools`를 추가했다.
+- 검증(2026-11-12, Linux VM, Python 3.13 venv, torch 미설치): backend `uv run pytest` **1,098 passed / 203 skipped / 4 failed**. 실패 4건은 모두 `test_document_save.py`의 torch 패키지 부재로, 변경 전 기준선(1,068 passed / 203 skipped / 4 failed)과 같다. 신규 테스트는 모의 모델 응답만 사용하며 실제 모델의 도구 선택 정확도를 측정하지 않았다.
+- frontend `npm test` **38 passed**(답변 방식 테스트 2건을 `mode` 미전송 테스트 1건으로 교체), `npm run build` 성공. Node 22.23.4로 실행했으며 `engines`의 Node 24 조건과 다르다.
+- 미실행: Docker E2E 화면 검사(수정한 두 스펙은 문법 검사만 수행, e2e 스택은 모델이 없어 `HAEDAP_QUESTION_ROUTER=legacy`로 설정), 실제 모델 평가(`scripts/evaluate_tool_selection.py`, 25문항), 모델 서버의 `tools` 파라미터 지원 확인(로컬 Ollama·동국 AI Chat 모두 미확인).
+
 ## 2026-11-11 — 자료 현황·질문 분기·Qwen 생성 실패 처리
 
 - MRV·AIS 정보 표현, MRV/DWT/합성 Noon/일별 기록/열람 문서/항만 등록 현황을 실제 DB·참조 파일에서 읽는다. 등록 건수와 집계 적격 건수, 빈 자료와 연결 실패, 실제/가상 및 연간/일별 범위를 구분한다. 전역 자료 현황의 짧은 후속은 현재 소유자·대화의 자료 종류만 이어받고 현재 자료를 다시 읽는다. 선박/연도로 제한된 현황의 생략 후속은 범위를 재확인한다.

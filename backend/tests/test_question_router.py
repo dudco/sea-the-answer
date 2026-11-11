@@ -14,6 +14,12 @@ from api import dataset_intent, dataset_status, question_router as router
 from test_question_workflows import DB
 
 
+@pytest.fixture(autouse=True)
+def legacy_router(monkeypatch):
+    # These cases cover the rule-first path kept behind HAEDAP_QUESTION_ROUTER=legacy (ADR 0024).
+    monkeypatch.setenv('HAEDAP_QUESTION_ROUTER','legacy')
+
+
 class Store(DB):
     def __init__(self):super().__init__();self.document_questions=[]
     def answer(self,user,body):

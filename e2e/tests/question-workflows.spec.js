@@ -66,12 +66,16 @@ test('new question reset drops workflow continuation',async({page})=>{
  expect(state.calls[1].context.previousQueryId).toBeUndefined();expect(state.errors).toEqual([]);
 });
 
-test('configured model is selected for real AI requests and excerpt mode remains available',async({page})=>{
- const state=await setup(page,(body,n)=>answer(n===1?'aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaaa':'aaaaaaa2-aaaa-4aaa-8aaa-aaaaaaaaaaaa',{missing:['years']}),true);
- await expect(page.getByLabel('답변 방식',{exact:true})).toHaveValue('llm');
- await ask(page,'MRV 참고 탄소집약도 계산해줘');expect(state.calls[0].mode).toBe('llm');
- await page.getByLabel('답변 방식',{exact:true}).selectOption('extractive');
- await ask(page,'우리 배 2024년 운항 실적을 요약해줘');expect(state.calls[1].mode).toBe('extractive');
+test('questions carry no answer mode and show the tools the server ran with related documents',async({page})=>{
+ const routing={method:'model_tools',toolCalls:[{name:'search_documents',status:'completed'},{name:'calculate_mrv_reference',status:'needs_input'}]};
+ const state=await setup(page,()=>answer('aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaaa',{missing:['years']},
+   {routing,relatedEvidence:[{id:'c',document_id:'doc-a',title:'선박 안전 문서',version:'1',text:'관련 근거입니다.'}]}),true);
+ await expect(page.getByLabel('답변 방식',{exact:true})).toHaveCount(0);
+ await ask(page,'MRV 참고 탄소집약도 계산해줘');expect(state.calls[0].mode).toBeUndefined();
+ const turn=page.locator('[data-answer-id="aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaaa"]');
+ await expect(turn.getByTestId('tool-calls')).toContainText('search_documents');
+ await expect(turn.getByTestId('tool-calls')).toContainText('calculate_mrv_reference');
+ await expect(turn).toContainText('관련 문서');
  expect(state.errors).toEqual([]);
 });
 

@@ -39,7 +39,9 @@ class AnswerStore:
                 "actual": actual, "limit": limit, "rule": criterion,
                 "reason": "사용자가 확인·입력한 단일 기준과의 수치 비교입니다. 공식 판정은 아닙니다."}
 
-    def answer(self, user: dict, payload: dict) -> dict:
+    def answer(self, user: dict, payload: dict, *, evidence: list[dict] | None = None) -> dict:
+        # evidence: permission-filtered results already retrieved by the tool router (ADR 0024).
+        precomputed = evidence
         started = monotonic()
         question = text(payload.get("question"), "질문", 2000)
         language = payload.get("language", "auto")
@@ -60,7 +62,8 @@ class AnswerStore:
         if task == 'auto' and definition_request(question):
             needs_ops = False
         retrieval_started = monotonic()
-        evidence = [] if task == "operations" else self.search(user, question, payload.get("filter", "all"))
+        evidence = (list(precomputed) if precomputed is not None else
+                    [] if task == "operations" else self.search(user, question, payload.get("filter", "all")))
         retrieval_ms = max(0, (monotonic() - retrieval_started) * 1000)
         statements = [{"text": item["text"], "chunkId": item["id"], "quote": item["text"]} for item in evidence[:3]]
         warnings = []
