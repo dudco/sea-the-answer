@@ -133,6 +133,8 @@ class AnswerStore:
                     statements = result["statements"]
                     presentation = result.get("presentation")
                     generation = "llm"
+                    notice = ("AI drafted this from the retrieved sources. Check each citation against the original." if en else
+                              "검색된 근거로 AI가 작성한 초안입니다. 인용을 눌러 원문과 대조하세요.")
                 except (ValueError, KeyError, TypeError, httpx.HTTPError) as exc:
                     warnings.append("MODEL_FAILED_EXTRACTIVE_FALLBACK")
                     failure=llm.failure_details(exc)

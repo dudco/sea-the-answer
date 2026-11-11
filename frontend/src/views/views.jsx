@@ -93,11 +93,15 @@ export function createMainViews(model, views) {
       presentation = validatedPresentation(a.presentation, a.evidence),
       toolCalls = Array.isArray(a.routing?.toolCalls) ? a.routing.toolCalls : [],
       related = Array.isArray(a.relatedEvidence) ? a.relatedEvidence : [],
-      relatedSources = [...new Set(related.map((e) => e.document_id))];
+      relatedSources = [...new Set(related.map((e) => e.document_id))],
+      // Clarifications, refusals and tool results speak through the notice; document answers through statements.
+      noticeIsAnswer = !a.statements.length || a.status === 'needs_input' || ['clarification', 'unsupported', 'tool'].includes(a.task),
+      showSources = !a.navigation && sources.length > 0,
+      documentCount = (showSources ? sources.length : 0) + relatedSources.length;
     return (
       <article className={'card answer'} data-answer-id={a.id}>
         <div className={'inline wrap'}>
-          <h2>
+          <h2 className={'a11y-hidden'}>
             <UiText>{en
               ? 'Answer & evidence'
               : a.status === 'insufficient_evidence'
@@ -106,21 +110,7 @@ export function createMainViews(model, views) {
           </h2>
           {badge(a.task === 'clarification' ? '질문 확인' : a.task === 'unsupported' ? '지원 범위 밖' : a.task === 'tool' ? '계산 도구' : a.dataStatus ? '자료 등록 현황' : a.routing?.route==='clarify' ? '질문 확인' : a.navigation?.kind==='catalog-status' ? 'AIS 자료 현황' : a.navigation ? '항구 참조 비교' : a.workflow ? '업무 조회·계산' : a.skill ? '업무 스킬' : a.generation === 'llm' ? 'AI 초안' : '문서 검색', 'teal')}
         </div>
-        <p className={'small muted'}>{a.notice}</p>
-        {/* Tools the server ran after validating the model's choice (ADR 0024); not live progress. */}
-        {toolCalls.length ? (
-          <p className={'small muted tool-calls'} data-testid={'tool-calls'}>
-            <UiText>{en ? 'Tools used: ' : '사용한 도구: '}</UiText>
-            {toolCalls.map((t, __index) => (
-              <React.Fragment key={__index}>
-                {__index ? ' → ' : ''}
-                <code className={t.status === 'needs_input' || t.status === 'unsupported' ? 'muted' : ''}>{String(t.name)}</code>
-              </React.Fragment>
-            ))}
-          </p>
-        ) : (
-          ''
-        )}
+        {noticeIsAnswer && a.notice ? <p className={'small muted'}>{a.notice}</p> : ''}
         {/* Only model warnings mean the AI answer failed; e.g. OPERATIONS_CONTEXT_REQUIRED has its own notice. */}
         <UiText>{a.warnings.some((w) => w === 'MODEL_FAILED_EXTRACTIVE_FALLBACK' || w === 'MODEL_NOT_CONFIGURED')
           ? notice(
@@ -194,43 +184,64 @@ export function createMainViews(model, views) {
             }
           </React.Fragment>
         ))}
-        {sources.length ? (
-          <div className={'answer-sources'}>
-            <h3><UiText>{en ? 'Sources' : '확인한 근거'}</UiText></h3>
-            {sources.map((id, __index) => (
-              <React.Fragment key={__index}>
-                {sourceCard(id, a.evidence.find((e) => e.document_id === id)?.id)}
-              </React.Fragment>
-            ))}
-          </div>
-        ) : (
-          ''
-        )}
         </>}
         {a.navigation && <NavigationAnswer answer={a} />}
         {a.dataStatus && <DatasetStatus value={a.dataStatus} />}
         {a.workflow && <QuestionWorkflow answer={a} />}
-        {relatedSources.length ? (
-          <div className={'answer-sources'}>
-            <h3><UiText>{en ? 'Related documents' : '관련 문서'}</UiText></h3>
-            {relatedSources.map((id, __index) => (
-              <React.Fragment key={__index}>
-                {sourceCard(id, related.find((e) => e.document_id === id)?.id)}
-              </React.Fragment>
-            ))}
+        <details className={'answer-details'} data-testid={'answer-details'}>
+          <summary>
+            <UiText>{en ? 'Evidence and details' : '근거·상세 정보'}</UiText>
+            {documentCount ? <UiText>{en ? ` · ${documentCount} documents` : ` · 문서 ${documentCount}개`}</UiText> : ''}
+          </summary>
+          {!noticeIsAnswer && a.notice ? <p className={'small muted'}>{a.notice}</p> : ''}
+          {/* Tools the server ran after validating the model's choice (ADR 0024); not live progress. */}
+          {toolCalls.length ? (
+            <p className={'small muted tool-calls'} data-testid={'tool-calls'}>
+              <UiText>{en ? 'Tools used: ' : '사용한 도구: '}</UiText>
+              {toolCalls.map((t, __index) => (
+                <React.Fragment key={__index}>
+                  {__index ? ' → ' : ''}
+                  <code className={t.status === 'needs_input' || t.status === 'unsupported' ? 'muted' : ''}>{String(t.name)}</code>
+                </React.Fragment>
+              ))}
+            </p>
+          ) : (
+            ''
+          )}
+          {showSources ? (
+            <div className={'answer-sources'}>
+              <h3><UiText>{en ? 'Sources' : '확인한 근거'}</UiText></h3>
+              {sources.map((id, __index) => (
+                <React.Fragment key={__index}>
+                  {sourceCard(id, a.evidence.find((e) => e.document_id === id)?.id)}
+                </React.Fragment>
+              ))}
+            </div>
+          ) : (
+            ''
+          )}
+          {relatedSources.length ? (
+            <div className={'answer-sources'}>
+              <h3><UiText>{en ? 'Related documents' : '관련 문서'}</UiText></h3>
+              {relatedSources.map((id, __index) => (
+                <React.Fragment key={__index}>
+                  {sourceCard(id, related.find((e) => e.document_id === id)?.id)}
+                </React.Fragment>
+              ))}
+            </div>
+          ) : (
+            ''
+          )}
+          <div className={'answer-actions'}>
+            <UiText>{canWrite() && (a.statements.length || a.operations?.count || a.toolRuns.length)
+              ? btn(en ? 'Add to report' : '보고서에 담기', 'answerReport', 'primary', 'edit')
+              : ''}</UiText>
+            <UiText>{a.reportSuggested && canWrite()
+              ? btn(en ? 'Choose report template' : '보고서 양식 선택', 'reportList', '', 'file')
+              : ''}</UiText>
           </div>
-        ) : (
-          ''
-        )}
-        <div className={'answer-actions'}>
-          <UiText>{canWrite() && (a.statements.length || a.operations?.count || a.toolRuns.length)
-            ? btn(en ? 'Add to report' : '보고서에 담기', 'answerReport', 'primary', 'edit')
-            : ''}</UiText>
-          <UiText>{a.reportSuggested && canWrite()
-            ? btn(en ? 'Choose report template' : '보고서 양식 선택', 'reportList', '', 'file')
-            : ''}</UiText>
-        </div>
-        <SkillsPanel group="evaluation" targetAnswerId={a.id} />
+          <SkillsPanel group="evaluation" targetAnswerId={a.id} />
+        </details>
       </article>
     );
   }
