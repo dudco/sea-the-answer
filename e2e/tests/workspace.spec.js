@@ -128,6 +128,7 @@ test('workspace: documents, operations, reports, admin review, backup', async ({
       await expect(page.locator('[data-dataset-status]').last()).toContainText('실제 MRV 연간 보고');
       await expect(page.locator('[data-dataset-status]').last()).toContainText('등록 건수 0');
       await expect(page.locator('.answer').last()).not.toContainText('AI 답변을 생성하지 못해');
+      await expect(page.locator('.answer').last()).not.toContainText('문서 근거가 부족합니다');
     }
     await page.locator('#question').fill('AIS 관련 정보를 알려줘');
     const reply=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/ask' && r.request().method()==='POST');
@@ -138,6 +139,8 @@ test('workspace: documents, operations, reports, admin review, backup', async ({
     expect(value.evidence).toEqual([]);
     await expect(page.locator('.answer').last()).toContainText('AIS 자료 현황');
     await expect(page.locator('.answer').last()).toContainText('AIS 참조 수집본을 확인할 수 없습니다');
+    await page.getByRole('button',{name:'새 질문',exact:true}).click();
+    await expect(page.locator('.chat-turn')).toHaveCount(0);
   });
 
   await test.step('Question, real search, source dialog', async () => {
