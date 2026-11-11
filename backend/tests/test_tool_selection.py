@@ -441,3 +441,25 @@ def test_verbatim_period_is_used_as_given(monkeypatch):
         [('summarize_operations', {'ship_mentions': ['해답호'], 'period_text': '지난달'})], monkeypatch)
     assert answer['workflow']['scope']['periods'] == [{'start': '2026-10-01', 'end': '2026-10-31'}]
     assert 'periodSource' not in answer['routing']['toolCalls'][1]
+
+
+def test_operations_inventory_with_real_date_columns_is_json_serializable(monkeypatch):
+    # Found in the 2026-11-12 demo: min(date)/max(date) are date objects and broke JSON storage (HTTP 500).
+    from contextlib import nullcontext
+    from datetime import date
+    from api import dataset_status
+
+    class Inventory(DB):
+        db = SimpleNamespace(transaction=nullcontext)
+        def one(self, sql, args=()):
+            if 'current_setting' in sql:
+                return {'value': '0'}
+            if 'FROM operations' in sql:
+                return {'row_count': 7, 'vessel_count': 1, 'sample_count': 7,
+                        'first_period': date(2026, 9, 22), 'last_period': date(2026, 9, 28)}
+            return super().one(sql, args)
+    ctx = SimpleNamespace(db=Inventory(), user={'id': 'crew-1'}, body={'question': '운항 기록 현황', 'context': {}})
+    result = dataset_status.answer(ctx, ['operations'], scope_text='')
+    item = result['dataStatus']['datasets'][0]
+    assert (item['first_period'], item['last_period']) == ('2026-09-22', '2026-09-28')
+    json.dumps(result)

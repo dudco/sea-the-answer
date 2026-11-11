@@ -90,6 +90,8 @@ def answer(ctx, datasets, *, scope_text=None):
                             'count(*) FILTER (WHERE body->>\'sample\'=\'true\') AS sample_count,'
                             'min(date) AS first_period,max(date) AS last_period FROM operations'+where,tuple(params))
                         ctx.db.one("SELECT set_config('statement_timeout',%s,true)",(old_timeout,))
+                    # PostgreSQL date columns arrive as date objects; answers are stored as JSON.
+                    row={k:(v.isoformat() if hasattr(v,'isoformat') else v) for k,v in row.items()}
                     item.update(row,status='available' if row['row_count'] else 'empty',
                                 notice='앱 일별 기록이며 MRV 연간 보고와 별개입니다. 가상 예시 건수를 따로 표시합니다.')
             except (SQLAlchemyError,HTTPException,ApiError,ValueError,psycopg.Error):
