@@ -66,8 +66,8 @@ def instruction(fmt='tools'):
                               for q, n, a in EXAMPLES)
         return (head + 'JSON 객체 {"tool": 도구 이름, "arguments": 인자 객체} 하나로만 답하세요. ' + RULES +
                 '\n\n도구(*는 필수 인자):\n' + tools + '\n\n예시:\n' + examples)
-    examples = '\n'.join(f'질문 "{q}" → {n} {json.dumps(a, ensure_ascii=False)}' for q, n, a in EXAMPLES)
-    return head + '반드시 도구를 정확히 하나 호출하세요. 글로 답하지 마세요. ' + RULES + '\n\n예시:\n' + examples
+    # No examples here: text examples made qwen3.6 copy them as text instead of calling tools (5/25, 2026-11-12).
+    return head + '반드시 도구를 정확히 하나 호출하세요. 글로 답하지 마세요. ' + RULES
 
 
 def response_schema():

@@ -41,16 +41,34 @@ def mentions(call):
     values = []
     for field in ('ship_mentions', 'port_mentions', 'document_mentions'):
         values += list(getattr(args, field, []) or [])
-    for field in ('ship_mention', 'berth_mention', 'period_text'):
+    for field in ('ship_mention', 'berth_mention'):
         values.append(getattr(args, field, '') or '')
     return [v for v in values if v.strip()]
 
 
+def source_text(question, summary=None):
+    return compact(question) + compact(json.dumps(summary or {}, ensure_ascii=False))
+
+
 def check_mentions(call, question, summary=None):
-    """Every name or period the model passes must be wording the user actually used."""
-    source = compact(question) + compact(json.dumps(summary or {}, ensure_ascii=False))
+    """Every ship, port, berth or document name the model passes must be wording the user actually used."""
+    source = source_text(question, summary)
     if any(compact(value) not in source for value in mentions(call)):
         raise ArgumentError('MODEL_ARGUMENT_NOT_IN_QUESTION')
+
+
+def period_source(call, question, summary=None):
+    """Return (text for the existing date parser, origin).
+
+    The model's period wording is used only when the user actually wrote it. A paraphrase
+    (e.g. "지난달" -> "마지막 달") falls back to parsing the original question.
+    """
+    text = (getattr(call.args, 'period_text', '') or '').strip()
+    if not text:
+        return '', 'none'
+    if compact(text) in source_text(question, summary):
+        return text, 'model'
+    return question, 'question'
 
 
 def save(ctx, fields):
@@ -71,7 +89,7 @@ def clarification(ctx, code, notice):
     return save(ctx, {'task': 'clarification', 'status': 'needs_input', 'notice': notice, 'warnings': [code]})
 
 
-def workflow(ctx, action, args):
+def workflow(ctx, action, args, period=None):
     q = ctx.body['question']
     current = ctx.db.ships()
     prior = flow.previous(ctx, current) if (ctx.body.get('context') or {}).get('previousQueryId') else None
@@ -90,7 +108,7 @@ def workflow(ctx, action, args):
             scope.document_ids = list(dict.fromkeys(ids))
             scope.document_question = q
             return flow.execute(ctx, scope, routing, parent)
-        text = args.period_text.strip()
+        text = (args.period_text if period is None else period).strip()
         years, periods = intent.date_slots(text, today=intent.local_today()) if text else ([], [])
         if years:
             scope.years = years
@@ -130,12 +148,12 @@ def port_comparison(ctx, args):
                                                     'conditions': conditions})
 
 
-def run(ctx, call):
+def run(ctx, call, period=None):
     name, args = call.tool.name, call.args
     if name in ACTIONS:
-        return workflow(ctx, ACTIONS[name], args)
+        return workflow(ctx, ACTIONS[name], args, period)
     if name == 'get_dataset_status':
-        scope_text = ' '.join([args.period_text, *args.ship_mentions]).strip()
+        scope_text = ' '.join([args.period_text if period is None else period, *args.ship_mentions]).strip()
         fields = dataset_status.answer(ctx, list(args.datasets), scope_text=scope_text)
         return save(ctx, {'task': 'data_status', **fields})
     if name == 'get_ais_catalog_status':

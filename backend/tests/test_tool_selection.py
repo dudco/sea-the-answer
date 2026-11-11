@@ -284,7 +284,7 @@ def test_tools_endpoint_lists_the_assistant_registry():
 
 def test_model_path_forces_model_generation_for_downstream_executors(monkeypatch):
     seen = {}
-    def workflow(ctx, action, args):
+    def workflow(ctx, action, args, period=None):
         seen['mode'] = ctx.body['mode']
         return {'id': 'wf', 'status': 'completed', 'evidence': []}
     monkeypatch.setattr(router.tool_dispatch, 'workflow', workflow)
@@ -424,3 +424,20 @@ def test_examples_are_not_evaluation_questions():
     questions = {c['question'] for path in ('tool-selection-eval.json', 'tool-selection-holdout.json')
                  for c in evaluation.load_cases(evaluation.DEFAULT_CASES.with_name(path))}
     assert not questions & {q for q, _, _ in planner.EXAMPLES}
+
+
+def test_paraphrased_period_is_parsed_from_the_original_question(monkeypatch):
+    # Observed from qwen3.6:35b (2026-11-12): "지난달" -> period_text "마지막 달".
+    monkeypatch.setattr(router.tool_dispatch.intent, 'local_today', lambda: __import__('datetime').date(2026, 11, 12))
+    answer, _ = ask('해답호 지난달 연료 사용량 합계 알려줘',
+        [('summarize_operations', {'ship_mentions': ['해답호'], 'period_text': '마지막 달'})], monkeypatch)
+    assert answer['workflow']['scope']['periods'] == [{'start': '2026-10-01', 'end': '2026-10-31'}]
+    assert answer['routing']['toolCalls'][1]['periodSource'] == 'question'
+
+
+def test_verbatim_period_is_used_as_given(monkeypatch):
+    monkeypatch.setattr(router.tool_dispatch.intent, 'local_today', lambda: __import__('datetime').date(2026, 11, 12))
+    answer, _ = ask('해답호 지난달 연료 사용량 합계 알려줘',
+        [('summarize_operations', {'ship_mentions': ['해답호'], 'period_text': '지난달'})], monkeypatch)
+    assert answer['workflow']['scope']['periods'] == [{'start': '2026-10-01', 'end': '2026-10-31'}]
+    assert 'periodSource' not in answer['routing']['toolCalls'][1]

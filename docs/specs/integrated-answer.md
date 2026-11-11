@@ -36,7 +36,7 @@
 | `request_clarification` | `missing`: `task`·`ships`·`periods`·`years`·`documents`·`ports` | — | 되묻기 저장 |
 | `decline_request` | `reason`: `realtime_position`·`weather`·`forecast`·`data_change`·`entry_approval`·`off_topic` | — | 지원 불가 안내 저장 |
 
-**모델이 낸 값의 처리.** 선박·문서·항구 표기는 질문 원문 또는 이전 답변 요약에 실제로 나온 문자열이어야 하며, 서버가 등록 목록·열람 권한·카탈로그와 대조해 식별자로 바꾼다. 일치하지 않으면 후보를 보여 주는 되묻기로 응답한다. 기간 표현은 `question_intent.date_slots`가 해석하며 실패하면 기간 되묻기로 응답한다. 모델은 SQL·식별자·수치 결과·답변 문장을 만들지 않는다.
+**모델이 낸 값의 처리.** 기간 표현(`period_text`)이 질문·이전 답변 요약에 그대로 있으면 그 표현을, 모델이 바꿔 쓴 표현이면 질문 원문을 기존 날짜 해석기로 해석하고 `toolCalls[].periodSource="question"`을 남긴다. 선박·문서·항구 표기는 질문 원문 또는 이전 답변 요약에 실제로 나온 문자열이어야 하며, 서버가 등록 목록·열람 권한·카탈로그와 대조해 식별자로 바꾼다. 일치하지 않으면 후보를 보여 주는 되묻기로 응답한다. 기간 표현은 `question_intent.date_slots`가 해석하며 실패하면 기간 되묻기로 응답한다. 모델은 SQL·식별자·수치 결과·답변 문장을 만들지 않는다.
 
 **응답 추가 필드.** `routing`은 `{method: "model_tools", toolCalls: [{name, arguments, status, durationMs}], searchMs, planMs}`이다. `arguments`는 서버가 검증·변환한 값만 담고 모델 원시 응답은 저장하지 않는다. `relatedEvidence[]`는 데이터 도구 응답에 붙는 검색 근거이며 `evidence[]`와 같은 형식·권한 검사를 따른다.
 

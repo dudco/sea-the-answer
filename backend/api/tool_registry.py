@@ -142,8 +142,10 @@ TOOLS = {tool.name: tool for tool in (
          DatasetStatusArgs, 'data'),
     Tool('get_ais_catalog_status', '연결된 AIS 수집본의 관측 수와 특정 선박의 관측 여부를 확인한다.', AisStatusArgs, 'data'),
     Tool('summarize_operations', '등록 선박의 기간별 일별 운항기록(연료·CO2·거리)을 합계·비교한다.', OperationsArgs, 'data'),
-    Tool('calculate_mrv_reference', 'MRV 보고 자료로 연도별 참고 탄소집약도를 계산한다. 공식 CII 등급이 아니다.', MrvArgs, 'data'),
-    Tool('calculate_operations_and_mrv', '운항 실적 합계와 MRV 참고 탄소집약도를 함께 계산한다.', CombinedArgs, 'data'),
+    Tool('calculate_mrv_reference', 'MRV 보고 자료로 연도별 참고 탄소집약도를 계산한다(여러 연도 비교 포함). '
+         '탄소집약도·MRV 참고값만 물을 때 쓴다. 공식 CII 등급이 아니다.', MrvArgs, 'data'),
+    Tool('calculate_operations_and_mrv', '일별 운항 실적(연료·CO2·거리 합계)과 MRV 참고 탄소집약도를 함께 계산한다. '
+         '질문이 운항 실적과 탄소집약도를 둘 다 명시적으로 요청할 때만 쓴다.', CombinedArgs, 'data'),
     Tool('compare_port_conditions', '선박 제원과 항구 선석의 공개 제한값(길이·폭·흘수)을 비교한다. 입항 허가 판정이 아니다.',
          PortArgs, 'data'),
     Tool('ask_selected_documents', '사용자가 문서 제목을 대며 "그 문서만 근거로" 답하라고 할 때, 그 문서 안에서만 근거를 찾아 답한다.',

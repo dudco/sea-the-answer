@@ -231,10 +231,13 @@ def answer(ctx):
         result=tool_dispatch.clarification(ctx,exc.code,'질문에 없는 선박·항구·문서·기간이 선택되어 실행하지 않았습니다. '
             '대상을 질문에 직접 적어 다시 질문해 주세요.')
         return finalize(ctx,result,routing,evidence)
+    period,origin=tool_dispatch.period_source(call,q,summary)
     started=monotonic()
-    result=tool_dispatch.run(ctx,call)
-    log.append({'name':call.tool.name,'arguments':call.args.model_dump(mode='json'),'status':result.get('status'),
-                'durationMs':round((monotonic()-started)*1000,3)})
+    result=tool_dispatch.run(ctx,call,period if origin!='none' else None)
+    entry={'name':call.tool.name,'arguments':call.args.model_dump(mode='json'),'status':result.get('status'),
+           'durationMs':round((monotonic()-started)*1000,3)}
+    if origin=='question':entry['periodSource']='question'
+    log.append(entry)
     return finalize(ctx,result,routing,evidence)
 
 
