@@ -1,6 +1,6 @@
 # plans — 작업 계획
 
-- [2026-11-11 질문 표현·자료 현황·Qwen 생성 실패 보완](2026-11-11-question-routing-coverage.md) — 진행 중. 최신 main 통합과 최종 화면 검사.
+- [2026-11-11 질문 표현·자료 현황·Qwen 생성 실패 보완](2026-11-11-question-routing-coverage.md) — 완료. 최신 main 통합·CI 검증·[PR #29](https://github.com/dudco/sea-the-answer/pull/29) 제출, 운영 배포 제외.
 - [2026-11-05 문서별 벡터 준비 상태](2026-11-05-vector-readiness.md): 완료.
 
 - [2026-11-10 실제 로컬 LLM 연결·최종 답변 검증](2026-11-10-local-llm-answer-validation.md) — 완료. 연결·평가 완료, 전반적 생성 품질 미달.

@@ -308,7 +308,7 @@ LLM_RESPONSE_FORMAT=text
 
 예상 결과: `/api/health`의 `llmConfigured`가 true가 되면 통합 질문에서 **AI 답변**이 기본 선택됩니다. 원문 발췌를 명시적으로 고르면 현재 계정 세션의 재연결에도 유지됩니다. 설정 유효성과 실제 생성 성공은 다릅니다. 일반 문서 질문에서 `generation=llm`, 유효 인용, 모델 실패 경고 없음까지 확인하고 답변의 의미·조건도 원문과 대조해야 합니다. 업무 workflow는 내부 생성 단계의 실제 공급자 응답도 확인해야 하며 `generation=workflow`만으로 모델 성공을 뜻하지 않습니다. 실패·잘린 응답·위조 인용은 `MODEL_FAILED_EXTRACTIVE_FALLBACK`과 원문 발췌로 전환됩니다. 설정이 잘못되면 `MODEL_NOT_CONFIGURED`입니다. 동국은 공식 API 주소·모델·인증 정보를 사용하며 웹 채팅 주소(`/dashboard/chat`)를 API 주소로 넣지 않습니다.
 
-25초를 넘는 추론은 실패 전환되므로 로컬 모델을 미리 적재해 확인하세요. 기본 호환 요청은 공급자별 선택 필드를 생략하여 기존 2,200 출력 토큰 한도도 보내지 않습니다. 생성 한도는 모델 서버 설정에 따르며 앱은 최대 5개 답변 문장과 인용을 검증합니다. 상세 형식·제약은 [공급자 계약](docs/specs/llm-provider.md)에 있습니다.
+앱의 생성 대기는 기본 60초이며 `LLM_GENERATION_TIMEOUT_SECONDS`로 1–90초를 지정합니다. 로컬 모델을 미리 적재하고 서버 앞단 프록시 제한도 함께 확인하세요. 기본 호환 요청은 공급자별 선택 필드와 출력 토큰 한도를 보내지 않으며, 지원이 확인된 서버에만 `LLM_MAX_TOKENS`를 지정합니다. 앱은 최대 5개 답변 문장과 인용을 검증합니다. 상태 확인의 `llmConfigured=true`는 설정 유무이며 실제 모델 응답 성공을 보증하지 않습니다. 상세 형식·제약은 [공급자 계약](docs/specs/llm-provider.md)에 있습니다.
 
 push·PR에는 [GitHub Actions 검증](.github/workflows/verify.yaml)이 연결됩니다. backend 테스트(임시 PostgreSQL 포함), frontend 단위 테스트·빌드, Compose 구성 검사와 격리 브라우저 E2E를 실행합니다. 실제 외부 모델 키는 사용하지 않습니다. CI PR #14의 워크플로를 이 브랜치에도 통합했으며 실제 수행한 검증은 [변경 이력](docs/changelog.md)에 기록합니다.
 
