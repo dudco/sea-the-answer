@@ -71,7 +71,8 @@ def evaluate(cases: list[dict], *, settings: config.LLMSettings, client=None) ->
                                       settings=settings, client=client)
             row.update(score(case, calls), error=None)
         except tool_planner.PlanError as exc:
-            row.update(tools=None, tool_match=False, argument_match=False, error=exc.code)
+            row.update(tools=None, tool_match=False, argument_match=False, error=exc.code,
+                       finish_reason=exc.detail if isinstance(exc.detail, str) else None)
         except httpx.HTTPError as exc:
             row.update(tools=None, tool_match=False, argument_match=False, error=llm.failure_details(exc)["code"])
         row["seconds"] = round(perf_counter() - started, 3)
@@ -101,7 +102,8 @@ def main(argv: list[str] | None = None) -> int:
           f"errors {result['errors']}, median {result['median_seconds']}s")
     for row in result["rows"]:
         if not row["argument_match"]:
-            print(f"  - {row['id']}: got {row['tools']} {row.get('error') or ''}")
+            reason = f" (finish_reason={row['finish_reason']})" if row.get('finish_reason') else ''
+            print(f"  - {row['id']}: got {row['tools']} {row.get('error') or ''}{reason}")
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         with args.output.open("x", encoding="utf-8") as handle:

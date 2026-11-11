@@ -23,9 +23,19 @@ INSTRUCTION = (
 
 
 class PlanError(ValueError):
-    def __init__(self, code):
+    def __init__(self, code, detail=None):
         self.code = code
+        self.detail = detail  # e.g. the model's finish_reason; never raw model text
         super().__init__(code)
+
+
+def max_tokens():
+    # Thinking models spend output tokens before the call; too small a budget cuts the call off.
+    try:
+        value = int(os.getenv('HAEDAP_PLANNER_MAX_TOKENS', '').strip() or '1024')
+    except ValueError:
+        value = 1024
+    return max(64, min(value, 4096))
 
 
 def timeout_seconds(settings):
@@ -60,7 +70,7 @@ def plan(question, *, today, summary=None, settings=None, client=None):
     if summary:
         user['previous'] = summary
     body = {'model': os.getenv('HAEDAP_PLANNER_MODEL', '').strip() or settings.model,
-            'stream': False, 'temperature': 0, 'max_tokens': 400,
+            'stream': False, 'temperature': 0, 'max_tokens': max_tokens(),
             'messages': [{'role': 'system', 'content': INSTRUCTION},
                          {'role': 'user', 'content': json.dumps(user, ensure_ascii=False)}],
             'tools': registry.model_tools(), 'tool_choice': 'auto'}
@@ -84,7 +94,7 @@ def plan(question, *, today, summary=None, settings=None, client=None):
         raise PlanError('MODEL_RESPONSE_INVALID')
     if raw_calls:
         if choice.get('finish_reason') not in ('tool_calls', 'stop'):
-            raise PlanError('MODEL_INCOMPLETE_OUTPUT')
+            raise PlanError('MODEL_INCOMPLETE_OUTPUT', choice.get('finish_reason'))
         pairs = []
         for call in raw_calls:
             function = call.get('function') if isinstance(call, dict) else None
@@ -93,7 +103,7 @@ def plan(question, *, today, summary=None, settings=None, client=None):
             pairs.append((function.get('name'), function.get('arguments', '{}')))
     else:
         if choice.get('finish_reason') != 'stop':
-            raise PlanError('MODEL_INCOMPLETE_OUTPUT')
+            raise PlanError('MODEL_INCOMPLETE_OUTPUT', choice.get('finish_reason'))
         content = message.get('content')
         if content is not None and not isinstance(content, str):
             raise PlanError('MODEL_RESPONSE_INVALID')

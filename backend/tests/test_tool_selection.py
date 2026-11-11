@@ -291,3 +291,12 @@ def test_model_path_forces_model_generation_for_downstream_executors(monkeypatch
     ask('선박 안전 문서만 근거로 요약해줘', [('ask_selected_documents', {'document_mentions': ['선박 안전 문서']})],
         monkeypatch, body={'mode': 'extractive'})
     assert seen == {'mode': 'llm'}
+
+
+def test_truncated_reply_reports_finish_reason_and_budget_is_configurable(monkeypatch):
+    with pytest.raises(planner.PlanError) as error:
+        plan({'choices': [{'finish_reason': 'length', 'message': {'role': 'assistant', 'content': '<think>...'}}]})
+    assert (error.value.code, error.value.detail) == ('MODEL_INCOMPLETE_OUTPUT', 'length')
+    monkeypatch.setenv('HAEDAP_PLANNER_MAX_TOKENS', '2048')
+    _, body = plan(reply(content='문서', finish='stop'))
+    assert body['max_tokens'] == 2048
