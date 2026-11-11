@@ -16,7 +16,7 @@
 2. 서버 환경변수 `HAEDAP_QUESTION_ROUTER=legacy`이면 기존 규칙 경로를 그대로 쓴다. 기본값은 `model`.
 3. 모델이 설정되지 않았으면 `503 MODEL_NOT_CONFIGURED`를 반환한다.
 4. 문서 검색(`DocumentStore.search`, 열람 권한 필터 선적용)과 도구 선택 모델 호출을 병렬로 실행한다. 도구 선택 입력은 질문, 오늘 날짜, 소유권을 확인한 이전 답변의 요약(작업 종류·선박 이름·기간·되묻기 항목)뿐이며 검색 본문은 넣지 않는다.
-5. 데이터 도구 호출이 0개이면 검색 근거로 문서 답변을 생성한다(기존 인용 검증). 1개이면 서버가 인자를 검증해 해당 실행기를 호출하고, 검색 근거를 `relatedEvidence`로 함께 반환한다. 2개 이상이면 되묻기로 처리한다(이번 범위는 질문당 데이터 도구 1개, 운항+MRV는 결합 도구 1개로 처리).
+5. 모델은 항상 도구를 하나 호출하며, 문서만으로 답할 질문은 `answer_from_documents`를 고른다. 데이터 도구 호출이 0개이면 검색 근거로 문서 답변을 생성한다(기존 인용 검증). 1개이면 서버가 인자를 검증해 해당 실행기를 호출하고, 검색 근거를 `relatedEvidence`로 함께 반환한다. 2개 이상이면 되묻기로 처리한다(이번 범위는 질문당 데이터 도구 1개, 운항+MRV는 결합 도구 1개로 처리).
 6. 모델 호출 실패·시간 초과·등록되지 않은 도구·인자 검증 실패는 `needs_input` 되묻기(`warnings: ["MODEL_ROUTING_UNAVAILABLE"]`)로 응답한다. 규칙 경로로 자동 대체하지 않는다.
 
 **도구.** 정의는 `backend/api/tool_registry.py` 한곳에서 만들며 `GET /api/tools`의 `assistantTools`로도 제공한다. 모든 인자 객체는 추가 필드를 거절한다.
@@ -32,6 +32,7 @@
 | `ask_selected_documents` | `document_mentions` ≤5 | 열람 가능한 문서 제목 대조 | `question_workflows` |
 | `calculate_emissions` | `fuel_t`, `factor`, `dwt`, `distance_nm` | 기존 수치 범위 | `ToolStore.calculate_emissions` |
 | `voyage_time` | `start`, `end`(UTC ISO), `start_offset_min`, `end_offset_min` | 기존 형식·범위 | `ToolStore.voyage_time` |
+| `answer_from_documents` | 없음 | 데이터 도구 0개로 처리(검색은 이미 실행) | 문서 답변 생성 |
 | `request_clarification` | `missing`: `task`·`ships`·`periods`·`years`·`documents`·`ports` | — | 되묻기 저장 |
 | `decline_request` | `reason`: `realtime_position`·`weather`·`forecast`·`data_change`·`entry_approval`·`off_topic` | — | 지원 불가 안내 저장 |
 

@@ -321,3 +321,16 @@ def test_text_none_for_an_optional_argument_means_omitted():
     assert args.status_filter is None and args.sort.direction == 'desc'
     with pytest.raises(registry.ToolCallError):
         registry.parse_call('decline_request', '{"reason":"None"}')
+
+
+def test_documents_only_tool_means_no_data_tool_and_text_replies_are_previewed():
+    calls, body = plan(reply(('answer_from_documents', {})))
+    assert calls == [] and 'answer_from_documents' in [t['function']['name'] for t in body['tools']]
+    debug = {}
+    planner.plan('질문', today='2026-11-12', settings=SETTINGS, client=Client(reply(content='문서', finish='stop')), debug=debug)
+    assert debug == {'text_preview': '문서', 'finish_reason': 'stop'}
+
+
+def test_bare_json_tool_call_in_text_is_read():
+    calls, _ = plan(reply(content='```json\n{"name":"get_dataset_status","arguments":{"datasets":["mrv"]}}\n```', finish='stop'))
+    assert calls[0].tool.name == 'get_dataset_status'

@@ -112,6 +112,10 @@ class ClarifyArgs(Args):
     missing: list[Literal['task', 'ships', 'periods', 'years', 'documents', 'ports']] = Field(min_length=1, max_length=6)
 
 
+class NoArgs(Args):
+    pass
+
+
 class DeclineArgs(Args):
     reason: Literal['realtime_position', 'weather', 'forecast', 'data_change', 'entry_approval', 'off_topic']
 
@@ -130,7 +134,10 @@ class Call:
     args: Args
 
 
+DOCUMENTS_ONLY = 'answer_from_documents'
 TOOLS = {tool.name: tool for tool in (
+    Tool(DOCUMENTS_ONLY, '용어 정의·규정·기준·절차 설명처럼 검색된 해사 문서만으로 답할 질문일 때 쓴다. 데이터 조회·계산이 필요 없을 때.',
+         NoArgs, 'control'),
     Tool('get_dataset_status', '서버에 등록된 해사 자료(AIS·MRV·DWT·Noon·운항기록·문서·항만)의 유무·건수·출처·수집일을 확인한다.',
          DatasetStatusArgs, 'data'),
     Tool('get_ais_catalog_status', '연결된 AIS 수집본의 관측 수와 특정 선박의 관측 여부를 확인한다.', AisStatusArgs, 'data'),

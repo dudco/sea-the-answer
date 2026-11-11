@@ -66,10 +66,11 @@ def evaluate(cases: list[dict], *, settings: config.LLMSettings, client=None) ->
     for case in cases:
         started = perf_counter()
         row = {"id": case["id"], "question": case["question"], "expected": case["expected"]}
+        debug = {}
         try:
             calls = tool_planner.plan(case["question"], today=TODAY, summary=case.get("previous"),
-                                      settings=settings, client=client)
-            row.update(score(case, calls), error=None)
+                                      settings=settings, client=client, debug=debug)
+            row.update(score(case, calls), error=None, text_preview=debug.get("text_preview") or None)
         except tool_planner.PlanError as exc:
             row.update(tools=None, tool_match=False, argument_match=False, error=exc.code,
                        finish_reason=exc.detail if isinstance(exc.detail, str) else None)
@@ -103,7 +104,8 @@ def main(argv: list[str] | None = None) -> int:
     for row in result["rows"]:
         if not row["argument_match"]:
             reason = f" (finish_reason={row['finish_reason']})" if row.get('finish_reason') else ''
-            print(f"  - {row['id']}: got {row['tools']} {row.get('error') or ''}{reason}")
+            text = f" text={row['text_preview']!r}" if row.get('text_preview') else ''
+            print(f"  - {row['id']}: got {row['tools']} {row.get('error') or ''}{reason}{text}")
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         with args.output.open("x", encoding="utf-8") as handle:
