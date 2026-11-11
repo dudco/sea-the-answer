@@ -300,3 +300,24 @@ def test_truncated_reply_reports_finish_reason_and_budget_is_configurable(monkey
     monkeypatch.setenv('HAEDAP_PLANNER_MAX_TOKENS', '2048')
     _, body = plan(reply(content='문서', finish='stop'))
     assert body['max_tokens'] == 2048
+
+
+def test_reasoning_effort_is_sent_only_when_configured(monkeypatch):
+    _, body = plan(reply(content='문서', finish='stop'))
+    assert 'reasoning_effort' not in body
+    monkeypatch.setenv('HAEDAP_PLANNER_REASONING_EFFORT', 'none')
+    _, body = plan(reply(content='문서', finish='stop'))
+    assert body['reasoning_effort'] == 'none'
+    monkeypatch.setenv('HAEDAP_PLANNER_REASONING_EFFORT', 'everything')
+    _, body = plan(reply(content='문서', finish='stop'))
+    assert 'reasoning_effort' not in body
+
+
+def test_text_none_for_an_optional_argument_means_omitted():
+    # Observed from qwen3.6:35b on Ollama (2026-11-12): "status_filter":"None".
+    _, args = registry.parse_call('compare_port_conditions',
+        '{"ship_mention":"","port_mentions":["부산항"],"berth_mention":"","filters":[],'
+        '"sort":{"dimension":"length","direction":"desc"},"status_filter":"None"}')
+    assert args.status_filter is None and args.sort.direction == 'desc'
+    with pytest.raises(registry.ToolCallError):
+        registry.parse_call('decline_request', '{"reason":"None"}')

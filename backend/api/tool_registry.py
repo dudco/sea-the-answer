@@ -139,7 +139,8 @@ TOOLS = {tool.name: tool for tool in (
     Tool('calculate_operations_and_mrv', '운항 실적 합계와 MRV 참고 탄소집약도를 함께 계산한다.', CombinedArgs, 'data'),
     Tool('compare_port_conditions', '선박 제원과 항구 선석의 공개 제한값(길이·폭·흘수)을 비교한다. 입항 허가 판정이 아니다.',
          PortArgs, 'data'),
-    Tool('ask_selected_documents', '사용자가 지정한 문서 안에서만 근거를 찾아 답한다.', SelectedDocumentArgs, 'data'),
+    Tool('ask_selected_documents', '사용자가 문서 제목을 대며 "그 문서만 근거로" 답하라고 할 때, 그 문서 안에서만 근거를 찾아 답한다.',
+         SelectedDocumentArgs, 'data'),
     Tool('calculate_emissions', '질문에 주어진 연료량·배출계수·DWT·거리로 배출량과 단순 집약도를 계산한다.', EmissionsArgs, 'data'),
     Tool('voyage_time', '질문에 주어진 UTC 시각과 선내 시차로 항해 시간을 계산한다.', VoyageTimeArgs, 'data'),
     Tool('request_clarification', '어떤 작업이나 대상(선박·기간·문서·항구)인지 불명확해 되물어야 할 때 쓴다.', ClarifyArgs, 'control'),
@@ -189,6 +190,8 @@ def parse_call(name, arguments):
             raise ToolCallError('MODEL_INVALID_ARGUMENTS') from None
     if not isinstance(arguments, dict):
         raise ToolCallError('MODEL_INVALID_ARGUMENTS')
+    # Some models write an absent optional value as the text "None"/"null"; treat it as omitted.
+    arguments = {k: v for k, v in arguments.items() if v is not None and v not in ('None', 'null', 'NULL', 'Null')}
     try:
         return tool, tool.args.model_validate(arguments)
     except ValidationError:

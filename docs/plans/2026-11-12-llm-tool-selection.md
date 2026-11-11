@@ -184,5 +184,6 @@
 ## 9. 진행 기록
 
 - 2026-11-12: 워크트리 생성, backend 기준선 1,068 passed / 203 skipped / 4 failed(torch 미설치로 `test_document_save.py` 4건). 도구 목록 정리.
+- 2026-11-12: 2차 평가(qwen3.6:35b, Ollama) 17/25. 남은 실패는 추론이 1024토큰을 소진(6건), 빈 선택 인자를 문자열 "None"으로 출력(1건), 선택 문서 미선택(1건). `HAEDAP_PLANNER_REASONING_EFFORT=none`(opt-in) 추가, "None" 문자열은 생략으로 처리, 선택 문서 도구 설명 보강.
 - 2026-11-12: 서버 Qwen 1차 평가 11/25 일치, 14건 `MODEL_INCOMPLETE_OUTPUT`. 도구 선택 출력 한도를 400→1024로 늘리고(`HAEDAP_PLANNER_MAX_TOKENS`) 실패 시 종료 사유를 평가 결과에 표시.
 - 2026-11-12: 명세 초안, 등록부·도구 선택·검증·처리기 구조화 진입점·라우터 전환·화면 변경·평가 스크립트 구현. 결정 보완: 질문당 데이터 도구 1개(운항+MRV는 결합 도구), 모델 경로에서 `mode`를 서버가 `llm`으로 고정, e2e 스택은 legacy 경로. 검증 수치는 [변경 이력](../changelog.md) 참고. 남은 일: 실제 모델 평가, Docker E2E, 명세·ADR 검토 후 확정.
