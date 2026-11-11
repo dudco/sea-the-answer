@@ -1,5 +1,7 @@
-"""Publish completed simulated UTC days or the fixed round-trip sample.
+"""Publish simulated UTC days, from the departure date up to now, to the app.
 
+Both the one-way voyage and the round-trip scenario publish only UTC days that
+have finished by --through (default: now); future days are never published.
 The default is a preview. Use --apply to append the missing records. For a
 scheduled invocation, provide HAEDAP_SIM_PASSWORD via its secret store.
 """
@@ -19,8 +21,8 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import HTTPCookieProcessor, HTTPRedirectHandler, Request, build_opener
 
-from scripts.simulate_round_trip import build_round_trip
-from scripts.simulate_voyage import advance
+from scripts.simulate_round_trip import DEFAULT_DEPARTURE, build_round_trip
+from scripts.simulate_voyage import advance, print_warnings
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -104,27 +106,29 @@ def main() -> None:
     parser.add_argument("--server", required=True, help="HTTPS origin of the app")
     parser.add_argument("--username", required=True, help="app administrator username")
     parser.add_argument("--database", type=Path, help="one-way simulation's SQLite log")
-    parser.add_argument("--departure", type=date.fromisoformat, help="one-way departure date (UTC midnight)")
+    parser.add_argument("--departure", type=date.fromisoformat,
+                        help=f"departure date: one-way at UTC midnight, round trip at 12:00 UTC (default {DEFAULT_DEPARTURE})")
     parser.add_argument("--through", type=datetime.fromisoformat, help="snapshot timestamp with offset (default: now)")
-    parser.add_argument("--round-trip", action="store_true", help="use the fixed 60-day sample, including projected return records")
+    parser.add_argument("--round-trip", action="store_true", help="use the 60-day Incheon–Port Said–Incheon scenario")
     parser.add_argument("--apply", action="store_true", help="append missing days to the app")
     parser.add_argument("--password-stdin", action="store_true", help="read one password line from stdin")
     args = parser.parse_args()
-    if args.round_trip and (args.database is not None or args.departure is not None or args.through is not None):
-        parser.error("--round-trip uses fixed dates and does not accept --database, --departure, or --through")
+    if args.round_trip and args.database is not None:
+        parser.error("--round-trip does not use a SQLite log; omit --database")
     if not args.round_trip and (args.database is None or args.departure is None):
         parser.error("--database and --departure are required for a one-way voyage")
     try:
+        now = datetime.now(UTC)
+        through = args.through or now
+        if through.utcoffset() is None:
+            raise ValueError("--through must include a UTC offset, such as Z or +09:00")
+        if args.apply and through > now:
+            raise ValueError("Publishing requires a snapshot time at or before the present")
         if args.round_trip:
-            result = build_round_trip()
+            result = build_round_trip(args.departure or DEFAULT_DEPARTURE, through)
         else:
-            now = datetime.now(UTC)
-            through = args.through or now
-            if through.utcoffset() is None:
-                raise ValueError("--through must include a UTC offset, such as Z or +09:00")
-            if args.apply and through > now:
-                raise ValueError("Publishing requires a snapshot time at or before the present")
             result = advance(args.database, args.departure, through)
+        print_warnings(result)
         client = AdminClient(args.server)
         password = (sys.stdin.readline().rstrip("\r\n") if args.password_stdin else
                     os.environ.get("HAEDAP_SIM_PASSWORD") or getpass("App password: "))
@@ -134,10 +138,8 @@ def main() -> None:
             client.login(args.username, password)
             del password
             summary = publish(client, result, apply=args.apply)
-            if args.round_trip:
-                summary["scenario_days"] = summary.pop("completed_days")
-                summary["projected_days"] = result["simulation"]["return"]["record_count"]
-            print(json.dumps(summary))
+            summary["warnings"] = result["simulation"]["warnings"]
+            print(json.dumps(summary, ensure_ascii=False))
         finally:
             if client.identity:
                 client.request("auth/logout", {})

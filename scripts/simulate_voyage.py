@@ -98,8 +98,9 @@ def schedule(waypoints: list[Waypoint]) -> list[Leg]:
 
 def state_at(legs: list[Leg], hour: float) -> dict:
     last = legs[-1]
-    if hour < 0 or hour >= last.end_hour:
-        scheduled = hour < 0
+    # A scenario may start mid-day (e.g. 12:00 UTC), so compare with the first leg.
+    if hour < legs[0].start_hour or hour >= last.end_hour:
+        scheduled = hour < legs[0].start_hour
         point = legs[0].start if scheduled else last.finish
         return {"status": "scheduled" if scheduled else "arrived", "location": point.name,
                 "latitude": point.latitude, "longitude": point.longitude, "speed_kn": 0.0,
@@ -115,6 +116,28 @@ def state_at(legs: list[Leg], hour: float) -> dict:
         "heading_deg": bearing(leg.start, leg.finish) if leg.speed_kn else None,
         "distance_nm": round(leg.start_nm + leg.distance_nm * fraction, 3),
     }
+
+
+def format_utc(at: datetime) -> str:
+    return at.astimezone(UTC).strftime("%Y-%m-%d %H:%M UTC")
+
+
+def format_duration(delta: timedelta) -> str:
+    hours = int(delta.total_seconds() // 3600)
+    days, hours = divmod(hours, 24)
+    return f"{days}일 {hours}시간" if days else f"{hours}시간"
+
+
+def voyage_warnings(departure_at: datetime, arrival_at: datetime, through: datetime) -> list[str]:
+    """Explain why a snapshot has no ongoing voyage: not departed yet, or already over."""
+    if through < departure_at:
+        return [f"출항 전입니다: 출항 예정 {format_utc(departure_at)}이며 조회 시점 {format_utc(through)}에는 "
+                "아직 운항하지 않습니다. 기록할 운항일이 없습니다."]
+    if through >= arrival_at:
+        return [f"이미 종료된 항해입니다: {format_utc(arrival_at)}에 도착해 조회 시점 {format_utc(through)}에는 "
+                f"운항 중이 아닙니다(도착 후 {format_duration(through - arrival_at)} 경과). "
+                "운항 기록은 도착일까지만 생성됩니다. 현재 운항 중인 시연이 필요하면 더 최근 출발일을 지정하세요."]
+    return []
 
 
 def daily_row(legs: list[Leg], departure: date, index: int, ship_id: str) -> dict:
@@ -180,7 +203,8 @@ def advance(db_path: Path, departure: date, through: datetime) -> dict:
         "records": records,
         "simulation": {"sample": True, "departure_at": start.isoformat(), "arrival_at": arrival.isoformat(),
                        "as_of": through.isoformat(), "days_recorded": len(records),
-                       "current": state_at(legs, hours), "references": route["references"]},
+                       "current": state_at(legs, hours), "references": route["references"],
+                       "warnings": voyage_warnings(start, arrival, through)},
     }
 
 
@@ -190,6 +214,11 @@ def operation_csv(records: list[dict]) -> str:
     writer.writeheader()
     writer.writerows({**row, "sample": "true"} for row in records)
     return output.getvalue()
+
+
+def print_warnings(result: dict) -> None:
+    for warning in result.get("simulation", {}).get("warnings", []):
+        print(f"경고: {warning}", file=sys.stderr)
 
 
 def write_export(result: dict, output_format: str, path: Path | None) -> None:
@@ -213,6 +242,7 @@ def main() -> None:
     args = parser.parse_args()
     try:
         result = advance(args.database, args.departure, args.through or datetime.now(UTC))
+        print_warnings(result)
         write_export(result, args.format, args.output)
     except (ValueError, OSError, sqlite3.Error) as exc:
         parser.exit(1, f"simulate_voyage: {exc}\n")

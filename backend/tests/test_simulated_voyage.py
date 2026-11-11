@@ -3,13 +3,16 @@
 from copy import deepcopy
 from datetime import date, datetime, time, timedelta, timezone
 import json
+from pathlib import Path
+import tempfile
 
 import pytest
 
 from api.store.operations import OperationStore
 from scripts.publish_simulated_voyage import publish
-from scripts.simulate_round_trip import build_round_trip
+from scripts.simulate_round_trip import build_round_trip, plan_round_trip
 from scripts.simulate_voyage import ROUTE_PATH, VOYAGE_DAYS, advance, operation_csv
+from scripts.voyage_status import voyage_status
 from tools.operation_import import classify, daily_rows
 
 
@@ -151,7 +154,8 @@ def test_publisher_appends_only_new_completed_days_and_rejects_conflicts(tmp_pat
 
 
 def test_round_trip_preserves_the_port_said_turnaround_and_import_contract(tmp_path):
-    dataset = build_round_trip()
+    # Just after the Port Said turnaround day: the whole return leg is still projected.
+    dataset = build_round_trip(through=datetime(2026, 11, 10, 12, tzinfo=timezone.utc), include_projected=True)
     assert len(dataset["ships"]) == 1
     ship = OperationStore().validate_ship(dataset["ships"][0])
     assert ship["id"] == "sim-inc-psd-roundtrip-2026-11-09"
@@ -171,7 +175,8 @@ def test_round_trip_preserves_the_port_said_turnaround_and_import_contract(tmp_p
 
     simulation = dataset["simulation"]
     assert simulation["date_basis"] == "UTC"
-    assert simulation["return"]["projected"] is True
+    assert simulation["days_recorded"] == 28 and simulation["projected_days"] == 32
+    assert simulation["warnings"] == []
     for leg, first_day, last_day in (("outbound", expected_dates[0], expected_dates[27]),
                                     ("return", expected_dates[28], expected_dates[-1])):
         start = datetime.fromisoformat(simulation[leg]["departure_at"])
@@ -192,3 +197,90 @@ def test_round_trip_preserves_the_port_said_turnaround_and_import_contract(tmp_p
     assert validated["errors"] == []
     assert [row["id"] for row in validated["rows"]] == [row["id"] for row in records]
     assert all(row["sample"] is True and row["ship"] == ship["id"] for row in validated["rows"])
+
+
+NOW = datetime(2026, 11, 11, 9, 40, tzinfo=timezone.utc)
+
+
+def advance_in_memory(departure, through):
+    with tempfile.TemporaryDirectory() as folder:
+        return advance(Path(folder) / "voyage.sqlite3", departure, through)
+
+
+def test_round_trip_records_run_from_departure_up_to_the_last_completed_day():
+    dataset = build_round_trip(through=NOW)
+    records = dataset["records"]
+    assert dataset["ships"][0]["id"] == "sim-inc-psd-roundtrip-2026-11-09"
+    assert [row["date"] for row in records] == [
+        (date(2026, 10, 13) + timedelta(days=offset)).isoformat() for offset in range(29)]
+    assert records[-1]["date"] == "2026-11-10"  # today (UTC) is not finished yet
+    assert all("예상" not in row["note"] for row in records)
+    assert dataset["simulation"]["projected_days"] == 0 and dataset["simulation"]["warnings"] == []
+    # The recorded days match the full scenario except for the projected label.
+    full = build_round_trip(through=NOW, include_projected=True)["records"]
+    assert full[:29] == records and all("가상 예상 운항" in row["note"] for row in full[29:])
+
+    moved = build_round_trip(date(2026, 11, 1), through=NOW)
+    assert moved["ships"][0]["id"] == "sim-inc-psd-roundtrip-2026-11-28"
+    assert [row["date"] for row in moved["records"]] == [f"2026-11-{day:02d}" for day in range(1, 11)]
+
+
+@pytest.mark.parametrize("build", [
+    lambda through: advance_in_memory(date(2026, 8, 1), through),
+    lambda through: build_round_trip(date(2026, 7, 1), through=through),
+])
+def test_finished_voyages_warn_and_stop_at_arrival(build):
+    dataset = build(NOW)
+    [warning] = dataset["simulation"]["warnings"]
+    assert "이미 종료된 항해" in warning and "운항 중이 아닙니다" in warning
+    assert dataset["simulation"]["current"]["status"] == "arrived"
+    assert dataset["records"] and dataset["records"][-1]["date"] < "2026-09-01"
+
+
+def test_future_departure_warns_and_records_nothing():
+    for dataset in (advance_in_memory(date(2026, 12, 1), NOW), build_round_trip(date(2026, 12, 1), through=NOW)):
+        [warning] = dataset["simulation"]["warnings"]
+        assert "출항 전" in warning
+        assert dataset["records"] == []
+        assert dataset["simulation"]["current"]["status"] == "scheduled"
+    # Same day, before the 12:00 UTC round-trip departure, the ship is still in Incheon.
+    same_day = build_round_trip(date(2026, 11, 11), through=NOW)
+    assert same_day["simulation"]["current"]["status"] == "scheduled"
+    assert same_day["simulation"]["current"]["location"] == "인천항 W-1 정박지"
+
+
+def test_status_reports_the_position_and_next_port_for_a_one_way_voyage():
+    status = voyage_status(DEPARTURE, START + timedelta(days=10, hours=6))
+    assert status["ship"]["id"] == "sim-inc-psd-2026-11-10"
+    assert status["underway"] is True and status["warnings"] == []
+    assert status["status"] in ("underway", "waiting", "canal")
+    assert status["speed_kn"] > 0 and status["heading_deg"] is not None
+    assert 0 < status["progress_pct"] < 100
+    assert status["distance_sailed_nm"] + status["distance_to_next_port_nm"] == pytest.approx(
+        status["total_distance_nm"], abs=0.2)
+    assert status["next_event"]["label"] == "포트사이드항 도착"
+    assert status["next_event"]["at"] == ARRIVAL.isoformat()
+
+    # The status agrees with the published simulation at the same instant.
+    same = advance_in_memory(DEPARTURE, START + timedelta(days=10, hours=6))["simulation"]["current"]
+    assert (status["latitude"], status["longitude"]) == (same["latitude"], same["longitude"])
+
+
+def test_status_follows_the_round_trip_phases():
+    plan = plan_round_trip()
+    berthed = voyage_status(date(2026, 10, 13), plan.port_said_arrival + timedelta(hours=6), round_trip=True)
+    assert berthed["status"] == "berthed" and berthed["speed_kn"] == 0
+    assert berthed["next_event"]["label"] == "포트사이드 출항" and berthed["next_event"]["in_hours"] == 12
+    assert berthed["next_port"] == "인천항"
+
+    outbound = voyage_status(date(2026, 10, 13), plan.port_said_arrival - timedelta(days=1), round_trip=True)
+    assert outbound["next_port"] == "이집트 포트사이드항"
+    assert outbound["distance_to_next_port_nm"] == pytest.approx(plan.outward_nm - outbound["distance_sailed_nm"], abs=0.2)
+
+    finished = voyage_status(date(2026, 10, 13), plan.incheon_arrival + timedelta(days=2), round_trip=True)
+    assert finished["status"] == "arrived" and finished["underway"] is False
+    assert finished["next_event"] is None and finished["next_port"] is None
+    assert "이미 종료된 항해" in finished["warnings"][0]
+
+    with pytest.raises(ValueError, match="offset"):
+        voyage_status(DEPARTURE, datetime(2026, 11, 11, 9))

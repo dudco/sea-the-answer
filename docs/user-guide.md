@@ -95,6 +95,55 @@
 
 가상 예시는 자동으로 실제 자료와 섞어 넣지 않습니다. 새 작업공간에서 직접 기록을 넣는 경우 먼저 선박을 등록하세요.
 
+### 시연용 가상 항해 (인천–포트사이드)
+
+위 예시 버튼과 별개로 `scripts/`의 시뮬레이터가 인천항 → 포트사이드(28일 편도)와 인천 → 포트사이드 → 인천(60일 왕복) 항해의 UTC 일별 운항 기록을 만듭니다. 모두 `sample: true` 가상 자료이며 실제 실적이 아닙니다. 저장소 최상위에서 backend uv 환경으로 실행합니다(Python 3.12 이상).
+
+- **기록 범위:** 지정한 출발일부터 조회 시점(`--through`, 기본 현재)까지 **끝난 UTC 날짜**만 기록합니다. 오늘(UTC)과 미래 날짜는 만들지 않습니다. 왕복에서 남은 일정까지 보려면 `simulate_round_trip`에 `--include-projected`를 붙이며, 이 경우 미래 날짜는 "가상 예상 운항"으로 표시됩니다(앱 게시에는 사용하지 않음).
+- **경고:** 출발일이 너무 과거라 조회 시점에 이미 도착했으면 "이미 종료된 항해" 경고와 함께 도착일까지만 기록하고, 출발일이 미래면 "출항 전" 경고와 함께 기록을 만들지 않습니다. 경고는 표준 오류와 결과 JSON의 `simulation.warnings`에 남습니다.
+- **선박 ID:** 편도 `sim-inc-psd-<출발일>`(가상 선박 해답호), 왕복 `sim-inc-psd-roundtrip-<포트사이드 입항일>`(가상 선박 해답 2호). 왕복 출발 시각은 출발일 12:00 UTC입니다.
+
+```bash
+# 내보내기(JSON 또는 --format csv)
+uv run --project backend python -m scripts.simulate_voyage --database voyage.sqlite3 --departure 2026-11-01
+uv run --project backend python -m scripts.simulate_round_trip --departure 2026-10-13
+
+# 앱에 게시: 미리보기 후 --apply. 이미 있는 날짜는 건너뛰고 새로 끝난 날만 추가
+uv run --project backend python -m scripts.publish_simulated_voyage --server https://<앱 주소> --username <관리자> \
+  --database voyage.sqlite3 --departure 2026-11-01 [--apply]
+uv run --project backend python -m scripts.publish_simulated_voyage --server https://<앱 주소> --username <관리자> \
+  --round-trip --departure 2026-10-13 [--apply]
+
+# 현재(또는 --at 시점) 운항 정보: 상태·위치·속력·침로·진행률·다음 기항지 거리·다음 일정·경고
+uv run --project backend python -m scripts.voyage_status --departure 2026-11-01
+uv run --project backend python -m scripts.voyage_status --round-trip --departure 2026-10-13 --at 2026-11-10T09:00+09:00 --format json
+```
+
+`voyage_status`는 출발일과 경로만으로 계산하므로 DB·앱 연결이 필요 없고, 같은 출발일로 게시한 기록과 같은 위치를 돌려줍니다.
+
+**게시한 가상 선박 지우기:** 앱에는 선박 삭제 기능이 없습니다(운항 기록은 한 건씩 삭제 가능). 서버에서 DB를 직접 정리하며, 먼저 **관리 → 백업·복구**에서 백업을 만드세요. 이 절차는 감사·변경 이력을 남기지 않습니다.
+
+```bash
+docker compose exec db psql -U haedap -d haedap   # POSTGRES_USER/DB를 바꿨다면 그 값
+```
+
+```sql
+-- 1) 미리보기: 대상 선박·기록 수, 이 선박으로 만든 보고서
+SELECT s.id, s.body->>'name' AS name, count(o.id) AS records
+  FROM ships s LEFT JOIN operations o ON o.ship = s.id
+ WHERE s.id LIKE 'sim-inc-psd-%' AND s.body->>'sample' = 'true'
+ GROUP BY s.id, s.body->>'name';
+SELECT r.id, r.title FROM reports r JOIN report_meta m USING (id) WHERE m.body->>'ship' LIKE 'sim-inc-psd-%';
+
+-- 2) 삭제: 기록 → 선박 순서(operations.ship 외래키)
+BEGIN;
+DELETE FROM operations WHERE ship IN (SELECT id FROM ships WHERE id LIKE 'sim-inc-psd-%' AND body->>'sample' = 'true');
+DELETE FROM ships WHERE id LIKE 'sim-inc-psd-%' AND body->>'sample' = 'true';
+COMMIT;
+```
+
+한 척만 지우려면 `LIKE` 조건을 해당 ID(`= 'sim-inc-psd-roundtrip-2026-11-09'` 등)로 바꿉니다. 해사 데이터 연결(`maritime_data.vessels.ship_id`)은 외래키 규칙에 따라 비워집니다. 미리보기에서 나온 보고서는 남으므로 필요하면 보고서 화면에서 삭제합니다. 삭제 후 브라우저를 새로고침하면 선박 목록에서 사라집니다. 이전 버전으로 게시한 왕복 기록은 귀항일 메모("가상 예상 운항")가 달라 새 버전으로 다시 게시하면 충돌로 중단되므로, 지운 뒤 다시 게시합니다.
+
 ### 문서 등록
 
 - PDF는 최대 25MB, 1,000페이지를 지원합니다. 브라우저 안의 PDF.js로 추출하고 원본과 페이지 번호를 함께 저장합니다. 업로드 문서는 외부 서비스로 전송하지 않습니다.
