@@ -1,6 +1,6 @@
 # 0021. PostgreSQL 작업 큐와 이미지에 포함한 E5 모델
 
-- 상태: 채택
+- 상태: 대체됨(0022)
 - 날짜: 2026-10-29
 - 결정자: 문서 저장 후 자동 색인·모델 이미지 포함 사용자 요청
 - 관련: [계약](../specs/rag-index-jobs.md), [이전 ADR](0020-dedicated-chroma-image.md)

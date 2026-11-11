@@ -20,6 +20,11 @@ services:
     volumes:
       - ./backend:/app
 
+  lexical-worker:
+    build: { context: ./backend, target: dev }
+    volumes:
+      - ./backend:/app
+
   frontend:
     build: { context: ./frontend, target: dev }
     volumes:

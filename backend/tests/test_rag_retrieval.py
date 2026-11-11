@@ -27,7 +27,7 @@ def test_tokenizer_normalizes_mixed_language_and_retains_frequency():
     assert tokenize("!? \n") == []
 
 
-def test_kiwi_particles_endings_compounds_and_no_artificial_bigrams():
+def test_nori_particles_endings_compounds_and_no_artificial_bigrams():
     tokens = tokenize("선급이 자동으로 정지되는 경우는? 평형수의 검사를 실시한다.")
     assert {"선급", "자동", "정지", "경우", "평형수", "검사"} <= set(tokens)
     assert not {"으로", "동으", "되는", "형수", "선", "급"} & set(tokens)
@@ -117,12 +117,12 @@ def test_empty_or_unmatched_input_returns_no_evidence(query, corpus):
     assert retrieve(query, corpus) == []
 
 
-def test_zero_and_negative_scores_do_not_hide_matching_small_corpus():
+def test_lucene_positive_scores_preserve_matching_small_corpus():
     singleton = retrieve("ballast", [chunk("one", "ballast")])
-    assert singleton[0]["score"] < 0
+    assert singleton[0]["score"] > 0
     pair = retrieve("ballast", [chunk("unrelated", "galley"), chunk("match", "ballast")])
     assert [r["id"] for r in pair] == ["match"]
-    assert pair[0]["score"] == 0
+    assert pair[0]["score"] > 0
     assert retrieve("ballast", [chunk("empty"), chunk("match", "ballast")])[0]["id"] == "match"
 
 
@@ -168,8 +168,8 @@ def test_store_filters_before_bm25_and_preserves_response(monkeypatch, role, kin
     store = DocumentStore()
     store.all = read
     result = store.search({"role": role}, "ballast", kind)
-    assert seen == expected  # Unauthorized rows must not even affect IDF.
-    assert [r["id"] for r in result] == expected
+    assert seen == expected  # Pre-filter candidates; statistics are intentionally global.
+    assert [r["id"] for r in result] == sorted(expected)
     assert all(set(r) == set(rows[0]) for r in result)
     assert all(r["reviewed_at"] == "2026-10-14" and r["page"] == 7 for r in result)
     assert rows == original
@@ -190,7 +190,9 @@ def test_selected_documents_are_sql_filtered_before_bm25(monkeypatch):
 
     def read(sql, params):
         assert "WHERE d.active=true AND d.id = ANY(%s)" in sql
-        assert params == ([selected["document_id"]],)
+        assert params[0] == [selected["document_id"]]
+        if "c.id = ANY" in sql:
+            assert params[1] == [selected["id"]]
         return [selected]
 
     def scoped_retrieve(query, candidates, top_k):
@@ -213,3 +215,6 @@ def test_invalid_or_inaccessible_selection_never_reaches_sql_or_bm25(monkeypatch
     monkeypatch.setattr("api.store.documents.retrieve", lambda *a, **k: pytest.fail("Invalid selection reached BM25"))
     with pytest.raises(ApiError):
         store.search({"role": "guest"}, "ballast", document_ids=document_ids)
+
+
+pytestmark = pytest.mark.usefixtures("prepared_lexical")

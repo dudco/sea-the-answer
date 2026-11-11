@@ -7,7 +7,7 @@ from .rag_embeddings import VectorUnavailable, content_hash, contract, digest
 
 MAX_ATTEMPTS = 5
 SAFE_ERRORS = frozenset({"model_not_prepared", "model_contract_mismatch", "invalid_embedding",
-                         "passage_too_long", "index_contract_mismatch"})
+                         "passage_too_long", "index_contract_mismatch", "index_verification_failed"})
 
 
 def fingerprint() -> str:
@@ -124,6 +124,15 @@ def process_one(store, *, index_factory=None, model_fingerprint=None, batch_size
         elif before != snapshot_hash(chunks(store, job["document_id"])):
             finish(store, job, "failed", "document_changed")
         else:
+            # Save paths lock the document before enqueue. Match that order and
+            # fence publication too, not just the eventual PG done update.
+            current = store.one("SELECT generation,claim_token FROM rag_index_jobs WHERE id=%s FOR UPDATE", (job["id"],))
+            if not current or current["generation"] != job["generation"] or current["claim_token"] != job["claim_token"]:
+                store.db.commit()
+                return True
+            verified = index.verify(rows, apply=True)
+            if verified["failed_documents"]:
+                raise VectorUnavailable("index_verification_failed")
             finish(store, job, "done")
         return True
     except Exception as exc:

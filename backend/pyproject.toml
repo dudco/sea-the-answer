@@ -11,8 +11,6 @@ dependencies = [
     # tools
     "sqlalchemy>=2.0,<3",
     "python-dotenv>=1,<2",
-    "rank-bm25>=0.2.2",
-    "kiwipiepy>=0.24.0",
     "chromadb>=1.5.9",
     "sentence-transformers>=6.2.0",
     # CPU retrieval: do not pull CUDA runtimes into the Linux Docker image.

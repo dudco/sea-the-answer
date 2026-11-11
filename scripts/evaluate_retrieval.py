@@ -1,4 +1,4 @@
-"""Offline evaluation of the production preprocessor and BM25; no DB/API/LLM."""
+"""Seed evaluation against explicitly prepared OpenSearch; no app DB/API/LLM."""
 from __future__ import annotations
 
 import argparse
@@ -18,6 +18,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 from api.rag_preprocessing import preprocess_sections
 from api.rag_retrieval import retrieve
+from api.rag_lexical import LexicalIndex, LexicalUnavailable, fingerprint
 
 
 def digest(path):
@@ -180,26 +181,46 @@ def main(argv=None):
     parser.add_argument("--output", type=Path, default=ROOT / "output/retrieval-evaluation")
     parser.add_argument("--top-k", type=int, default=5)
     parser.add_argument("--repeats", type=int, default=3)
+    parser.add_argument("--index", help="Previously prepared evaluation index")
+    parser.add_argument("--prepare", action="store_true", help="Explicitly create a NEW haedap-lexical-eval-* index")
     args = parser.parse_args(argv)
     if args.top_k < 1 or args.repeats < 1:
         parser.error("top-k와 repeats는 양의 정수여야 합니다.")
+    if args.prepare and (not args.index or not args.index.startswith("haedap-lexical-eval-")):
+        parser.error("--prepare requires a new --index haedap-lexical-eval-...")
     files = {"seed": args.seed, "cases": args.cases, "runner": Path(__file__),
              "preprocessing": ROOT / "backend/api/rag_preprocessing.py",
              "retrieval": ROOT / "backend/api/rag_retrieval.py", "vocabulary": ROOT / "backend/api/rag_vocabulary.py"}
+    index = None
     try:
         hashes = {name: digest(path) for name, path in files.items()}
         dataset, corpus = load_inputs(args.seed, args.cases)
+        retriever = retrieve
+        if args.index:
+            index = LexicalIndex(index=args.index)
+            if args.prepare:
+                if index.request("GET", f"/{index.name}/_mapping", missing=True):
+                    raise ValueError("Use a new evaluation index to avoid mixing corpus statistics")
+                index.create()
+                index.index(corpus)
+                index.verify(corpus, publish=True)
+            retriever = index.search
         report = evaluate(dataset["cases"], corpus, top_k=args.top_k, repeats=args.repeats,
+                          retriever=retriever,
                           progress=lambda id, status: print(f"{id}: {status}", file=sys.stderr, flush=True))
         if hashes != {name: digest(path) for name, path in files.items()}:
             raise ValueError("측정 중 평가 입력 또는 코드가 변경되었습니다. 다시 실행하세요.")
-    except (ValueError, KeyError, TypeError, OSError) as exc:
+    except (ValueError, KeyError, TypeError, OSError, LexicalUnavailable) as exc:
         parser.error(str(exc))
+    finally:
+        if index is not None:
+            index.close()
     report["created_at"] = datetime.now(timezone.utc).isoformat()
     report["provenance"] = {"python": platform.python_version(), "platform": platform.platform(),
-                            "packages": {name: version(name) for name in ("kiwipiepy", "kiwipiepy_model", "rank-bm25", "numpy")},
+                            "packages": {name: version(name) for name in ("httpx",)},
+                            "lexical_fingerprint": fingerprint(), "index": args.index or "haedap-lexical",
                             "sha256": hashes,
-                            "scope": "offline seed snapshot; no DB, authentication, API or LLM; author-labelled pilot"}
+                            "scope": "seed snapshot against a pre-indexed isolated OpenSearch; no authentication/API/LLM; author-labelled pilot"}
     args.output.mkdir(parents=True, exist_ok=True)
     (args.output / "results.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     (args.output / "results.md").write_text(markdown(report), encoding="utf-8")

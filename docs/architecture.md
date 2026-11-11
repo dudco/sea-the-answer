@@ -46,7 +46,7 @@
 
 2026-10-18 문서 정보 수정 경로: `frontend/src/lib/document-save.js`가 정보 변경과 본문 개정을 구분한다. `document.save`의 `mode: "metadata"`는 같은 저장 모듈에서 현재 개정·정보 버전을 검사하고 `document_meta`만 갱신한다. 본문 개정은 새로 제공한 원문만 전송하고 기존 조회 청크를 원문으로 재사용하지 않는다. 신규 원문 전처리 결과가 0개면 저장을 거부한다. DB 스키마·검색 알고리즘·백업 구조는 유지한다.
 
-전처리는 웹·DB 의존성이 없는 함수이고 문서 ID·제목은 저장 계층에서 기존 관계로 연결한다. 청킹 규칙과 변경 적용 범위는 [API 전처리 계약](specs/api.md#python-문서-전처리-계약-2026-10-13-확정), 검증과 새 구조 통합 기록은 [작업 기록](plans/2026-10-13-rag-preprocessing.md)에 있다. 현재 검색은 저장 계층이 권한·상태·종류·선택 문서 범위를 먼저 확정한 뒤 `api/rag_search.py`가 BM25와 로컬 E5 벡터 결과를 RRF로 결합한다. 모델·색인 준비 실패 시 BM25로 대체하며, 검색 후 현재 PostgreSQL 후보를 다시 조회해 원문·권한 변경 결과를 제거한다. 저장 시에는 기존 문서·청크·개정 규칙을 유지하면서 자동 색인 작업을 같은 트랜잭션에 기록한다.
+전처리는 웹·DB 의존성이 없는 함수이고 문서 ID·제목은 저장 계층에서 기존 관계로 연결한다. 청킹 규칙과 변경 적용 범위는 [API 전처리 계약](specs/api.md#python-문서-전처리-계약-2026-10-13-확정), 검증과 새 구조 통합 기록은 [작업 기록](plans/2026-10-13-rag-preprocessing.md)에 있다. 현재 검색은 저장 계층이 권한·상태·종류·선택 문서 범위를 먼저 확정한 뒤 `api/rag_search.py`가 BM25와 로컬 E5 벡터 결과를 RRF로 결합한다. 한 검색 엔진만 준비되면 해당 결과를 사용하고 둘 다 불가하면 검색 불가를 알린다. 검색 후 반환 청크를 현재 PostgreSQL에서 다시 조회해 원문·권한 변경 결과를 제거한다. 저장 시에는 기존 문서·청크·개정 규칙을 유지하면서 자동 색인 작업을 같은 트랜잭션에 기록한다.
 
 ## 1. 한눈에 보기
 
@@ -178,9 +178,10 @@ sequenceDiagram
 | `api/llm.py` | 완전한 근거 단위의 입력 바이트 제한, 남은 HTTP 호출 시간 적용, Chat Completions 호출과 문장·요청 표의 JSON·원문 인용 검증. URL 호스트별 키 선택과 설정 판정은 `config.llm_settings()`를 health·답변이 공유 |
 | `api/answer_presentation.py` | 표·차트 요청 해석, 문서 표의 행별 원문 인용 검증, 실제 운항 자료의 표·선/막대 차트 구성과 표시 한도. 모델·DB를 직접 호출하지 않음 |
 | `api/rag_preprocessing.py` | 저장 전 페이지별 텍스트 정리·경계 기반 최대 900자 청킹. DB·웹 의존성 없음 |
-| `api/rag_retrieval.py` | 허용된 청크의 제목·출처·heading·본문을 토큰화해 BM25 정렬. 내부 score는 저장 계층에서 제거해 기존 evidence 응답 유지 |
-| `api/rag_vocabulary.py` | Kiwi 해사 사용자 단어, 한영 별칭, 제한적인 불용어. 검색용 사전이며 원문은 변경하지 않음 |
-| `api/rag_search.py`, `api/rag_hybrid.py` | 허용된 PostgreSQL 후보의 BM25·벡터 검색과 RRF 결합, 준비 실패 시 BM25 대체. 최종 원문·권한 재확인은 `store/documents.py`가 수행 |
+| `api/rag_retrieval.py`, `api/rag_lexical.py` | PostgreSQL 허용 후보에 대한 OpenSearch/Nori 검색·준비 정보·진단. 전역 BM25 통계 사용 |
+| `api/rag_vocabulary.py` | Nori 해사 사용자 단어, 한영 별칭, 제한적인 불용어. 검색용 사전이며 원문은 변경하지 않음 |
+| `api/rag_lexical_jobs.py`, `api/rag_lexical_worker.py` | DB 변경 트리거의 독립 OpenSearch 작업 큐 처리·재시도·문서 세대 확인. Chroma 완료 상태와 독립 |
+| `api/rag_search.py`, `api/rag_hybrid.py` | 준비된 두 엔진 후보의 RRF 결합, 한 엔진 대체 또는 명시적 503. 최종 PG 재확인은 store/documents.py |
 | `api/rag_embeddings.py`, `api/rag_vector.py` | 고정 로컬 E5 모델 계약·입력 검증과 재구축 가능한 Chroma 색인. 검색 결과 본문은 현재 PostgreSQL 후보 행으로 구성 |
 | `api/rag_jobs.py`, `api/rag_worker.py` | 문서 저장 트랜잭션의 자동 색인 작업 기록과 별도 worker의 획득·임베딩·세대 확인·완료 처리 |
 | `api/errors.py`, `api/validation.py` | `ApiError`·`require`, 입력 검증·형식 도우미 |
@@ -192,7 +193,7 @@ sequenceDiagram
 
 DB 스키마는 backend가 아니라 최상위 `migrations/`(dbmate)가 소유합니다. backend는 테이블이 없으면 `SCHEMA_NOT_READY`(503)를 반환합니다.
 
-개발자용 `scripts/debug_bm25.py`는 backend 기본 uv 의존성만 사용하는 읽기 전용 BM25 진단 도구다. `DocumentStore.search_candidates`의 기존 조회·권한·상태·kind 필터와 `rag_retrieval.query_tokens/chunk_tokens/retrieve`를 공유한다. 웹 API는 하이브리드 검색 또는 BM25 대체 결과를 score 없이 최대 5개 반환하며, 이 CLI는 BM25 점수·일치 토큰·미리보기를 출력한다. DB READ ONLY 트랜잭션에서 실행하며 초기화·저장·질문 이력·LLM 호출은 하지 않는다. 운영 이미지에는 스크립트를 포함하지 않고 실행할 때 읽기 전용 마운트한다. 기본 guest 또는 명시한 기존 활성 계정의 scope를 적용하며 DB 자격 증명을 가진 개발자 전용이다. [실행 방법](../README.md#bm25-개발자-디버그), [출력 계약](specs/api.md#개발자-진단-cli-계약-2026-10-15-확정).
+개발자용 `scripts/debug_bm25.py`는 backend 기본 uv 의존성만 사용하는 읽기 전용 BM25 진단 도구다. `DocumentStore.search_candidates`의 기존 조회·권한·상태·kind 필터와 `rag_retrieval.query_tokens/chunk_tokens/retrieve`를 공유한다. 웹 API는 하이브리드 또는 준비된 한 엔진 결과를 score 없이 최대 5개 반환하며, 이 CLI는 BM25 점수·일치 토큰·미리보기를 출력한다. DB READ ONLY 트랜잭션에서 실행하며 초기화·저장·질문 이력·LLM 호출은 하지 않는다. 운영 이미지에는 스크립트를 포함하지 않고 실행할 때 읽기 전용 마운트한다. 기본 guest 또는 명시한 기존 활성 계정의 scope를 적용하며 DB 자격 증명을 가진 개발자 전용이다. [실행 방법](../README.md#bm25-개발자-디버그), [출력 계약](specs/api.md#개발자-진단-cli-계약-2026-10-15-확정).
 
 개발자용 `scripts/evaluate_llm.py`는 기본 문서에서 고정 근거를 골라 한국어 생성만 비교한다. 기본 원문 발췌는 네트워크 없이 실행하고, 명시적 `--mode llm`만 기존 `api/llm.py`의 실제 모델 호출·원문 인용 검증을 사용한다. DB·검색·권한·이력 저장 경로를 호출하지 않으며 서비스 런타임에도 포함하지 않는다. 결과의 의미적 정답성은 사람 검토로 남긴다. [평가 계약](specs/llm-provider.md#7-한국어-생성고정-근거-평가-계약-2026-10-28-확정), [실행 방법](../README.md#한국어-답변-고정-근거-평가).
 
@@ -244,8 +245,8 @@ DB 스키마는 backend가 아니라 최상위 `migrations/`(dbmate)가 소유�
 
 ## 7. 알려진 한계
 
-- BM25 분기는 문서 청크를 요청마다 읽고 권한 필터 후 메모리 인덱스를 만드는 캡스톤 데모 규모 설계다. 벡터 색인은 별도로 유지하지만 전체 검색에는 현재 DB 후보 확인과 BM25 비용이 남는다. 대규모 운영에는 인덱스 재사용·페이징·파일 저장소·TLS·로그 보존 정책이 필요하다.
-- BM25 분석은 Kiwi 한국어 형태소·영숫자·제한된 해사 별칭·불용어 기반이다. 한글 bigram은 제거했다. 분석기와 동일 내용 청크의 분석 토큰을 프로세스 단위로 재사용한다. 토큰 캐시는 SHA-256 키·불변 튜플만 보관하며 최대 2,048항목·계산 객체 크기 합 16MiB의 LRU로 제한한다. 현재 DB에서 확인한 권한·선택 문서·활성 개정 후보만 검색에 참여하고 BM25 인덱스는 매 요청 새로 만든다. 이 토큰 캐시는 결과·원문·질의·권한 인덱스를 보관하지 않는다. 최초·변경·퇴출된 청크 분석과 큰 corpus의 인덱스 생성 비용은 남는다. 토큰 메모리 보관의 제한과 위험은 [ADR 0017 제안](adr/0017-bounded-chunk-token-reuse.md)에 기록했다. BM25만으로는 사전 밖 용어·다의어·영문 활용형·의미 검색에 한계가 있다. 작은 corpus의 BM25 점수는 0 또는 음수일 수 있으며 확률이 아니다. 상세 규칙은 [검색 계약](specs/api.md#문서-검색-bm25)을 따른다. 벡터 분기는 고정 모델·입력 길이·색인 동기화 상태의 제약을 받으며 준비 실패 시 BM25로 대체한다.
+- 키워드 역인덱스는 OpenSearch가 영속 관리한다. 기존 벡터 내용 검증 때문에 초기 PG 전체 후보 읽기·해시 비용은 남으며 최종 재조회는 반환 ID로 제한한다.
+- Nori 분석·전역 통계·사전·재색인·장애 정책은 [키워드 계약](specs/rag-lexical.md)을 따른다. 사전 밖 용어·다의어·영문 활용형과 부분 색인에 따른 순위 변화는 별도 평가가 필요하다.
 - 관리자 세션은 backend 프로세스 메모리에 있어 backend를 여러 개 띄우면 공유되지 않음.
 - 질문 유형 분기는 단어 규칙 기반. 질문 속 날짜·선박명 자동 추출은 미구현.
 
@@ -278,7 +279,9 @@ flowchart LR
 
 `store/documents.py.search_candidates()`가 PostgreSQL에서 권한·활성 개정·상태·종류·선택 문서 범위를 확정한 뒤
 `rag_search.py`가 `rag_retrieval.py`(BM25)와 `rag_vector.py`(Chroma)의 후보를 `rag_hybrid.py`(RRF)로 결합한다.
-검색 후에는 BM25 fallback을 포함해 같은 DB 후보 조회를 다시 실행하고 원문·권한 변경 결과를 제거한다.
+`rag_readiness.py`는 문서 snapshot·모델·collection UUID에 연결된 완료 확인 정보를 일괄 조회한다.
+BM25·벡터는 각각 준비된 허용 문서만 참여한다. 키워드 색인은 독립 outbox/lexical-worker가 동기화하며 검색은 복구하지 않는다.
+검색 후에는 한 엔진 대체를 포함해 반환 ID만 PG에서 다시 조회하고 원문·권한 변경 결과를 제거한다.
 청킹/개정 규칙은 유지하고 저장 끝에 작업 enqueue만 추가한다. `/search`와 `/ask`는 같은 검색 경로를 사용한다.
 
 `rag_embeddings.py`는 고정 E5 모델 계약·명시적 준비·입력 길이 검증을 담당한다.
@@ -287,7 +290,7 @@ Chroma 서버는 Docker 내부 전용이며 자동 worker와 함께 기본 실�
 공식 Chroma 1.5.9에 기존 UID/GID 10001·저장 경로와 bash HTTP 헬스체크만 추가한다.
 CPU PyTorch·E5 실행·Python 클라이언트는 backend/worker에 있다. 모델은 이미지 `/opt/models/e5-small`, 벡터는 named volume이다.
 PostgreSQL만 원본이므로 Chroma 결과의 본문을 신뢰하지 않고 현재 후보 행으로 결과를 구성한다.
-BM25는 제한된 분석 토큰 캐시를 사용한다. CLI에서 명시적으로 BM25만 실행하면 E5/Chroma를 로딩하지 않는다.
+BM25는 OpenSearch/Nori 역인덱스를 사용한다. CLI에서 BM25만 실행하면 E5/Chroma를 로딩하지 않는다.
 상세 실패·부분 색인·동기화 정책은 [검색 계약](specs/rag-vector.md), 로컬 벡터 선택 이유는 [ADR 0019](adr/0019-local-vector-retrieval.md), 자동 색인 결정은 [ADR 0021](adr/0021-durable-index-jobs.md)을 참고한다.
 
 ### 자동 색인 경계

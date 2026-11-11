@@ -17,7 +17,7 @@
 
 업무 기능은 개인 계정으로 로그인한 뒤 사용합니다. 일반 선원은 문서·운항 조회와 자기 보고서 업무를, 관리자는 계정 발급과 원본 자료 변경·승인·백업을 수행합니다. 공용 기본 비밀번호는 없으며 최초 관리자 설정과 기존 버전 전환은 [계정 운영 안내](docs/user-guide.md#2-역할과-승인)를 따릅니다.
 
-**현재 구현 범위**: 문서 검색은 열람 가능한 PostgreSQL 청크의 BM25·로컬 E5 벡터 결과를 RRF로 결합하며, 모델·색인 준비 실패 시 BM25로 대체합니다. BM25 분석 토큰은 제한된 메모리 캐시에 재사용합니다. Docker 이미지에 고정 E5 모델이 포함되며, 저장 후 worker가 자동 색인하고 기존 문서는 명시적 초기 색인이 필요합니다. 모델 미설정 시 답변은 원문 발췌이며, 설정된 경우 통합 질문의 기본 방식은 AI 답변입니다. 입력창의 **답변 방식**에서 원문 발췌를 직접 고를 수 있습니다. 선택적 LLM은 OpenAI 호환 Chat Completions로 연결하며 주소·모델·키 설정으로 OpenAI·동국 AI Chat·로컬 Ollama를 전환할 수 있습니다. 동국 AI Chat 실제 호출은 2026-10-14에 검증했고 로컬 Ollama 실제 검증 결과와 품질 한계는 [변경 이력](docs/changelog.md)에 기록합니다. 공식 CII 계산, 규정 적용 자동 판정, DOCX·PPT 등록은 아직 연결 전입니다. 범위와 연결 계획은 [`docs/plans/2026-10-08-team-module-integration.md`](docs/plans/2026-10-08-team-module-integration.md)를 보세요.
+**현재 구현 범위**: 문서 검색은 열람 가능한 PostgreSQL 청크의 BM25·로컬 E5 벡터 결과를 RRF로 결합하며, 한 검색 엔진만 준비되면 해당 방식으로 검색하고 둘 다 불가하면 검색 불가를 알립니다. 키워드 검색은 OpenSearch/Nori 역인덱스를 사용합니다. Docker 이미지에 고정 E5 모델이 포함되며, 저장 후 worker가 자동 색인하고 기존 문서는 명시적 초기 색인이 필요합니다. 모델 미설정 시 답변은 원문 발췌이며, 설정된 경우 통합 질문의 기본 방식은 AI 답변입니다. 입력창의 **답변 방식**에서 원문 발췌를 직접 고를 수 있습니다. 선택적 LLM은 OpenAI 호환 Chat Completions로 연결하며 주소·모델·키 설정으로 OpenAI·동국 AI Chat·로컬 Ollama를 전환할 수 있습니다. 동국 AI Chat 실제 호출은 2026-10-14에 검증했고 로컬 Ollama 실제 검증 결과와 품질 한계는 [변경 이력](docs/changelog.md)에 기록합니다. 공식 CII 계산, 규정 적용 자동 판정, DOCX·PPT 등록은 아직 연결 전입니다. 범위와 연결 계획은 [`docs/plans/2026-10-08-team-module-integration.md`](docs/plans/2026-10-08-team-module-integration.md)를 보세요.
 
 ## 프로젝트 구조
 
@@ -25,7 +25,7 @@
 
 ```text
 sea-the-answer/
-├─ compose.yaml          db + migrate + backend + frontend + rag-worker + chroma, profile "e2e"
+├─ compose.yaml          db + migrate + backend + frontend + rag-worker + chroma + lexical-worker + opensearch, profile "e2e"
 ├─ compose.dev.yaml      개발 오버레이: 소스 마운트, 핫 리로드, DB·API 포트를 127.0.0.1에 공개
 ├─ compose.navigation.yaml 선택 기능: 설치된 항구 참조 디렉터리의 읽기 전용 연결
 ├─ .env.example          설정 예시 → .env 로 복사
@@ -52,7 +52,7 @@ sea-the-answer/
 구조와 요청 흐름은 [`docs/architecture.md`](docs/architecture.md)에 있습니다.
 
 해사 질문 평가셋으로 현재 검색을 측정하는 방법과 범위는 [검색 평가 안내](docs/retrieval-evaluation.md)를 참고하세요. 운영 DB·LLM 연결 없이 기본 문서 스냅샷으로 실행합니다.
-내용이 같은 문서 분석 토큰만 크기를 제한해 재사용합니다. 권한·선택 문서 확인과 검색 인덱스 생성은 매 요청 수행합니다. 상세 규칙은 [검색 계약](docs/specs/api.md#문서-검색-bm25)을 따릅니다.
+문서 토큰화·역인덱스는 OpenSearch에 저장해 재사용합니다. 권한·선택 문서 확인은 매 요청 수행합니다. 상세 규칙은 [검색 계약](docs/specs/api.md#문서-검색-bm25)을 따릅니다.
 
 항구·선석 참조 비교는 선택 기능입니다. [자료 준비·오프라인 묶음 설치](docs/specs/port-references.md)를 마친 뒤 `.env`의 `MARITIME_PORT_REFERENCES_DIR`에 설치 디렉터리를 지정하고 `docker compose -f compose.yaml -f compose.navigation.yaml up --build -d`로 읽기 전용 연결합니다. 런타임 다운로드나 LLM은 필요하지 않습니다. 기존 선박 명시 매핑과 앱 로그인을 사용하며, 결과는 입항 허가가 아닌 공개 수치의 부분 비교입니다.
 
@@ -139,7 +139,7 @@ docker compose run --rm migrate rollback             # 마지막 파일 되돌�
 
 ## 테스트
 
-BM25 검색은 backend의 `rank-bm25`와 한국어 형태소 분석기 `kiwipiepy`를 사용합니다. Docker에서는 `docker compose up --build -d`로 반영하고, 직접 실행할 때는 `backend/`에서 `uv sync` 후 백엔드를 재시작하세요. Kiwi 모델은 의존성 설치에 포함되며 별도 API 키가 필요하지 않습니다. 첫 검색은 모델·별칭 초기화로 늦을 수 있습니다. 검색 개선은 기존 청크에도 적용됩니다. DB 없는 회귀 테스트는 `backend/`에서 `uv run pytest tests/test_rag_preprocessing.py tests/test_rag_retrieval.py tests/test_debug_bm25.py -q`로 실행합니다. 알고리즘·한계는 [검색 계약](docs/specs/api.md#문서-검색-bm25)에 있습니다.
+BM25는 내부 OpenSearch 3.9.0/Nori를 사용합니다. 플러그인은 전용 이미지 빌드에 포함되고 PostgreSQL·Chroma 이미지와 원본 데이터는 유지합니다. 기존 문서는 아래 초기 색인이 필요하며 검색 중 전체 문서를 분석하지 않습니다. 분석·동기화·장애 정책은 [계약](docs/specs/rag-lexical.md)을 따릅니다.
 
 목차 항목 묶음과 연속 제목 청킹 개선은 새 문서·새 내용의 개정에 적용됩니다. **기존 DB 청크는 자동으로 바뀌지 않으며, 같은 입력을 다시 저장해도 `unchanged`이면 재청킹하지 않습니다.** 정보만 수정하면 기존 청크를 유지하고, 본문·버전 개정에는 PDF 재추출 또는 원문 전체 입력이 필요합니다. 기존 조회 청크를 원본 페이지 추출본으로 재사용하지 않습니다. 벡터 재색인은 저장된 청크를 사용하며 재청킹과는 별개입니다.
 
@@ -154,7 +154,9 @@ docker compose --profile e2e up --build --force-recreate --exit-code-from e2e e2
 docker compose --profile e2e down                                                      # 테스트 스택 정리
 ```
 
-e2e는 앱과 분리된 테스트 스택(`e2e-db`·`e2e-migrate`·`e2e-backend`·`e2e-frontend`)을 띄웁니다. DB는 메모리(tmpfs)에 있어 앱 데이터에 영향이 없고, 호스트에 포트를 열지 않으므로 앱이 실행 중이어도 됩니다. 실패 시 스크린샷·trace는 `e2e/test-results/`, HTML 보고서는 `e2e/playwright-report/`에 생깁니다.
+e2e는 앱과 분리된 테스트 스택(`e2e-db`·`e2e-migrate`·`e2e-backend`·`e2e-frontend`·`e2e-opensearch`·키워드 준비/worker)을 띄웁니다. DB·검색 색인은 메모리(tmpfs)에 있어 앱 데이터에 영향이 없고, 호스트에 포트를 열지 않으므로 앱이 실행 중이어도 됩니다. 초기 키워드 작업 완료 후 브라우저 검사를 시작합니다. 실패 시 스크린샷·trace는 `e2e/test-results/`, HTML 보고서는 `e2e/playwright-report/`에 생깁니다.
+
+외부 서비스 없는 새 검색 단위 검사는 `uv run --project backend pytest backend/tests/test_rag_lexical.py -k "not real"`입니다. 실제 Nori/동기화 검사는 **폐기 가능한 테스트 전용** `HAEDAP_TEST_OPENSEARCH_URL`·`HAEDAP_TEST_DATABASE_URL`을 지정하고 `backend/`에서 `uv run pytest`로 실행합니다. 테스트는 임시 색인·스키마를 만들고 정리하므로 실제 앱 주소를 넣지 마세요. 미지정 시 해당 통합 검사는 건너뜁니다.
 
 - **종료 후 `down` 정리를 빠뜨리지 마세요.** 테스트가 끝나도 Compose는 `e2e` 컨테이너만 멈추고 의존 서비스(`e2e-db` 등)는 계속 실행합니다. `--force-recreate`만으로 의존 DB까지 재생성되지 않는 환경이 확인됐습니다. 이전 테스트 스택을 정리한 후 실행해야 빈 DB가 보장됩니다. 앱을 켜 둔 채 테스트하려면 위 `up`과 `down` 명령 모두 `docker compose -p haedap-e2e-check --profile e2e ...`처럼 별도 프로젝트 이름을 사용하세요.
 - 의존 서비스까지 자동으로 멈추는 Compose 옵션은 없어서, 끝나면 `down`으로 정리합니다. `--attach-dependencies`는 쓰지 마세요. `e2e-migrate`가 끝나는 순간 중단되어 **테스트를 돌리지 않고도 종료 코드 0**이 나옵니다(2026-10-13 확인).
@@ -162,6 +164,37 @@ e2e는 앱과 분리된 테스트 스택(`e2e-db`·`e2e-migrate`·`e2e-backend`�
 Docker 없이 e2e를 돌리려면 **빈 DB로 띄운 스택**에 대고 `e2e/`에서 `npm ci`, `npx playwright install chromium`, `npx playwright test`를 실행합니다(주소는 `E2E_BASE_URL`, 기본 `http://127.0.0.1:5173`). 시나리오가 예시 데이터를 넣고 건수를 확인하므로 데이터가 있는 DB에서는 실패합니다.
 
 ### BM25 개발자 디버그
+
+OpenSearch는 기본 Compose에 내부 서비스로 포함됩니다(512MiB JVM 힙, 컨테이너 상한 2GiB). 호스트의 `vm.max_map_count`는 262144 이상이 필요합니다. 공개 포트·Dashboards는 없고, 인증 없는 로컬 엔진은 backend/lexical-worker 전용 내부 네트워크에서만 접근합니다. 외부 서버를 연결할 때는 TLS·인증과 접근 통제를 별도로 구성하세요. 기존 DB·Chroma 볼륨은 유지하며 새 `lexical-data` 볼륨에 역인덱스를 보존합니다.
+
+프로젝트 최상위에서 실행합니다. `up`은 실행 중인 서비스에 변경을 적용하므로 작업 시점을 정하고 실행하세요.
+
+```powershell
+docker compose up -d --build
+# 기존 문서: dry-run 확인 후 명시적으로 초기 색인 요청 (기본 limit 100문서)
+docker compose exec lexical-worker python -m api.rag_lexical_worker enqueue --limit 10000
+docker compose exec lexical-worker python -m api.rag_lexical_worker enqueue --limit 10000 --apply
+docker compose exec lexical-worker python -m api.rag_lexical_worker status --limit 100
+# 실패한 작업 재시도. 원본 PostgreSQL 문서·청크는 변경하지 않음.
+docker compose exec lexical-worker python -m api.rag_lexical_worker retry --apply
+# 읽기 전용 정합성 검사; --apply를 붙이면 복구 작업 enqueue
+docker compose run --rm --no-deps -v ./scripts:/app/scripts:ro backend python scripts/lexical_index.py verify
+# 소량 준비: --limit은 청크 수. 문서 일부만 처리하면 전체 완료로 인증하지 않음.
+docker compose run --rm --no-deps -v ./scripts:/app/scripts:ro backend python scripts/lexical_index.py index --document-title "Part-5D" --limit 10 --dry-run
+```
+
+신규 저장·개정·메타데이터·권한·비활성화·삭제는 커밋 후 `lexical-worker`가 자동 동기화합니다. pending → processing → done/failed이며, 5회까지 지수 간격으로 재시도합니다. 중단된 processing 작업은 세션 잠금 해제 후 다른 worker가 복구합니다. done은 bulk의 refresh와 문서 전체 확인·완료 receipt 발행 이후입니다. `verify --apply`나 enqueue는 누락·저장소 교체에도 사용할 수 있습니다. 삭제된 항목은 검색의 PG 필터에서 즉시 제외되고 worker가 원격 record를 정리합니다.
+
+분석기·사전 계약이 바뀌면 새 색인이 필요합니다. 재청킹·PDF 재등록은 필요 없습니다. 아래 명령은 먼저 새 물리 색인에 전체 자료를 준비하고 검증한 후 alias를 원자적으로 전환합니다. 기존 색인·볼륨은 자동 삭제하지 않습니다.
+
+전환 직후 현재 문서와 삭제 작업을 다시 enqueue하여 검증 도중의 변경도 재확인합니다. alias 전환과 PG enqueue는 단일 트랜잭션이 아니므로 전환 명령이 중단되면 `enqueue --limit 10000 --apply`와 `verify`로 복구하세요. 확인 중 최신 snapshot이 없는 문서는 해당 엔진에서 제외됩니다.
+
+```powershell
+docker compose run --rm --no-deps -v ./scripts:/app/scripts:ro backend python scripts/lexical_index.py index --index haedap-lexical-rebuild-20261111 --apply
+docker compose run --rm --no-deps -v ./scripts:/app/scripts:ro backend python scripts/lexical_index.py promote --index haedap-lexical-rebuild-20261111 --apply
+```
+
+호스트에서 실행할 때는 `uv sync --locked --project backend` 후 `HAEDAP_OPENSEARCH_URL`과 DB 주소를 지정하고 같은 스크립트를 `uv run --project backend python scripts/lexical_index.py ...`로 실행합니다. Docker 내부 엔진에는 호스트 공개 포트가 없으므로 위 일회성 컨테이너 사용을 권장합니다.
 
 등록된 문서를 다시 업로드하지 않고 PostgreSQL 청크의 질의 토큰·Top-K·점수·일치 토큰·문서명·페이지·본문 미리보기를 확인합니다. **검색 품질을 바꾸는 기능은 아니며 DB에 쓰지 않습니다.** LLM이나 UI도 호출하지 않습니다.
 
@@ -177,8 +210,8 @@ docker compose run --rm --no-deps -T -v "${PWD}/scripts:/app/scripts:ro" backend
 - 기본은 guest(공개 문서)입니다. 관리자로 로그인한 화면과 비교하려면 `--username admin`처럼 **기존 활성 계정**을 지정합니다. 이는 DB 접근 권한을 가진 개발자의 열람 범위 시뮬레이션이며 웹 로그인 대체 기능이 아닙니다.
 - `--kind all|imo|manual`: 기존 UI 종류 필터. 기본 `all`.
 - `--preview-chars 0`: 본문 출력 생략. 기본 240자. `--json`: 기계가 읽을 수 있는 JSON 출력.
-- 일치 토큰은 본문만이 아니라 **제목·참조명·heading·본문 전체**의 토큰 교집합입니다. Kiwi 형태소·해사 별칭 확장을 반영하며 **토큰별 점수 기여도가 아닙니다**.
-- 점수는 기존 BM25의 최종 합산값입니다. 작은 corpus에서는 0·음수도 정상이며, 문서 필터를 쓰면 corpus 통계가 달라져 전체 검색과 점수가 달라집니다. 일치 결과가 없으면 `No matching chunks`를 표시합니다.
+- 일치 토큰은 **제목·참조명·heading·본문**의 Nori 분석 토큰 교집합이며, 소수·조항 식별자와 질의 별칭을 반영합니다. **토큰별 점수 기여도가 아닙니다**.
+- 점수는 OpenSearch의 `_score`이며 전체 색인 통계를 사용합니다. 문서 필터는 결과 후보를 제한합니다. 점수는 신뢰 확률이 아니며 일치가 없으면 `No matching chunks`를 표시합니다.
 - 출력에 문서 내용이 포함될 수 있으므로 공유·로그 저장 전에 확인하세요. 이 도구 자체는 결과 파일을 저장하지 않습니다.
 
 Docker 없이 실행하려면 Python·uv와 호스트에서 접근 가능한 DB의 `DATABASE_URL`이 필요합니다. 환경변수가 루트 `.env`보다 우선합니다. 운영 Compose는 DB 포트를 공개하지 않으므로 위 Docker 명령이 가장 간단합니다.
@@ -351,15 +384,22 @@ docker compose logs -f rag-worker
 docker compose run --rm --no-deps -v ./scripts:/app/scripts:ro backend python scripts/rag_index.py index --dry-run
 # 먼저 제한된 문서로 검증. 전체 준비 시 필터/limit를 빼고 실행.
 docker compose run --rm --no-deps -v ./scripts:/app/scripts:ro backend python scripts/rag_index.py index --document-title "Part-5D" --limit 20 --apply
-# 같은 제한 corpus에서 각 방식 비교 (본문은 출력 안 함)
-docker compose run --rm --no-deps -v ./scripts:/app/scripts:ro backend python scripts/debug_retrieval.py "heavy deck cargo" --document-title "Part-5D" --limit 20 --top-k 5
+# 전체 문서가 준비되어야 벡터 검색에 참여. 위 --limit은 배치 처리 점검용.
+# 기존 벡터 전체 검증 후 완료 확인 정보 등록 (재임베딩·PG 쓰기 없음)
+docker compose run --rm --no-deps -v ./scripts:/app/scripts:ro backend python scripts/rag_index.py verify --document-title "Part-5D" --apply
+# 문서별 세 방식 비교 (본문은 출력 안 함)
+docker compose run --rm --no-deps -v ./scripts:/app/scripts:ro backend python scripts/debug_retrieval.py "heavy deck cargo" --document-title "Part-5D" --top-k 5
 # 모든 사용자 범위를 준비하려면 실제 활성 관리자 계정 지정. PostgreSQL에는 쓰지 않음.
 docker compose run --rm --no-deps -v ./scripts:/app/scripts:ro backend python scripts/rag_index.py index --username "관리자아이디" --apply --batch-size 16
 ```
 
 웹 검색은 하이브리드 Top-5를 사용하고, 방식별 비교는 위 개발자 CLI에서 합니다.
-모델 미준비·Chroma 장애 또는 현재 요청에 허용된 청크 중 하나라도 미색인/오래됨이면 BM25로 대체합니다.
+BM25·벡터 각각에서 색인 준비된 허용 문서만 참여합니다. `lexical_coverage`와 `coverage`로 각 엔진의 준비·제외 범위를 확인합니다.
+한 엔진만 사용 가능하면 해당 엔진 결과를 사용하고, 둘 다 불가하면 검색 불가(503)를 반환합니다. Kiwi/Python BM25 대체 경로는 없습니다.
 `docker compose logs backend`의 `rag_fallback` 또는 비교 CLI의 `effective_mode`/`fallback_reason`으로 확인합니다.
+비교 CLI의 `coverage.status`는 `full`/`partial`/`fallback`을 구분하고 허용·준비·제외 건수와 사유를 보여 줍니다.
+기존 벡터는 `verify --apply`로 확인 정보를 준비하세요. 손상이 보고되면 같은 문서의 `index --apply` 또는 worker enqueue로 복구합니다.
+`verify`만 실행하면 읽기 전용 검사입니다. 검색은 전체 record를 감사하지 않으므로 저장소 변경·장애 후에는 이 검사를 실행하세요.
 
 호스트에서 작업할 때는 `uv sync --locked --project backend` 후
 `uv run --locked --project backend python scripts/rag_index.py prepare`로 모델을 준비하고

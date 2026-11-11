@@ -193,18 +193,20 @@ class DocumentStore:
     def search(self, user: dict, question: str, kind: str = "all", document_ids: list[str] | None = None) -> list[dict]:
         text(question, "질문", 2000)
         candidates = self.search_candidates(user, kind, document_ids)
-        # Filter before either retriever so inaccessible chunks cannot affect ranking.
+        # Filter before either retriever. OpenSearch uses global index statistics.
         # Keep scores internal; /search and /ask retain their evidence contract.
         results = retrieve(question, candidates, top_k=5)
         # Re-read current PG state after potentially slow embedding/remote IO,
         # including requests that fell back to BM25.
-        current = {row["id"]: row for row in self.search_candidates(user, kind, document_ids)}
+        current = {row["id"]: row for row in self.search_candidates(
+            user, kind, document_ids, chunk_ids=[row["id"] for row in results])}
         results = [current[row["id"]] for row in results if row["id"] in current
                    and content_hash(row) == content_hash(current[row["id"]])]
         return [{key: value for key, value in row.items() if key != "score"}
                 for row in results]
 
-    def search_candidates(self, user: dict, kind: str = "all", document_ids: list[str] | None = None) -> list[dict]:
+    def search_candidates(self, user: dict, kind: str = "all", document_ids: list[str] | None = None,
+                          *, chunk_ids: list[str] | None = None) -> list[dict]:
         """Shared read-only candidate selection for API search and diagnostics."""
         require(kind in ("all", "imo", "manual"), "문서 필터가 올바르지 않습니다.")
         if document_ids is not None:
@@ -215,12 +217,16 @@ class DocumentStore:
             require(set(document_ids) <= allowed, "선택 문서를 사용할 수 없습니다. 문서 상태와 열람 권한을 확인해 주세요.",
                     "DOCUMENT_SCOPE_UNAVAILABLE", 403)
         scope_sql = " AND d.id = ANY(%s)" if document_ids is not None else ""
+        params = [document_ids] if document_ids is not None else []
+        if chunk_ids is not None:
+            scope_sql += " AND c.id = ANY(%s)"
+            params.append(chunk_ids)
         sql = """SELECT c.id,c.document_id,c.heading,c.text,p.page,d.title,d.kind,d.url,
             d.reference,d.version,d.reviewed_at,d.hash,m.body AS meta
             FROM chunks c JOIN documents d ON d.id=c.document_id
             LEFT JOIN chunk_pages p ON p.id=c.id LEFT JOIN document_meta m ON m.id=d.id
             WHERE d.active=true""" + scope_sql + " ORDER BY d.id,c.position"
-        rows = self.all(sql, (document_ids,)) if document_ids is not None else self.all(sql)
+        rows = self.all(sql, tuple(params)) if params else self.all(sql)
         candidates = []
         for row in rows:
             meta = row["meta"] or {"scope": "all", "status": "active"}

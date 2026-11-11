@@ -1,0 +1,5 @@
+FROM opensearchproject/opensearch:3.9.0
+# Plugin version is supplied by the pinned OpenSearch distribution.
+RUN bin/opensearch-plugin install --batch analysis-nori
+HEALTHCHECK --interval=5s --timeout=5s --retries=40 \
+  CMD curl --fail --silent 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=3s' >/dev/null || exit 1

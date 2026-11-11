@@ -26,6 +26,8 @@
 
 ## 전체 목록
 
+- [문서별 벡터 준비 상태](plans/2026-11-05-vector-readiness.md): 완료 · [ADR 0022](adr/0022-document-vector-readiness.md): 채택.
+
 - [자연어 조건·되묻기·다단계 조회](plans/2026-11-06-natural-language-workflows.md): 완료 (로컬·미제출).
 
 - [공식 항만 조건 수집·변경 확인](plans/2026-11-06-port-condition-updates.md): 완료(6개 문서·21개 조건·명시 갱신 검토·실제 DB/API/화면 검증).
@@ -34,7 +36,7 @@
 
 - [등록 PDF 검색 평가 질문 10개](rag-evaluation-questions.json): 문서·물리 페이지·조항 후보 기준의 재사용 가능한 평가 자료.
 
-- [자동 색인 계획](plans/2026-10-29-automatic-vector-indexing.md): 완료 · [작업 계약](specs/rag-index-jobs.md): 구현됨 · [ADR 0021](adr/0021-durable-index-jobs.md): 채택.
+- [자동 색인 계획](plans/2026-10-29-automatic-vector-indexing.md): 완료 · [작업 계약](specs/rag-index-jobs.md): 구현됨 · [ADR 0021](adr/0021-durable-index-jobs.md): 대체됨(0022).
 
 ### 기본 문서
 
@@ -75,7 +77,7 @@
 
 - [Chroma 서버 이미지 분리](plans/2026-10-29-chroma-image.md): 완료.
 
-- [벡터·RRF 구현](plans/2026-10-27-vector-hybrid.md): 완료. [계약](specs/rag-vector.md) 구현됨, 현재 결정은 [ADR 0021](adr/0021-durable-index-jobs.md) (0019·0020 계승).
+- [벡터·RRF 구현](plans/2026-10-27-vector-hybrid.md): 완료. [계약](specs/rag-vector.md) 구현됨, 현재 결정은 [ADR 0022](adr/0022-document-vector-readiness.md) (0019~0021 계승).
 - [MRV 선박·항구 참조 연결 시범](plans/2026-11-04-port-reference-linkage.md) — 완료: 기존 질문창·다중 항구·실데이터·오프라인 배포·main 통합 검증, 운영 입항 판정 아님.
 
 - [한국어 근거 답변과 실제 모델 검증](plans/2026-10-28-korean-llm-validation.md) — 완료 (Docker e2e·모델 연결 검증, 일반 한국어 품질은 후속)
@@ -102,7 +104,7 @@
 
 - [0020 Chroma 전용 이미지](adr/0020-dedicated-chroma-image.md): 대체됨(0021). 전용 서버 분리는 유지.
 
-- [0017 문서 분석 토큰의 제한된 메모리 재사용](adr/0017-bounded-chunk-token-reuse.md) — 제안·로컬 구현
+- [0017 문서 분석 토큰의 제한된 메모리 재사용](adr/0017-bounded-chunk-token-reuse.md) — 대체됨(0023)
 
 - [0016 개인 계정과 서버의 업무 접근 통제](adr/0016-crew-admin-authentication.md) — 채택
 - [0015 업무 스킬과 선택 LLM](adr/0015-optional-model-workflow-skills.md): 고정 실행기와 런타임 지침.
@@ -136,3 +138,7 @@
 - 문서와 코드가 다르면 코드가 사실입니다. 발견하면 문서를 고칩니다.
 
 - [통합 질문·언어·대화 이력 개선](plans/2026-11-09-ui-conversations-language.md) — 완료 (대화 API·브라우저 회귀 검증, Docker 전체 스택 미실행).
+
+- [OpenSearch 키워드 검색](specs/rag-lexical.md) — 구현됨
+- [OpenSearch 전환 계획](plans/2026-11-11-opensearch-retrieval.md) — 완료
+- [ADR 0023](adr/0023-opensearch-lexical-index.md) — 채택

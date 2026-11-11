@@ -42,6 +42,7 @@ def test_api_hybrid_scope_revisions_and_citations(monkeypatch, tmp_path, mode):
         identity = store.save_document(data)["id"]
         crew_user = {"role": "operator"}
         index.index(store.search_candidates(crew_user))
+        index.verify(store.search_candidates(crew_user), apply=True)
         client = TestClient(main.app, base_url="http://localhost:5173")
         health = client.get("/api/health").json()
         assert health["retrieval"] == "hybrid-rrf"
@@ -76,8 +77,9 @@ def test_api_hybrid_scope_revisions_and_citations(monkeypatch, tmp_path, mode):
         # Missing new vectors must fall back, never return old active revision.
         assert {row["document_id"] for row in store.search(crew_user, "선급")} == {revised}
         assert reports[-1]["effective_mode"] == "bm25"
-        assert reports[-1]["fallback_reason"] == "index_incomplete_or_stale"
+        assert reports[-1]["fallback_reason"] == "no_ready_documents"
         index.index(store.search_candidates(crew_user))
+        index.verify(store.search_candidates(crew_user), apply=True)
         assert {row["document_id"] for row in store.search(crew_user, "선급")} == {revised}
         data["expectedId"] = revised
         data["meta"]["status"] = "retired"
@@ -87,3 +89,6 @@ def test_api_hybrid_scope_revisions_and_citations(monkeypatch, tmp_path, mode):
         store.save_document(data)
         store.delete_document(revised)
         assert store.search(crew_user, "선급") == []
+
+
+pytestmark = pytest.mark.usefixtures("prepared_lexical")

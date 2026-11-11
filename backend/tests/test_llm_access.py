@@ -118,6 +118,7 @@ def ask(client, headers, question="Fictionalquartz"):
     ("operator", {"publicmarker", "crewmarker"}),
     ("admin", {"publicmarker", "crewmarker", "adminmarker"}),
 ])
+@pytest.mark.usefixtures("prepared_lexical")
 def test_only_readable_current_evidence_reaches_model(access_client, captured_model, role, visible):
     client, headers, _accounts, rows, reads = access_client
     login(client, headers, role)
@@ -139,6 +140,7 @@ def test_only_readable_current_evidence_reaches_model(access_client, captured_mo
                 assert row[field] not in serialized_request
 
 
+@pytest.mark.usefixtures("prepared_lexical")
 def test_question_matching_only_admin_document_does_not_contact_model(access_client, captured_model):
     client, headers, _accounts, _rows, _reads = access_client
     login(client, headers, "operator")

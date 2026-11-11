@@ -15,11 +15,12 @@ from dotenv import load_dotenv
 from api.rag_search import search
 
 
-def compare(query, candidates, top_k=5, vector_index=None):
+def compare(query, candidates, top_k=5, vector_index=None, complete_chunks=None):
     report = {"query": query, "corpus_size": len(candidates), "methods": {}}
     for mode in ("bm25", "vector", "hybrid"):
         start = perf_counter()
-        result = search(query, candidates, top_k, mode=mode, vector_index=vector_index)
+        result = search(query, candidates, top_k, mode=mode, vector_index=vector_index,
+                        complete_chunks=complete_chunks)
         report["methods"][mode] = {**result, "seconds": round(perf_counter() - start, 4),
             "results": [{"rank": rank, **{key: row.get(key) for key in
                         ("id", "document_id", "title", "page", "heading", "score")}}
@@ -38,9 +39,12 @@ def main(argv=None):
     load_dotenv(ROOT / ".env", override=False)
     try:
         start = perf_counter()
-        rows = load_candidates(os.getenv("DATABASE_URL", ""), **filter_options(args))
+        options = filter_options(args)
+        limit = options.pop("limit")
+        complete = load_candidates(os.getenv("DATABASE_URL", ""), **options)
+        rows = complete[:limit] if limit else complete
         db_seconds = perf_counter() - start
-        report = compare(args.query, rows, args.top_k)
+        report = compare(args.query, rows, args.top_k, complete_chunks=complete)
         report["db_seconds"] = round(db_seconds, 4)
         print(json.dumps(report, ensure_ascii=False, indent=2))
         return 0

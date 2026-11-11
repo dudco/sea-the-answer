@@ -1,4 +1,4 @@
-"""Read-only BM25 diagnostics over the app's PostgreSQL chunks (no HTTP/LLM)."""
+"""Read-only PostgreSQL/OpenSearch diagnostics (no application API or LLM)."""
 
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ from dotenv import load_dotenv
 
 from api.errors import ApiError, require
 from api.rag_retrieval import chunk_tokens, query_tokens, retrieve
+from api.rag_lexical import LexicalUnavailable
 from api.store.base import Database
 from api.store.documents import DocumentStore
 
@@ -32,8 +33,8 @@ def build_report(query: str, candidates: list[dict], *, top_k: int = 5,
     """Candidates MUST already be permission-filtered, as in retrieve().
 
     Matched tokens are set overlap, not score attribution. A future attribution
-    helper should receive the SAME BM25 index and ask get_scores([token]); it
-    must not rebuild an index on top-k results or reproduce the BM25 formula.
+    helper should use OpenSearch explain against the SAME indexed record;
+    it must not rebuild statistics on the top-k results.
     """
     if type(preview_chars) is not int or preview_chars < 0:
         raise ValueError("preview_chars must be a non-negative integer")
@@ -42,8 +43,9 @@ def build_report(query: str, candidates: list[dict], *, top_k: int = 5,
               and (document_title is None or document_title.casefold() in row["title"].casefold())]
     terms = query_tokens(query)
     results = []
+    coverage = {}
     # The production function owns matching, scoring, ordering and top-k.
-    for rank, row in enumerate(retrieve(query, corpus, top_k=top_k), 1):
+    for rank, row in enumerate(retrieve(query, corpus, top_k=top_k, diagnostics=coverage), 1):
         tokens = set(chunk_tokens(row))
         body = " ".join(row["text"].split())
         preview = (body[:preview_chars] + ("…" if len(body) > preview_chars else "")) if preview_chars else ""
@@ -55,7 +57,7 @@ def build_report(query: str, candidates: list[dict], *, top_k: int = 5,
                         "preview": preview})
     return {"query": query, "query_tokens": terms, "corpus_size": len(corpus),
             "top_k": top_k, "filters": {"document_id": document_id, "document_title": document_title},
-            "results": results}
+            "coverage": coverage, "results": results}
 
 
 def load_report(dsn: str, query: str, *, username: str | None = None,
@@ -79,7 +81,8 @@ def format_report(report: dict) -> str:
              f"Corpus: {report['corpus_size']} chunks | Role: {report['role']} | Top-K: {report['top_k']}",
              "Filters: " + json.dumps(report["filters"], ensure_ascii=False),
              "Matched tokens: title/reference/heading/text overlap; NOT per-token score contributions.",
-             "Scores depend on the filtered corpus; zero/negative scores are valid."]
+             "Scores use OpenSearch global index statistics; access filters constrain hits.",
+             "Coverage: " + json.dumps(report.get("coverage", {}))]
     for row in report["results"]:
         lines.extend(["", f"Rank {row['rank']}", f"document: {row['title']}",
                       f"document_id: {row['document_id']}", f"chunk_id: {row['chunk_id']}",
@@ -110,7 +113,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("query")
     parser.add_argument("--top-k", type=positive_int, default=5)
     parser.add_argument("--document-id", help="Exact active revision ID, not logical ID")
-    parser.add_argument("--document-title", help="Case-insensitive title substring (narrows BM25 corpus)")
+    parser.add_argument("--document-title", help="Case-insensitive title substring (narrows allowed hits)")
     parser.add_argument("--kind", choices=("all", "imo", "manual"), default="all")
     parser.add_argument("--username", help="Simulate an existing active account's scope; default: guest")
     parser.add_argument("--preview-chars", type=nonnegative_int, default=240, help="0 hides body text")
@@ -130,6 +133,9 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     except psycopg.Error:
         print("Error: DB 조회 실패. 연결 설정·스키마·읽기 권한을 확인하세요. 접속 정보는 출력하지 않습니다.", file=sys.stderr)
+        return 1
+    except LexicalUnavailable as exc:
+        print(f"Error: {exc}", file=sys.stderr)
         return 1
     print(json.dumps(report, ensure_ascii=False, indent=2) if args.json else format_report(report))
     return 0

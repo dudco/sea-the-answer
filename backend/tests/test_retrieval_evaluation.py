@@ -134,6 +134,7 @@ def test_pilot_labels_resolve_against_the_production_chunker():
     assert any(r["source_file"] for r in corpus)
 
 
+@pytest.mark.usefixtures("prepared_lexical")
 def test_cli_writes_machine_readable_and_human_reports(snapshot, tmp_path):
     seed, cases, _ = snapshot
     output = tmp_path / "report"

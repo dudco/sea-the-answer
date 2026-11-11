@@ -1,5 +1,7 @@
 # plans — 작업 계획
 
+- [2026-11-05 문서별 벡터 준비 상태](2026-11-05-vector-readiness.md): 완료.
+
 - [2026-11-10 실제 로컬 LLM 연결·최종 답변 검증](2026-11-10-local-llm-answer-validation.md) — 완료. 연결·평가 완료, 전반적 생성 품질 미달.
 
 - [2026-11-10 질문창 중심 조건 보완](2026-11-10-conversation-first-queries.md) — 완료 (구현·검증·[PR #27](https://github.com/dudco/sea-the-answer/pull/27) 제출, 운영 반영 제외).
@@ -64,3 +66,5 @@
 - [자동 색인과 이미지 모델](2026-10-29-automatic-vector-indexing.md) — 완료
 
 - [통합 질문·언어·대화 이력 개선](2026-11-09-ui-conversations-language.md) — 완료 (대화 API·브라우저 회귀 검증, Docker 전체 스택 미실행).
+
+- [OpenSearch 전환](2026-11-11-opensearch-retrieval.md) — 완료

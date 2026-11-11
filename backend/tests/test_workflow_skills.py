@@ -259,6 +259,7 @@ def save_doc(db, name, text, scope="all"):
     )["id"]
 
 
+@pytest.mark.usefixtures("prepared_lexical")
 def test_postgres_selected_document_scope_and_permission_before_ranking(database):
     a = save_doc(
         database, "skill-allowed", "Fictionalquartz 선택 문서에 있는 절차입니다."
@@ -384,6 +385,7 @@ def test_postgres_report_is_preview_until_explicit_save_and_qa_is_owned(database
     )
 
 
+@pytest.mark.usefixtures("prepared_lexical")
 def test_postgres_evaluation_detects_forged_citation(database):
     a = save_doc(
         database, "skill-eval", "Fictionalquartz 인용을 검증하는 가상 문서입니다."

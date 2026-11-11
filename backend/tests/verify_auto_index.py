@@ -91,9 +91,41 @@ def main():
                 assert len(VectorIndex().present(store.search_candidates({"role": "guest"}))) == 3
                 store.delete_document(revised)
                 assert not store.search_candidates({"role": "guest"})
+            # One document is certified, another is still pending. Validate real
+            # CPU E5 + HTTP Chroma partial retrieval without any web query writes.
+            pending_ids = []
+            for suffix in ("ready", "waiting"):
+                data["document"]["id"] = "synthetic-partial-" + suffix + uuid4().hex
+                with Store(scoped) as store:
+                    pending_ids.append(store.save_document(data)["id"])
+            work()  # Process only the first document.
+            with Store(scoped) as store:
+                rows = store.search_candidates({"role": "guest"})
+                index = VectorIndex()
+                partial = search("선급 정지", rows, vector_index=index)
+                assert partial["effective_mode"] == "hybrid"
+                assert partial["coverage"]["status"] == "partial"
+                assert partial["coverage"]["ready_documents"] == 1
+                assert partial["coverage"]["allowed_documents"] == 2
+                lexical = search("선급 정지", rows, mode="bm25")
+                assert {row["document_id"] for row in lexical["results"]} == set(pending_ids)
+                vector = search("선급 정지", rows, mode="vector", vector_index=index)
+                assert {row["document_id"] for row in vector["results"]} == {pending_ids[0]}
+                assert index.verify(rows, apply=True)["failed_documents"] == 1
+                assert search("선급 정지", rows, vector_index=index)["coverage"]["status"] == "partial"
+                # Same certification path as manual CLI, even while a job is pending.
+                index.index(rows)
+                assert index.verify(rows, apply=True)["failed_documents"] == 0
+                assert search("선급 정지", rows, vector_index=index)["coverage"]["status"] == "full"
+                for mode in ("vector", "hybrid"):
+                    limited = search("선급 정지", rows[:1], mode=mode, vector_index=index,
+                                     complete_chunks=rows)
+                    assert limited["effective_mode"] == mode
+                    assert [row["id"] for row in limited["results"]] == [rows[0]["id"]]
             print(json.dumps({"automatic_index": True, "chunks": 3, "commit_visibility": True,
                 "worker_restart_idempotent": True, "vector_hybrid_page": 1,
                 "chroma_outage_retry": True, "concurrent_workers_revision": True,
+                "partial_hybrid": True, "manual_certification": True,
                 "baked_model": True, "offline_model": os.getenv("HF_HUB_OFFLINE") == "1"}))
         finally:
             admin.execute(sql.SQL("DROP SCHEMA {} CASCADE").format(sql.Identifier(schema)))

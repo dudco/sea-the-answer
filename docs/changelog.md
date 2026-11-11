@@ -2,6 +2,43 @@
 
 버전을 올리거나 검증을 수행하면 이 파일에 기록합니다. 검증은 **실제로 수행한 것만** 날짜·환경과 함께 적고, 수행하지 않은 범위는 따로 적습니다.
 
+## 2026-11-11 — 최신 main 통합 및 PR 충돌 해결
+
+- `feature/rag-vector`의 `6254da0`에 `upstream/main=e69e81d`를 통합했다. README·변경 이력·계획 목록의 충돌은 팀의 질문/LLM 안내와 RAG 검색 설명·기록을 함께 보존해 해결했다. 자동 병합된 구조 문서의 이전 fallback 설명도 현재 정책에 맞췄다. OpenSearch·벡터·RRF·청킹·문서 저장 핵심 코드는 기존 RAG 커밋 그대로 유지했다.
+- 신규 질문 API의 계산식 설명 검사는 실제 검색 경로를 사용하므로 기존 `prepared_lexical` 테스트 fixture를 연결했다. 첫 전체 검사는 1,148 passed / 4 skipped / 2 failed(신규 검사 색인 미준비, Windows 임시 Chroma의 HNSW 파일 읽기 오류)였고, 보완 후 관련 파일 38 passed 및 최종 전체 **1,150 passed / 4 skipped**, 311.62초를 확인했다. Chroma 오류는 관련/전체 재실행에서 재현되지 않아 운영 코드를 변경하지 않았다.
+- 전체 backend: 격리 PostgreSQL 17·OpenSearch 3.9.0에서 `HAEDAP_TEST_OPENSEARCH_URL`을 테스트 엔진으로 지정하고 `uv run --no-sync --project backend python .verification/bm25-db-tests.py -o faulthandler_timeout=60`. 4개 건너뜀은 `MARITIME_DATA_TEST_DATABASE_URL`의 별도 해사 자료가 필요한 기존 검사다. frontend `npm.cmd test` **36 passed**, Docker production 빌드 성공.
+- 별도 `haedap-rag-conflict-check` Compose 프로젝트의 빈 환경 파일·임시 PostgreSQL/OpenSearch에서 Docker E2E **38 passed (2.1분)**. `docker compose --env-file .verification/lexical-e2e.env -p haedap-rag-conflict-check --profile e2e build ...` 후 `up --no-build --force-recreate --exit-code-from e2e e2e`로 실행하고 같은 프로젝트만 `down --volumes`로 정리했다. 실제 앱 재시작·DB/PDF/벡터 색인·개인 .env 변경은 하지 않았다.
+
+## 2026-11-11 — OpenSearch/Nori 키워드 검색 전환
+
+- Python Kiwi/rank-bm25·청크 토큰 캐시를 OpenSearch 3.9.0/Nori 역인덱스로 대체했다. 기존 httpx를 사용하며 세 의존성(kiwipiepy, kiwipiepy-model, rank-bm25)을 잠금 환경에서 제거했다. Nori 플러그인은 전용 이미지 빌드에 포함한다. E5·Chroma·청킹·Python RRF·UI는 유지한다.
+- 독립 lexical outbox migration, 트랜잭션 변경 트리거, 세션 잠금/generation을 사용하는 worker, 초기 색인·검증·재색인/alias CLI를 추가했다. 문서 내용별 record와 문서 snapshot receipt로 준비 범위를 확인한다. 한 엔진만 가능하면 해당 결과, 둘 다 불가하면 SEARCH_UNAVAILABLE(503)이다. 최종 PG 재조회는 반환 청크 ID로 제한한다. alias 전환 후 현재 문서와 삭제 작업을 재요청하며 전환/PG enqueue 사이 실패는 명시적 enqueue/verify로 복구한다.
+- Nori 실제 검증에서 소수·조항 번호 분리, 사용자 사전 뒤 `이`/`의` 품사 오인, `연료의` 분해 차이를 확인했다. 식별자 keyword 필드·사용자 단어·제한적 불용어로 보완했다. 부정·수치·단위·`경우`는 유지한다. Lucene 양수 점수/ID 동점과 전역 통계가 이전 Python 결과와 달라 기존 테스트의 해당 가정을 수정했으며 권한·원문·인용 검사는 유지했다.
+- 격리 PostgreSQL 17 + OpenSearch 3.9.0/Nori로 backend 전체 **1,076 passed / 4 skipped**, 182.07초: `uv run --no-sync --project backend python .verification/bm25-db-tests.py`. 이 로컬 보조 실행기는 앱 `.env`를 읽지 않고 임시 PG 및 테스트 전용 OpenSearch 주소를 사용한다. 표준 재현은 테스트 전용 `HAEDAP_TEST_DATABASE_URL`·`HAEDAP_KNOWLEDGE_TEST_DATABASE_URL`·`HAEDAP_TEST_OPENSEARCH_URL`을 지정하고 backend에서 `uv run pytest`다. 4개는 `MARITIME_DATA_TEST_DATABASE_URL`의 별도 해사 실데이터가 필요한 기존 검사다. 이후 alias 재확인 단위 검사를 포함한 서비스 없는 검사 **11 passed**, `uv run --project backend pytest backend/tests/test_rag_lexical.py -k "not real"`.
+- 실제 Dockerfile로 backend(고정 E5 다운로드·검증 포함)와 OpenSearch/Nori 이미지 빌드 성공. 별도 프로젝트/빈 환경 파일을 사용한 `docker compose --env-file .verification/lexical-e2e.env -p haedap-lexical-e2e --profile e2e up --build --force-recreate --exit-code-from e2e e2e`에서 **31 passed**, 1.6분. 초기 lexical 작업 완료를 기다린 뒤 검색·인용·문서 CRUD·백업/복구를 검증했다. 첫 실행의 테스트 tmpfs YAML 따옴표 오류를 고친 뒤 전체 통과했다. 테스트 프로젝트만 `down --volumes`로 정리했다.
+- 최종 alias 전환 후 재확인·삭제 tombstone 재요청까지 포함한 추가 검사 **20 passed**, 8.93초: 같은 격리 실행기에 `tests/test_rag_lexical.py tests/test_rag_lexical_jobs.py`를 전달했다. 물리 삭제 시험은 기존 FK 정책에 따라 참조 행부터 삭제하며 스키마 제약을 완화하지 않았다. `git diff --check`도 통과했다.
+- 합성 6,000청크 비교(Windows Python ↔ Docker OpenSearch, PG 조회·LLM 제외, 각 1회 측정): 서로 다른 본문에서는 기존 첫 검색 **11.924초**, 반복 **5.236~6.126초**에서 OpenSearch 첫 검색 **0.343초**, 반복 **0.320~0.391초**로 감소했다. 사전 색인·완료 확인은 **15.184초**였다. 반대로 같은 본문이 반복돼 기존 캐시에 적중하는 자료는 기존 반복 **0.040~0.042초**, OpenSearch **0.365~0.463초**로 원격 엔진이 더 느렸다. 두 실험 모두 기존과 동일 corpus를 사용했으며 일반 부하 벤치마크로 보지 않는다.
+- 자원 비용: 기존 독립 비교 프로세스 RSS 약 **550MiB**, 시험 OpenSearch 컨테이너 사용량 약 **1.424GiB**(상한 2GiB), 측정 시 JVM 사용 힙 약 **261MiB**. 서로 다른 계층의 수치이며 OpenSearch 방식은 앱 프로세스 메모리도 별도로 필요하다. 같은 점수의 Top-5 ID는 입력 순서에서 ID 문자열 순서로 달라졌다. 실제 PDF 정답률 향상·대규모 동시 부하·장기 운영·외부 TLS/인증 배포는 검증하지 않았다. PG 전체 후보 읽기·해시·허용 ID 전달과 반환되지 않은 record의 명시적 무결성 감사 비용은 남는다. 실제 앱 DB/PDF/Chroma/질의 이력 변경·웹앱 재시작·커밋·푸시·머지는 하지 않았다.
+
+## 2026-11-10 — 최신 원본 main을 RAG 브랜치에 통합
+
+- `feature/rag-vector`의 `a0915ba`에 `upstream/main=3c469cb`를 머지했다. 충돌은 docs/README.md·plans/README.md·changelog.md 세 곳이며, 팀 변경과 RAG 기록을 모두 보존했다. RAG 전처리·BM25/캐시·벡터 준비 상태·worker·RRF·store/documents.py는 머지 전과 동일하다. 팀의 질문/대화·운항 자료 등록·MEPC 기본 문서·UI 변경을 유지한다.
+- 별도 임시 PostgreSQL 17에서 전체 backend **1,067 passed / 4 skipped**, 158.67초. `uv run --project backend python .verification/bm25-db-tests.py -p pytest_rag_probe`를 실행했고, 일반/MEPC 전용 테스트 DB 변수는 모두 같은 임시 클러스터를 가리킨다. 건너뛴 4개는 별도 해사 실데이터가 필요한 기존 검사다. MEPC 저장·기존 자료 보존·롤백 SQL 검사도 별도로 **3 passed**였다.
+- 첫 전체 실행은 **1,063 passed / 7 skipped / 1 failed**였다. Windows 임시 Chroma의 부분 검색 검사에서 vector_backend_failure가 발생했으나 단독 **1 passed** 및 최종 전체 재실행에서는 재현되지 않았다. 테스트 조건·운영 코드를 완화하지 않고 임시 진단 wrapper로 오류 유형만 확인하도록 했다. 최초 오류의 세부 원인은 확정하지 못했다.
+- frontend `npm.cmd test` **30 passed**, production 빌드 성공. 별도 `haedap-main-merge-check` 프로젝트의 Docker E2E **31 passed (2.1분), 종료 코드 0**. 동일한 고정 모델·잠금 의존성을 가진 기존 검증 이미지에 현재 api/tools/knowledge와 imports 경로를 반영한 임시 override를 사용했다. 모델 전체 재다운로드 빌드·실제 PDF 검색 정확도·장기 부하는 이번 범위가 아니다.
+- 임시 PostgreSQL과 E2E 컨테이너·네트워크를 정리했다. 실제 앱 DB·개인 .env·data/pdfs는 변경하지 않고 실제 앱 재시작 명령도 실행하지 않았다. 로컬 머지이며 푸시는 수행하지 않았다.
+
+## 2026-11-09 — 문서별 벡터 준비 상태와 부분 하이브리드 검색 (로컬·미출시)
+
+- [계획](plans/2026-11-05-vector-readiness.md)·[ADR 0022](adr/0022-document-vector-readiness.md)에 따라 문서 개정 ID·전체 청크 snapshot·모델 fingerprint·벡터 collection UUID에 연결된 완료 확인 정보를 Chroma에 저장한다. 기존 작업 done만으로 준비를 판단하지 않는다. PG 스키마·문서 저장 API·UI·BM25/RRF 공식·모델은 변경하지 않았다.
+- 검색의 전체 `present()`를 문서별 일괄 확인으로 교체했다. BM25는 전체 허용 후보, 벡터는 준비 문서만 참여한다. 기존 권한·활성 개정·상태·종류·선택 필터와 최종 PG 재확인을 유지한다. 검출된 손상·전체 장애·준비 문서 없음은 BM25 fallback하며, 비교 CLI는 full/partial/fallback과 허용·준비·제외 건수/사유를 표시한다.
+- worker는 최종 문서·작업 잠금과 generation/claim/내용 재확인 후 전체 record 검증을 거쳐 확인 정보를 기록한다. 수동 index/verify도 같은 검증을 사용한다. index의 부분 `--limit`은 문서 전체를 완료로 표시하지 않는다. 비교 CLI의 `--limit`은 같은 허용 DB snapshot의 전체 문서로 준비를 확인하되 선택한 청크만 검색한다. verify는 과거 완료 확인이 없는 대기 문서를 손상으로 표시하지 않는다.
+- `uv run --project backend python .verification/bm25-db-tests.py`로 별도 임시 PostgreSQL 17 클러스터에서 전체 backend **861 passed / 4 skipped**, 161.44초. 건너뛴 4건은 별도 해사 실데이터 DB가 필요한 기존 검사이며 실제 앱 DB를 연결하지 않았다. RAG 단위·임시 Chroma·PG 작업/권한/개정·CLI 회귀는 실행했다.
+- 같은 합성 corpus 1,000청크/10문서에서 record metadata get은 1,000건/4회 → 10건/1회, 준비 확인 구간은 86.73ms → 20.59ms(로컬 1회 측정). 별도 collection 조회도 필요하다. 전체 검색 시간·실제 서버 부하·정확도 개선 수치가 아니다.
+- Docker E2E **19 passed (1.4분), 종료 코드 0**. `docker compose --env-file .env.example -f compose.yaml -f .verification/readiness-cached-compose.yaml -p haedap-readiness-check --profile e2e up --build --force-recreate --exit-code-from e2e e2e`로 별도 tmpfs DB/비공개 테스트 스택을 사용했다. 임시 override는 이전 검증 이미지의 동일한 고정 모델/잠긴 의존성을 재사용하고 현재 `api/`를 COPY했다. 새 기본 이미지의 모델 다운로드가 장시간 대기해 해당 빌드는 중단했으며, 새 기본 이미지로의 전체 재다운로드 빌드 완료는 미검증이다. 프로젝트 Dockerfile/Compose는 바꾸지 않았다.
+- 같은 임시 override의 `e2e-backend`에서 `python tests/verify_auto_index.py`를 실행했다(테스트와 migrations 읽기 전용 마운트, `HAEDAP_CHROMA_HOST=chroma`, 별도 `e2e-db` 스키마). 이미지의 실제 CPU E5를 오프라인으로 사용해 커밋 후 색인·Chroma 장애/재시도·worker 재시작/동시 실행·개정·부분 hybrid·수동 완료 확인·부분 검색 범위를 검증했다. pytest의 결정적 모의 임베딩 검증과 구분한다. 최종 `down --volumes`는 해당 테스트 프로젝트에만 실행해 컨테이너·네트워크·합성 벡터 볼륨을 정리했다.
+- PG 전체 후보 읽기·내용 해시·허용 ID 전달 비용은 남는다. 반환되지 않은 record의 임의 손상은 명시적 verify가 필요하며, 부분 참여에서는 준비 문서만 두 검색에 참여해 순위가 달라질 수 있다. 실제 등록 PDF 정답률·대량 부하·장기 운영은 이번 검증 범위가 아니다. 실제 앱 DB·PDF·벡터·질의 이력은 변경하지 않고 커밋·푸시·머지는 수행하지 않았다.
+
 ## 2026-11-10 — 조건 양식 제거·현재 질문에 필요한 후보 제시
 
 - 통합 질문의 선박·기간 양식과 별도 문서 선택 패널, 답변의 조건 보완 양식을 제거했다. 문서 상세의 질문/점검표와 운항·보고서 관리 기능은 유지한다. 현재 되묻는 선박·문서·참고값 확인에만 후보 버튼을 표시하고 날짜/연도는 질문창으로 답한다. 최초 8개 이후 후보도 더 보기로 선택할 수 있다.

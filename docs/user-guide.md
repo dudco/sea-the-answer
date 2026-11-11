@@ -439,8 +439,10 @@ uv run --locked --project backend python -m scripts.load_capacity_candidates --c
 2026-09-30 로컬 적재 기록: MRV 80,552행 중 조회 대상 79,032행, Partial 1,520행은 보존하되 기본 조회에서 제외. 합성 Noon 4,380행·238항차이며 거리 0인 기록 557행은 연료량을 보존합니다. 이 수치는 저장소에 데이터가 포함되거나 이번 작업에서 DB를 재검증했다는 의미가 아닙니다. 다른 데이터 버전에서는 `scripts/verify_load.sql`의 기대값을 검토하세요.
 ## 로컬 벡터 색인 운영
 
+키워드 색인은 별도 OpenSearch와 `lexical-worker`가 관리합니다. 기존 문서 초기 색인·실패 재시도·검증·새 색인 전환은 [README](../README.md#bm25-개발자-디버그)를 따릅니다. 저장소마다 완료 상태가 독립적이며 `done`만으로 다른 저장소의 준비를 판단하지 않습니다.
+
 준비·실행 명령은 [README](../README.md#로컬-벡터하이브리드-검색)에 모았습니다.
-웹 검색은 BM25·벡터 결과를 RRF로 결합하며 준비 실패 시 BM25로 대체합니다. 방식별 비교는 개발자 CLI에서 합니다.
+웹 검색은 OpenSearch BM25·벡터 결과를 RRF로 결합합니다. 한 엔진만 준비되면 해당 결과를 사용하고 둘 다 불가하면 검색 불가를 알립니다. 방식별 비교는 개발자 CLI에서 합니다.
 문서 저장 후 자동 색인은 검색 요청과 독립적으로 실행됩니다.
 Docker 기본 실행에 Chroma와 `rag-worker`가 포함됩니다. 기존 문서 전체의 초기 색인은 명시적으로 요청해야 합니다.
 
@@ -462,14 +464,16 @@ Docker 기본 실행에 Chroma와 `rag-worker`가 포함됩니다. 기존 문서
   `--limit`은 소량 검증용이지 전체 준비 완료를 뜻하지 않습니다. 제한 corpus의 정상 결과를 전체 corpus의 준비 상태로 오해하지 마세요.
 - 삭제·활성 개정 변경·권한 변경은 매 검색의 PostgreSQL 필터가 즉시 반영합니다. 오래된 벡터가 남아도 허용 ID 밖에서는 검색하지 않습니다.
   DB와 Chroma는 동시 트랜잭션이 아닙니다. 색인 중 실패하면 완료한 배치는 남으며 같은 명령을 재실행합니다.
-- 모델·입력 형식·주요 라이브러리 버전이 바뀌면 별도 collection을 사용합니다. 새 버전의 모델 준비/색인이 완료되기 전에는 BM25 fallback합니다.
+- 모델·입력 형식·주요 라이브러리 버전이 바뀌면 별도 collection을 사용합니다. 새 버전의 모델 준비/색인이 완료되기 전에는 OpenSearch가 준비된 경우 BM25로 대체합니다.
   오래된 collection은 자동 삭제하지 않습니다. 저장 공간 정리가 필요하면 별도 새 Chroma 볼륨에 전체 재색인 후 설정을 전환하고,
   검증·롤백 기간 이후 예전 볼륨을 정리하세요. 앱 PostgreSQL 볼륨과 혼동하지 마세요.
 - 호스트 prepare 다운로드가 연결 재설정으로 실패하면 재실행하거나 `HF_HUB_DISABLE_XET=1`로 일반 HTTP 다운로드를 사용하세요.
   모델은 공개 모델이므로 기본 사용에 HF 토큰은 필수가 아닙니다. 비밀 토큰을 명령/문서에 붙이지 마세요.
 - vector/hybrid인데 CLI에 `effective_mode=bm25`라면 `fallback_reason`을 확인하세요.
   `model_not_prepared`: 호스트는 prepare, Docker는 이미지 재빌드/모델 경로 확인, `index_not_ready`: 해당 모델 collection 없음,
-  `index_incomplete_or_stale`: 현재 허용 청크 재색인 필요, `vector_backend_failure`: Chroma/모델/설정 점검.
+  `no_ready_documents`: 현재 문서의 완료 확인 정보가 없음(verify 또는 색인 필요),
+  `index_verification_failed`/`index_result_incomplete`/`index_result_stale`: 전체 verify 후 손상된 문서 복구,
+  `vector_backend_failure`: Chroma/모델/설정 점검 후 verify.
   모델·벡터 없이 첫 검색을 시도해도 자동 다운로드나 색인은 하지 않습니다.
 
 검색 결과 점수는 답변의 신뢰도가 아닙니다. 벡터는 관련 없는 질문에도 결과를 반환할 수 있고,
@@ -509,7 +513,11 @@ Compose는 60초 이후 강제 종료합니다. 완료되지 않은 작업은 �
 Chroma 장애 시 저장된 원문은 유지됩니다. 성공한 배치는 남고 재시도 때 건너뜁니다.
 대기 중 문서 개정/삭제는 실행 전·배치 사이·완료 전에 확인하며, 새 저장의 generation을 이전 작업이 완료 처리하지 못합니다.
 이전 벡터가 잠시 또는 계속 남아도 현재 PostgreSQL 권한·활성·종류·선택 문서 필터 밖에서는 반환하지 않습니다.
-현재 검색 범위에 미색인 청크가 하나라도 있으면 기존 전체 BM25 fallback 정책이 적용됩니다.
+벡터 미준비 문서도 OpenSearch 색인이 준비됐으면 BM25에는 참여합니다. 준비된 문서가 있으면 부분 하이브리드를 사용합니다.
+비교 CLI의 `coverage`에서 준비·제외 건수와 사유를 확인하세요. 벡터 준비 문서가 없거나 장애·손상이 검출되면 OpenSearch가 준비된 경우 BM25로 대체합니다.
+완료 확인 정보는 문서 내용·모델·collection UUID와 연결되어 collection 재생성 후에는 다시 검증해야 합니다.
+검색 중에는 반환 record만 검사합니다. 반환되지 않은 record 손상까지 확인하려면 README의 `verify` 명령을 사용하세요.
+부분 하이브리드는 준비 문서만 두 검색에 참여하므로 준비 전후 순위가 달라질 수 있습니다.
 
 ### 모델 볼륨에서 이미지 모델로 이전
 
