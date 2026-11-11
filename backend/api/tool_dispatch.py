@@ -71,6 +71,19 @@ def period_source(call, question, summary=None):
     return question, 'question'
 
 
+def resolve_ship(mention, question, ships):
+    """Complete a shortened ship name only when exactly one registered ship's full name is in the question.
+
+    Observed 2026-11-12: "가상 선박 해답 2호 · 왕복 시나리오" came back as "가상 선박 해답 2호".
+    """
+    value = compact(mention)
+    if not value or any(compact(s['name']) == value or compact(s.get('imo')) == value.removeprefix('imo')
+                        for s in ships):
+        return mention
+    found = [s for s in ships if value in compact(s['name']) and compact(s['name']) in compact(question)]
+    return found[0]['name'] if len(found) == 1 else mention
+
+
 def save(ctx, fields):
     q = ctx.body['question']
     language = ctx.body.get('language', 'auto')
@@ -116,7 +129,8 @@ def workflow(ctx, action, args, period=None):
             scope.periods = periods
         elif years and action in ('operations_summary', 'combined'):
             scope.periods = [intent.Period(start=f'{y}-01-01', end=f'{y}-12-31') for y in years]
-        ships = flow.explicit_ships(' '.join(args.ship_mentions), current, args.ship_mentions) if args.ship_mentions else []
+        names = [resolve_ship(m, q, current) for m in args.ship_mentions]
+        ships = flow.explicit_ships(' '.join(names), current, names) if names else []
         if ships:
             scope.ships = [flow.snapshot(s) for s in ships]
         else:
@@ -140,11 +154,12 @@ def workflow(ctx, action, args, period=None):
 
 
 def port_comparison(ctx, args):
+    ship = resolve_ship(args.ship_mention, ctx.body['question'], ctx.db.ships()) if args.ship_mention else ''
     conditions = {'filters': [{'kind': f.dimension, 'op': f.op, 'value_m': '%g' % f.value_m} for f in args.filters],
                   'sort': {'kind': args.sort.dimension, 'direction': args.sort.direction} if args.sort else None,
                   'status': args.status_filter}
     ports = ' '.join([*args.port_mentions, *([f'선석 {args.berth_mention}'] if args.berth_mention else [])])
-    return navigation_query.try_answer(ctx, planned={'ship_text': args.ship_mention, 'ports_text': ports,
+    return navigation_query.try_answer(ctx, planned={'ship_text': ship, 'ports_text': ports,
                                                     'conditions': conditions})
 
 
@@ -153,11 +168,13 @@ def run(ctx, call, period=None):
     if name in ACTIONS:
         return workflow(ctx, ACTIONS[name], args, period)
     if name == 'get_dataset_status':
-        scope_text = ' '.join([args.period_text if period is None else period, *args.ship_mentions]).strip()
+        names = [resolve_ship(m, ctx.body['question'], ctx.db.ships()) for m in args.ship_mentions]
+        scope_text = ' '.join([args.period_text if period is None else period, *names]).strip()
         fields = dataset_status.answer(ctx, list(args.datasets), scope_text=scope_text)
         return save(ctx, {'task': 'data_status', **fields})
     if name == 'get_ais_catalog_status':
-        return navigation_query.catalog_status_answer(ctx, ctx.body['question'], scope_text=' '.join(args.ship_mentions))
+        names = [resolve_ship(m, ctx.body['question'], ctx.db.ships()) for m in args.ship_mentions]
+        return navigation_query.catalog_status_answer(ctx, ctx.body['question'], scope_text=' '.join(names))
     if name == 'compare_port_conditions':
         return port_comparison(ctx, args)
     if name == 'calculate_emissions':
