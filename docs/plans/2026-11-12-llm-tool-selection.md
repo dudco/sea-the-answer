@@ -97,7 +97,8 @@
 | `calculate_emissions` | `fuel_t`, `factor`, `dwt`, `distance_nm` | 기존 수치 범위 |
 | `voyage_time` | `start`, `end`, `start_offset_min`, `end_offset_min` | 기존 형식·범위 |
 | `request_clarification` | `missing`(enum) | — |
-| `decline_request` | `reason`(enum: 실시간 위치·기상·예측·자료 변경·입항 승인·무관) | — |
+| `get_last_recorded_position` | `ship_mentions` ≤1 | 일별 기록의 마지막 위치, 예상 기록 표시(2026-11-12 추가) |
+| `decline_request` | `reason`(enum: 실시간 연속 추적·기상·예측·자료 변경·입항 승인·무관) | — |
 
 업무 스킬의 `report-draft`·`checklist`·`qa-evaluation`은 생성형 산출물이라 이번 범위에서 제외하고, 형식 통일 작업 때 다시 검토한다.
 

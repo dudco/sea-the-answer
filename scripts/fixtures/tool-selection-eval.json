@@ -237,14 +237,16 @@
   }
  },
  {
-  "id": "decline-position",
+  "id": "last-position",
   "question": "지금 해답호 위치가 어디야?",
   "expected": {
    "tools": [
-    "decline_request"
+    "get_last_recorded_position"
    ],
    "args": {
-    "reason": "realtime_position"
+    "ship_mentions": [
+     "해답호"
+    ]
    }
   }
  },
@@ -363,6 +365,18 @@
    "missing": [
     "reference_ack"
    ]
+  }
+ },
+ {
+  "id": "decline-tracking",
+  "question": "해답호 실시간으로 계속 추적해줘",
+  "expected": {
+   "tools": [
+    "decline_request"
+   ],
+   "args": {
+    "reason": "realtime_position"
+   }
   }
  }
 ]

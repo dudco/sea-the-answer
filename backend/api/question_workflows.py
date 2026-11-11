@@ -172,6 +172,7 @@ def run_tools(ctx,scope):
                         result=skills.operation_result(ctx.db,request)
                     rows.append({'kind':'operations_summary','label':f'{ship.name} · {period.start}~{period.end}','ship':ship.model_dump(),
                         'period':period.model_dump(),'status':'completed' if result['count'] else 'no_data','result':result})
+                    if result.get('projected_days') and 'PROJECTED_OPERATIONS' not in warnings:warnings.append('PROJECTED_OPERATIONS')
         if scope.action=='selected_document':
             request=skills.SkillRequest(skill='selected-document-answer',question=scope.document_question or ctx.body['question'],document_ids=scope.document_ids,use_model=ctx.body.get('mode')=='llm')
             evidence=skills.selected_evidence(ctx.db,ctx.user,request)

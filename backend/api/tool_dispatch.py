@@ -5,6 +5,7 @@ resolved here against registered records, dates by the existing date parser.
 """
 import json
 import re
+from datetime import date, datetime, timedelta, timezone
 from uuid import uuid4
 
 from psycopg.types.json import Jsonb
@@ -12,12 +13,13 @@ from pydantic import ValidationError
 
 from . import dataset_status, navigation_query, question_intent as intent, question_workflows as flow
 from .validation import utc_now
+from .workflow_skills import projected_record as projected
 
 ACTIONS = {'summarize_operations': 'operations_summary', 'calculate_mrv_reference': 'mrv_reference',
            'calculate_operations_and_mrv': 'combined', 'ask_selected_documents': 'selected_document'}
 CLARIFY = {'task': '확인할 작업', 'ships': '선박', 'periods': '기간', 'years': '보고 연도', 'documents': '문서', 'ports': '항구'}
 DECLINE = {
-    'realtime_position': '실시간 선박 위치·추적은 지원하지 않습니다. 등록된 AIS 수집본의 현황은 확인할 수 있습니다.',
+    'realtime_position': '실시간 연속 추적은 지원하지 않습니다. 운항기록에 저장된 마지막 위치는 선박 이름과 함께 물어 확인할 수 있습니다.',
     'weather': '기상·해상 상태 정보는 제공하지 않습니다.',
     'forecast': '미래 수치 예측은 제공하지 않습니다. 기록된 실적의 합계·비교는 확인할 수 있습니다.',
     'data_change': '질문으로 자료를 등록·수정·삭제할 수 없습니다. 해당 관리 화면을 사용해 주세요.',
@@ -153,6 +155,51 @@ def workflow(ctx, action, args, period=None):
         return flow.save(ctx, scope, 'needs_input', notice, flow.missing_fields(scope), routing, parent=parent)
 
 
+def end_of_day(record):
+    """Simulated records hold the position at 24:00 UTC of their date."""
+    return 'UTC 일자' in str(record.get('note') or '')
+
+
+def utc_today():
+    return datetime.now(timezone.utc).date().isoformat()
+
+
+def last_position(ctx, args):
+    q = ctx.body['question']
+    current = ctx.db.ships()
+    names = [resolve_ship(m, q, current) for m in args.ship_mentions]
+    try:
+        ships = flow.explicit_ships(' '.join(names), current, names) if names else []
+    except ValueError as exc:
+        return clarification(ctx, 'QUESTION_SCOPE_REQUIRED', str(exc)[:300])
+    if not ships:
+        selected = (ctx.body.get('context') or {}).get('ship')
+        ships = [s for s in current if s['id'] == selected]
+    if len(ships) != 1:
+        return clarification(ctx, 'QUESTION_SCOPE_REQUIRED', '위치를 확인할 선박 이름을 한 척만 알려 주세요.')
+    ship = ships[0]
+    today = utc_today()
+    # A 24:00 UTC snapshot dated today describes a moment that has not happened yet.
+    record = next((r for r in ctx.db.recent_positions(ship['id'], today)
+                   if not (end_of_day(r) and str(r['date']) >= today)), None)
+    if record is None:
+        return save(ctx, {'task': 'position', 'status': 'insufficient_evidence',
+                          'notice': f"{ship['name']}의 운항기록에 저장된 위치가 없습니다."})
+    day = str(record['date'])
+    at = (date.fromisoformat(day) + timedelta(days=1)).isoformat() + 'T00:00:00Z' if end_of_day(record) else None
+    expected = projected(record)
+    sample = bool(ship.get('sample') or record.get('sample'))
+    basis = f'{day} 24:00 UTC 기록' if at else f'{day} 운항기록'
+    notice = (('[예상 기록] ' if expected else '') + f"{ship['name']}의 마지막 기록 위치는 {record['position']}입니다. "
+              f"{basis} 기준이며 실시간 추적이 아닙니다." + (' 시뮬레이션 예상값입니다.' if expected else ''))
+    warnings = (['PROJECTED_OPERATIONS'] if expected else []) + (['SYNTHETIC_OR_SAMPLE_OPERATIONS'] if sample else [])
+    position = {'ship': {k: ship.get(k, '') for k in ('id', 'name', 'imo', 'sample')}, 'recordId': record['id'],
+                'version': record.get('version'), 'date': day, 'asOf': at, 'position': record['position'],
+                'note': str(record.get('note') or ''), 'voyage': str(record.get('voyage') or ''),
+                'projected': expected, 'sample': sample}
+    return save(ctx, {'task': 'position', 'notice': notice, 'warnings': warnings, 'position': position})
+
+
 def port_comparison(ctx, args):
     ship = resolve_ship(args.ship_mention, ctx.body['question'], ctx.db.ships()) if args.ship_mention else ''
     conditions = {'filters': [{'kind': f.dimension, 'op': f.op, 'value_m': '%g' % f.value_m} for f in args.filters],
@@ -175,6 +222,8 @@ def run(ctx, call, period=None):
     if name == 'get_ais_catalog_status':
         names = [resolve_ship(m, ctx.body['question'], ctx.db.ships()) for m in args.ship_mentions]
         return navigation_query.catalog_status_answer(ctx, ctx.body['question'], scope_text=' '.join(names))
+    if name == 'get_last_recorded_position':
+        return last_position(ctx, args)
     if name == 'compare_port_conditions':
         return port_comparison(ctx, args)
     if name == 'calculate_emissions':

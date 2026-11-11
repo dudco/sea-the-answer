@@ -3,6 +3,7 @@
 Model replies here are fixtures. They test server validation, not model accuracy.
 """
 import json
+import sys
 from copy import deepcopy
 from types import SimpleNamespace
 
@@ -476,3 +477,84 @@ def test_shortened_ship_name_is_completed_only_from_the_question():
     both = q + ' 그리고 가상 선박 해답호'
     assert tool_dispatch.resolve_ship('가상 선박', both, ships) == '가상 선박'
     assert tool_dispatch.resolve_ship('가상 선박 해답호', q, ships) == '가상 선박 해답호'
+
+
+# Recorded position ----------------------------------------------------------
+
+def sim_record(day, position, *, projected=False):
+    label = '가상 예상 운항' if projected else '가상 운항'
+    return {'id': f'a-{day}', 'version': 1, 'ship': 'a', 'date': day, 'position': position, 'sample': True,
+            'voyage': '모의 귀항 PSD→INC', 'note': f'{label} · 항해 중 · 홍해 · UTC 일자'}
+
+
+class PositionStore(Store):
+    def __init__(self, records):
+        super().__init__()
+        self.records = records
+        self.position_calls = []
+    def recent_positions(self, ship_id, through):
+        self.position_calls.append((ship_id, through))
+        rows = [r for r in self.records if r['ship'] == ship_id and r['date'] <= through and r.get('position')]
+        return deepcopy(sorted(rows, key=lambda r: r['date'], reverse=True)[:2])
+
+
+def ask_position(question, calls, monkeypatch, records, *, body=None):
+    store = PositionStore(records)
+    monkeypatch.setattr(router.tool_dispatch, 'utc_today', lambda: '2026-11-11')
+    monkeypatch.setattr(sys.modules[__name__], 'Store', lambda: store)
+    answer, _ = ask(question, calls, monkeypatch, body=body)
+    return answer, store
+
+
+def test_registry_offers_the_recorded_position_tool():
+    tool, args = registry.parse_call('get_last_recorded_position', '{"ship_mentions":["해답호"]}')
+    assert tool.kind == 'data' and args.ship_mentions == ['해답호']
+    with pytest.raises(registry.ToolCallError):
+        registry.parse_call('get_last_recorded_position', '{"ship_mentions":["해답호","별빛호"]}')
+
+
+def test_position_uses_the_last_finished_utc_day_and_labels_projected_records(monkeypatch):
+    records = [sim_record('2026-11-09', '29.9, 32.5'), sim_record('2026-11-10', '27.1, 34.0', projected=True),
+               sim_record('2026-11-11', '24.0, 36.2', projected=True)]
+    answer, store = ask_position('지금 해답호 위치가 어디야?',
+        [('get_last_recorded_position', {'ship_mentions': ['해답호']})], monkeypatch, records)
+    assert store.position_calls == [('a', '2026-11-11')]
+    # The 2026-11-11 record is the 24:00 UTC position of a day that is not over yet.
+    assert answer['task'] == 'position' and answer['position']['date'] == '2026-11-10'
+    assert answer['position']['asOf'] == '2026-11-11T00:00:00Z' and answer['position']['position'] == '27.1, 34.0'
+    assert answer['position']['projected'] is True and answer['notice'].startswith('[예상 기록]')
+    assert '실시간 추적이 아닙니다' in answer['notice']
+    assert answer['warnings'] == ['PROJECTED_OPERATIONS', 'SYNTHETIC_OR_SAMPLE_OPERATIONS']
+    assert [c['name'] for c in answer['routing']['toolCalls']] == ['search_documents', 'get_last_recorded_position']
+
+
+def test_position_of_a_completed_day_is_not_labelled_projected(monkeypatch):
+    answer, _ = ask_position('해답호 마지막 위치 알려줘',
+        [('get_last_recorded_position', {'ship_mentions': ['해답호']})], monkeypatch, [sim_record('2026-11-09', '29.9, 32.5')])
+    assert answer['position']['projected'] is False and not answer['notice'].startswith('[예상 기록]')
+    assert 'PROJECTED_OPERATIONS' not in answer['warnings']
+
+
+def test_position_asks_for_a_ship_and_reports_missing_records(monkeypatch):
+    answer, _ = ask_position('배 지금 어디야?', [('get_last_recorded_position', {})], monkeypatch, [])
+    assert answer['status'] == 'needs_input' and 'QUESTION_SCOPE_REQUIRED' in answer['warnings']
+    answer, _ = ask_position('별빛호 지금 어디야?',
+        [('get_last_recorded_position', {'ship_mentions': ['별빛호']})], monkeypatch, [sim_record('2026-11-09', '1, 2')])
+    assert answer['status'] == 'insufficient_evidence' and 'position' not in answer
+
+
+def test_operations_summary_counts_projected_days():
+    from api import workflow_skills as skills
+    rows = [{**sim_record(d, 'x', projected=p), 'fuel': 1, 'factor': 3.114, 'distance': 10, 'speed': 1}
+            for d, p in (('2026-11-09', False), ('2026-11-10', True))]
+    body = skills.SkillRequest(skill='operation-summary', question='q',
+                               context={'ship': 'a', 'from': '2026-11-09', 'to': '2026-11-10'})
+    raw = {'ship': {'id': 'a', 'name': '해답호', 'dwt': 1000}, 'from': '2026-11-09', 'to': '2026-11-10',
+           'rows': rows, 'sample': True}
+    assert skills.operation_result(None, body, summary=raw)['projected_days'] == 1
+
+
+def test_jeonnal_means_yesterday():
+    from api import question_intent as intent
+    _, periods = intent.date_slots('전날 이동 거리', today=__import__('datetime').date(2026, 11, 12))
+    assert [(p.start, p.end) for p in periods] == [('2026-11-11', '2026-11-11')]

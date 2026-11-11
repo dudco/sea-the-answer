@@ -72,6 +72,12 @@ class OperationStore:
                 errors.append({"row": index, "message": "이전 기록보다 연료가 2배 이상입니다. 점검 사유를 5자 이상 기록해 주세요."})
         return {"rows": valid, "errors": errors}
 
+    def recent_positions(self, ship_id: str, through: str) -> list[dict]:
+        """The two newest records on or before ``through`` (ISO date) that store a position."""
+        return [{**row["body"], "version": row["version"]} for row in self.all(
+            "SELECT body,version FROM operations WHERE ship=%s AND date<=%s AND COALESCE(body->>'position','')<>'' "
+            "ORDER BY date DESC,id DESC LIMIT 2", (ship_id, through))]
+
     def operation_summary(self, context: dict) -> dict:
         ship_id = context.get("ship")
         ship_row = self.one("SELECT body,version FROM ships WHERE id=%s", (ship_id,))

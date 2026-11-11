@@ -26,6 +26,7 @@
 | `get_dataset_status` | `datasets`: `ais`·`mrv`·`dwt`·`noon`·`operations`·`documents`·`ports` 1~7개(중복 불가), `ship_mentions` ≤1, `period_text` ≤100자 | 자료 종류 allowlist, 선박 대조, 기간 해석 | `dataset_status` |
 | `get_ais_catalog_status` | `ship_mentions` ≤1 | 선박 대조 | `navigation_query.catalog_status_answer` |
 | `summarize_operations` | `ship_mentions` ≤2, `period_text` ≤100자, `display`: `text`·`table`·`chart` | 기간 ≤2개·각 366일 이하, 표·차트는 1척·1기간 | `question_workflows` |
+| `get_last_recorded_position` | `ship_mentions` ≤1 | 선박 1척 대조(없으면 대화의 선박, 그래도 없으면 되묻기). 위치가 저장된 가장 최근 일별 기록을 고른다. 24:00 UTC 위치를 담는 가상 기록(`note`에 `UTC 일자`)은 그 UTC 날짜가 끝난 뒤에만 쓴다. `note`에 `예상 운항`·`입항 예정`이 있으면 `projected=true`, 안내 문구 앞에 `[예상 기록]`, `warnings`에 `PROJECTED_OPERATIONS`. 실시간 추적이 아님을 항상 밝힌다 | `OperationStore.recent_positions` → `task="position"`, `position` 필드 |
 | `calculate_mrv_reference` | `ship_mentions` ≤2, `period_text`(보고연도), `accept_reference`(bool) | 연도 ≤3, `accept_reference`는 직전 소유 답변이 참고값 동의를 물었을 때만 반영 | `question_workflows` |
 | `calculate_operations_and_mrv` | 위 두 도구의 인자 | 동일, 총 조회 ≤4회 | `question_workflows` |
 | `compare_port_conditions` | `ship_mention`, `port_mentions` ≤5, `berth_mention`, `filters` ≤3(`dimension`: `length`·`beam`·`draught`, `op`: `>=`·`<=`·`>`·`<`·`=`, `value_m` 0 초과 ≤1000), `sort`(`dimension`, `direction`: `asc`·`desc`), `status_filter` | 항구 카탈로그 이름 대조, 실제 MRV 연결 선박만 | `navigation_query` |
@@ -34,7 +35,9 @@
 | `voyage_time` | `start`, `end`(UTC ISO), `start_offset_min`, `end_offset_min` | 기존 형식·범위 | `ToolStore.voyage_time` |
 | `answer_from_documents` | 없음 | 데이터 도구 0개로 처리(검색은 이미 실행) | 문서 답변 생성 |
 | `request_clarification` | `missing`: `task`·`ships`·`periods`·`years`·`documents`·`ports` | — | 되묻기 저장 |
-| `decline_request` | `reason`: `realtime_position`·`weather`·`forecast`·`data_change`·`entry_approval`·`off_topic` | — | 지원 불가 안내 저장 |
+| `decline_request` | `reason`: `realtime_position`·`weather`·`forecast`·`data_change`·`entry_approval`·`off_topic` | `realtime_position`은 실시간 연속 추적 요청에만 쓴다(마지막 위치는 위 도구) | 지원 불가 안내 저장 |
+
+**예상 기록.** 왕복 시나리오처럼 미래 날짜가 미리 저장된 가상 기록은 위치 답변뿐 아니라 운항 합계에도 표시한다. `summarize_operations` 결과의 `projected_days`가 1 이상이면 답변 `warnings`에 `PROJECTED_OPERATIONS`를 넣고 화면에 "예상 기록 N일 포함"을 보인다. 날짜 해석기는 `전날`을 `어제`와 같이 해석한다.
 
 **모델이 낸 값의 처리.** 기간 표현(`period_text`)이 질문·이전 답변 요약에 그대로 있으면 그 표현을, 모델이 바꿔 쓴 표현이면 질문 원문을 기존 날짜 해석기로 해석하고 `toolCalls[].periodSource="question"`을 남긴다. 선박·문서·항구 표기는 질문 원문 또는 이전 답변 요약에 실제로 나온 문자열이어야 하며, 서버가 등록 목록·열람 권한·카탈로그와 대조해 식별자로 바꾼다. 일치하지 않으면 후보를 보여 주는 되묻기로 응답한다. 기간 표현은 `question_intent.date_slots`가 해석하며 실패하면 기간 되묻기로 응답한다. 모델은 SQL·식별자·수치 결과·답변 문장을 만들지 않는다.
 

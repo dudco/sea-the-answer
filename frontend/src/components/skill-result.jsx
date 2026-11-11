@@ -13,6 +13,7 @@ const labels = {
   MODEL_FAILED_EXTRACTIVE_FALLBACK: 'AI 응답을 검증하지 못해 원문 발췌를 사용했습니다.',
   SYNTHETIC_OR_SAMPLE_OPERATIONS: '가상 예시 운항자료가 포함되어 있습니다.',
   PERIOD_HAS_UNREPORTED_DAYS: '선택 기간에 기록이 없는 날짜가 있습니다.',
+  PROJECTED_OPERATIONS: '시뮬레이션 예상 기록이 포함되어 있습니다. 실제 운항 실적이 아닙니다.',
 };
 export function SkillResult({ answer, draftSaved }) {
   const r = answer?.result || {};
@@ -34,6 +35,7 @@ export function SkillResult({ answer, draftSaved }) {
         <div><dt><UiText>{"보고일 / 달력일"}</UiText></dt><dd>{r.reported_days} / {r.calendar_days}</dd></div>
       </dl>
       <p>{r.notice}</p>
+      {r.projected_days > 0 && <p className="notice warning" data-testid="projected-operations"><UiText>{`예상 기록 ${r.projected_days}일 포함 · 시뮬레이션 예상값이며 실제 운항 실적이 아닙니다.`}</UiText></p>}
       {r.sample && <p className="notice warning"><UiText>{"가상 예시 데이터가 포함되어 있습니다."}</UiText></p>}
     </>}
     {r.items && <>

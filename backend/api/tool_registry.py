@@ -45,6 +45,11 @@ class OperationsArgs(Args):
     display: Literal['text', 'table', 'chart'] = Field(default='text', description='표나 차트를 요청했을 때만 table 또는 chart.')
 
 
+class PositionArgs(Args):
+    ship_mentions: list[Mention] = Field(default_factory=list, max_length=1,
+        description='질문에 적힌 선박 이름이나 IMO 표기 그대로. 없으면 빈 배열.')
+
+
 class MrvArgs(Args):
     ship_mentions: list[Mention] = Field(default_factory=list, max_length=2,
         description='질문에 적힌 선박 이름이나 IMO 표기 그대로, 최대 2개.')
@@ -142,6 +147,8 @@ TOOLS = {tool.name: tool for tool in (
          DatasetStatusArgs, 'data'),
     Tool('get_ais_catalog_status', '연결된 AIS 수집본의 관측 수와 특정 선박의 관측 여부를 확인한다.', AisStatusArgs, 'data'),
     Tool('summarize_operations', '등록 선박의 기간별 일별 운항기록(연료·CO2·거리)을 합계·비교한다.', OperationsArgs, 'data'),
+    Tool('get_last_recorded_position', '등록 선박의 일별 운항기록에 저장된 가장 최근 위치(기록 일자 기준)를 알려준다. '
+         '"지금/현재 어디야", "마지막 위치"처럼 선박 위치를 물을 때 쓴다. 실시간 추적이 아니다.', PositionArgs, 'data'),
     Tool('calculate_mrv_reference', 'MRV 보고 자료로 연도별 참고 탄소집약도를 계산한다(여러 연도 비교 포함). '
          '탄소집약도·MRV 참고값만 물을 때 쓴다. 공식 CII 등급이 아니다.', MrvArgs, 'data'),
     Tool('calculate_operations_and_mrv', '일별 운항 실적(연료·CO2·거리 합계)과 MRV 참고 탄소집약도를 함께 계산한다. '
@@ -153,7 +160,7 @@ TOOLS = {tool.name: tool for tool in (
     Tool('calculate_emissions', '질문에 주어진 연료량·배출계수·DWT·거리로 배출량과 단순 집약도를 계산한다.', EmissionsArgs, 'data'),
     Tool('voyage_time', '질문에 주어진 UTC 시각과 선내 시차로 항해 시간을 계산한다.', VoyageTimeArgs, 'data'),
     Tool('request_clarification', '어떤 작업이나 대상(선박·기간·문서·항구)인지 불명확해 되물어야 할 때 쓴다.', ClarifyArgs, 'control'),
-    Tool('decline_request', '실시간 위치·기상·예측·자료 변경·입항 승인·해사 업무와 무관한 요청일 때 쓴다.', DeclineArgs, 'control'),
+    Tool('decline_request', '실시간 연속 추적·기상·예측·자료 변경·입항 승인·해사 업무와 무관한 요청일 때 쓴다.', DeclineArgs, 'control'),
 )}
 
 

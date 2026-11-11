@@ -95,7 +95,7 @@ export function createMainViews(model, views) {
       related = Array.isArray(a.relatedEvidence) ? a.relatedEvidence : [],
       relatedSources = [...new Set(related.map((e) => e.document_id))],
       // Clarifications, refusals and tool results speak through the notice; document answers through statements.
-      noticeIsAnswer = !a.statements.length || a.status === 'needs_input' || ['clarification', 'unsupported', 'tool'].includes(a.task),
+      noticeIsAnswer = !a.statements.length || a.status === 'needs_input' || ['clarification', 'unsupported', 'tool', 'position'].includes(a.task),
       showSources = !a.navigation && sources.length > 0,
       documentCount = (showSources ? sources.length : 0) + relatedSources.length;
     return (
@@ -108,7 +108,7 @@ export function createMainViews(model, views) {
                 ? '답변 근거를 확인해 주세요'
                 : '답변과 확인 근거'}</UiText>
           </h2>
-          {badge(a.task === 'clarification' ? '질문 확인' : a.task === 'unsupported' ? '지원 범위 밖' : a.task === 'tool' ? '계산 도구' : a.dataStatus ? '자료 등록 현황' : a.routing?.route==='clarify' ? '질문 확인' : a.navigation?.kind==='catalog-status' ? 'AIS 자료 현황' : a.navigation ? '항구 참조 비교' : a.workflow ? '업무 조회·계산' : a.skill ? '업무 스킬' : a.generation === 'llm' ? 'AI 초안' : '문서 검색', 'teal')}
+          {badge(a.task === 'clarification' ? '질문 확인' : a.task === 'unsupported' ? '지원 범위 밖' : a.task === 'position' ? (a.position?.projected ? '예상 기록 위치' : '기록 기준 위치') : a.task === 'tool' ? '계산 도구' : a.dataStatus ? '자료 등록 현황' : a.routing?.route==='clarify' ? '질문 확인' : a.navigation?.kind==='catalog-status' ? 'AIS 자료 현황' : a.navigation ? '항구 참조 비교' : a.workflow ? '업무 조회·계산' : a.skill ? '업무 스킬' : a.generation === 'llm' ? 'AI 초안' : '문서 검색', 'teal')}
         </div>
         {noticeIsAnswer && a.notice ? <p className={'small muted'}>{a.notice}</p> : ''}
         {/* Only model warnings mean the AI answer failed; e.g. OPERATIONS_CONTEXT_REQUIRED has its own notice. */}
@@ -149,7 +149,7 @@ export function createMainViews(model, views) {
           );
         })}
         <AnswerPresentation answer={a} presentation={presentation} />
-        <UiText>{!a.evidence.length && !['clarification', 'unsupported', 'tool'].includes(a.task) && !a.dataStatus && a.routing?.route!=='clarify' && !a.workflow && !a.skill && !a.operations?.count && presentation?.source !== 'operations'
+        <UiText>{!a.evidence.length && !['clarification', 'unsupported', 'tool', 'position'].includes(a.task) && !a.dataStatus && a.routing?.route!=='clarify' && !a.workflow && !a.skill && !a.operations?.count && presentation?.source !== 'operations'
           ? notice(
               en
                 ? 'Insufficient document evidence. Ask the responsible officer.'
@@ -185,6 +185,18 @@ export function createMainViews(model, views) {
           </React.Fragment>
         ))}
         </>}
+        {a.position && (
+          <div className={'card pad mt'} data-testid={'recorded-position'}>
+            <p>
+              {a.position.ship.name}{' · '}{a.position.position}
+            </p>
+            <p className={'small muted'}>
+              <UiText>{a.position.asOf ? `${a.position.date} 24:00 UTC 기록 기준` : `${a.position.date} 운항기록 기준`}</UiText>
+              {a.position.note ? <> · {a.position.note}</> : ''}
+            </p>
+            {a.position.projected && <p className={'notice warning'}><UiText>{'시뮬레이션 예상 기록입니다. 실제 운항 위치가 아닙니다.'}</UiText></p>}
+          </div>
+        )}
         {a.navigation && <NavigationAnswer answer={a} />}
         {a.dataStatus && <DatasetStatus value={a.dataStatus} />}
         {a.workflow && <QuestionWorkflow answer={a} />}

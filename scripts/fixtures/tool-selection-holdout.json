@@ -205,14 +205,16 @@
   }
  },
  {
-  "id": "h-decline-position",
+  "id": "h-last-position",
   "question": "해답호 지금 어디 있어?",
   "expected": {
    "tools": [
-    "decline_request"
+    "get_last_recorded_position"
    ],
    "args": {
-    "reason": "realtime_position"
+    "ship_mentions": [
+     "해답호"
+    ]
    }
   }
  },
@@ -275,6 +277,20 @@
    ],
    "periods": [],
    "missing": []
+  }
+ },
+ {
+  "id": "h-ops-yesterday-distance",
+  "question": "별빛호 전날 이동 거리 알려줘",
+  "expected": {
+   "tools": [
+    "summarize_operations"
+   ],
+   "args": {
+    "ship_mentions": [
+     "별빛호"
+    ]
+   }
   }
  }
 ]
