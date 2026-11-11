@@ -56,7 +56,7 @@ def same_document_request(q):
 
 
 def explanation_request(q):
-    return bool(re.search(r'문서만|문서\s*기반|정의|뜻|번역|절차|방법|어떻게|규정|지침|매뉴얼|기준|한도|함유량|계산식|산식|배출\s*계수|환산\s*계수|what is|how to|regulation|sulphur|sulfur|formula|emission factor',q,re.I))
+    return bool(re.search(r'문서만|문서\s*기반|정의|뜻|번역|절차|방법|어떻게|규정|지침|매뉴얼|기준|한도|함유량|계산식|산식|배출\s*계수|환산\s*계수|설명해|조치|대처|대응|what is|how to|what should|what must|explain|regulation|sulphur|sulfur|formula|emission factor',q,re.I))
 
 
 def definition_request(q):
@@ -69,7 +69,7 @@ def classify(q):
     if explanation_request(q):return 'unknown'
     metric_fragment=bool(re.search(r'연료\s*(?:사용량|소비량)|(?:CO[2₂]\s*)?배출량|항해\s*거리|운항\s*실적',q,re.I)
         and re.search(r'\d{4}|\d월|지난|이번|올해|작년|최근|오늘|어제|(?:은|는)\s*\?',q))
-    ask=metric_fragment or re.search(r'계산|분석|비교|요약|정리|조회|보여|알려|얼마|구해|왜|이유|원인|calculate|compare|show|summari|forecast|predict',q,re.I)
+    ask=metric_fragment or re.search(r'계산|분석|비교|요약|정리|조회|보여|알려|얼마|구해|합산|합계|집계|추이|왜|이유|원인|calculate|compare|show|summari|total|sum|forecast|predict',q,re.I)
     if not ask:return 'unknown'
     mrv=bool(re.search(r'mrv|cii|탄소\s*집약도|carbon intensity',q,re.I))
     ops=bool(re.search(r'연료|기름|배출량|(?<![a-z])co[2₂](?![a-z])|항해\s*거리|속력|속도|운항\s*(?:기록|실적|요약)|fuel|emissions?|distance|speed',q,re.I))
@@ -228,6 +228,8 @@ def plan_with_model(question, *, today, client=None):
     if len(model)>100 or any(c.isspace() for c in model):raise ValueError('Invalid planner model name')
     body={'model':model,'stream':False,'temperature':0,'max_tokens':64,
           'messages':[{'role':'system','content':instruction},{'role':'user','content':payload}]}
+    from .llm import request_options, decode_json
+    body.update(request_options(settings,planner=True))
     if settings.response_format=='json_schema':
         body['response_format']={'type':'json_schema','json_schema':{'name':'maritime_intent','strict':True,'schema':schema}}
     else:body['response_format']={'type':'json_object'}
@@ -239,7 +241,7 @@ def plan_with_model(question, *, today, client=None):
     content=message['message'].get('content')
     if message.get('finish_reason')!='stop' or message['message'].get('role')!='assistant' or message['message'].get('tool_calls') or message['message'].get('function_call') or message['message'].get('refusal') or not isinstance(content,str) or len(content.encode())>8192:
         raise ValueError('Invalid model plan')
-    proposed=json.loads(content)
+    proposed=decode_json(content)
     if not isinstance(proposed,dict) or set(proposed)!={'action'} or proposed['action'] not in actions:
         raise ValueError('Model proposed fields outside the closed action')
     years,periods=date_slots(question,today)

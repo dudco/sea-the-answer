@@ -5,6 +5,7 @@ from __future__ import annotations
 from copy import deepcopy
 import math
 import re
+from .validation import source_quote
 
 MAX_COLUMNS, MAX_ROWS, MAX_POINTS = 8, 50, 100
 MAX_CELL, MAX_TITLE, MAX_COLUMN, MAX_LABEL, MAX_UNIT = 1000, 200, 80, 80, 40
@@ -68,6 +69,7 @@ def _text(value: object, limit: int, *, blank: bool = False) -> bool:
 
 
 def validate_document_table(table: object, evidence: list[dict]) -> dict:
+    table=deepcopy(table)
     if (not isinstance(table, dict) or set(table) != {"type", "title", "columns", "rows"}
             or table["type"] != "table" or not _text(table["title"], MAX_TITLE)
             or not isinstance(table["columns"], list) or not 1 <= len(table["columns"]) <= MAX_COLUMNS
@@ -85,9 +87,11 @@ def validate_document_table(table: object, evidence: list[dict]) -> dict:
         for citation in row["citations"]:
             if (not isinstance(citation, dict) or set(citation) != {"chunkId", "quote"}
                     or not isinstance(citation["chunkId"], str) or citation["chunkId"] not in sources
-                    or not _text(citation["quote"], MAX_CELL) or len(citation["quote"].strip()) < 8
-                    or citation["quote"] not in sources[citation["chunkId"]]):
+                    or not _text(citation["quote"], MAX_CELL) or len(citation["quote"].strip()) < 8):
                 raise ValueError("Invalid document table citation")
+            exact=source_quote(citation['quote'],sources[citation['chunkId']],MAX_CELL)
+            if exact is None:raise ValueError('Invalid document table citation')
+            citation['quote']=exact
     return {**deepcopy(table), "source": "documents", "truncated": False, "totalRows": len(table["rows"])}
 
 

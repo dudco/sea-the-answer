@@ -13,7 +13,7 @@ def health(ctx):
             "csrfToken": security.csrf_token, "user": user, "setupRequired": False,
             "documents": len(ctx.db.allowed_document_ids(user)) if user["role"] != "guest" and not user.get("must_change_password") else 0,
             "version": config.VERSION, "authenticated": user["role"] in ("admin", "operator", "viewer"),
-            "publicAccess": False}
+            "publicAccess": False,"askTimeoutMs":config.ask_timeout_ms()}
 
 
 def tools(_ctx):

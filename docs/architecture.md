@@ -8,7 +8,9 @@
 
 ## 자연어 업무 실행 (2026-11-06)
 
-`routes/documents.ask`는 항구 질문 → `question_workflows.try_answer` → 기존 `db.answer` 순으로 실행한다. `question_intent`가 서버의 날짜·작업 규칙과 선택적 모델의 action 제안을 담당한다. 모델에는 질문/기준일과 폐쇄형 작업 후보만 전달하며 SQL·선박 ID·날짜·숫자 결과를 맡기지 않는다. `question_workflows`는 기존 `workflow_skills.operation_result`, `reference_intensity.calculate_reference`, 선택 문서 함수를 재사용한다. 새 범용 도구나 SQL 생성 경로는 없다.
+`routes/documents.ask`는 `question_router`를 통해 자료 현황 → 기존 항구/업무·대화 경로 → 명시 문서 설명 → 선택적 의미 분류 순으로 기존 기능에 연결한다. `dataset_intent`는 자료 이름·유무/출처 요청을 정의·계산·변경 요청과 구분하며, `dataset_status`는 실제 DB·참조 파일·현재 계정 문서에서 등록 현황을 읽는다. 규칙 경로가 놓친 AI 모드 질문에는 설정된 모델이 폐쇄형 action 하나만 제안한다(12초·32토큰 제한). 서버가 내부 route/dataset으로 변환한다. 실패·모호함·지원 밖 의도는 조건 확인으로 안내한다. 기존 원문 발췌의 일반 문서 질문은 유지한다.
+
+`question_intent`는 날짜·작업 규칙을, `question_workflows`는 기존 `workflow_skills.operation_result`, `reference_intensity.calculate_reference`, 선택 문서 실행을 담당한다. 의미 분류 결과도 기존 실행기의 선박·날짜·매핑·권한 검증을 통과해야 하며 두 번의 모델 계획을 연달아 호출하지 않는다. 모델에 SQL·선박 ID·날짜·숫자 결과를 맡기는 범용 실행 경로는 없다.
 
 현재 소유자의 지정 부모 응답만 후속 범위로 검증하고, 결과는 기존 queries/query_owner와 감사 기록에 저장한다. 매 요청 현재 도구를 다시 실행하며 반환 전 인증·선박 버전·매핑·문서 권한을 재확인한다. 브라우저의 기존 질문 화면은 `QuestionWorkflow`로 해석 범위·현재 필요한 후보·여러 도구 결과·산술 비교를 표시하고 새 질문 뒤 늦은 응답을 버린다. 운항 표·차트는 질문으로 확인한 한 선박·한 기간의 동일 DB 조회 결과를 집계와 표시 투영에 함께 사용한다. [입출력·제한](specs/integrated-answer.md#자연어-업무-실행-확장-2026-11-06-구현됨).
 

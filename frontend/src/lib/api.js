@@ -2,6 +2,7 @@ export function createApiClient() {
   // UI와 기존 서버 사이의 유일한 HTTP 경계. API 키는 서버에만 둡니다.
   let token = '';
   let identity = '';
+  let askTimeoutMs = 95000;
   class ApiError extends Error {
     constructor(message, code, status) {
       super(message);
@@ -30,7 +31,7 @@ export function createApiClient() {
               }),
         },
         body: body === undefined ? undefined : JSON.stringify(body),
-        signal: AbortSignal.timeout(path.startsWith('/api/operations/import/') ? 120000 : 32000),
+        signal: AbortSignal.timeout(path.startsWith('/api/operations/import/') ? 120000 : ['/api/ask','/api/skills/run'].includes(path) ? askTimeoutMs : 32000),
       });
     } catch (error) {
       throw new ApiError(
@@ -68,6 +69,7 @@ export function createApiClient() {
     const data = await request('/api/health', undefined, false);
     token = data.csrfToken;
     identity = data.user?.id || '';
+    askTimeoutMs=Number.isInteger(data.askTimeoutMs) && data.askTimeoutMs>=32000 && data.askTimeoutMs<=125000 ? data.askTimeoutMs : 95000;
     return data;
   }
   const api = {

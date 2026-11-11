@@ -9,6 +9,7 @@ from tools.port_reference import valid_imo
 from tools.navigation_references import catalog_summary
 from . import navigation_service as service
 from .question_intent import slot_reply
+from .dataset_intent import inventory_request
 from .navigation_intent import LIMIT, parse_conditions, select_results, describe
 from .errors import ApiError, require
 from .validation import text, utc_now
@@ -155,13 +156,7 @@ def select_ports(question, catalog):
 
 
 def is_ais_status_question(question):
-    if not isinstance(question,str) or not re.search(r'(?<![a-z])AIS(?![a-z])|선박\s*자동\s*식별',question,re.I):return False
-    if document_question(question) or re.search(r'뭐야|무엇|what\s+is',question,re.I):return False
-    if is_navigation_question(question) or re.search(r'등록해줘|삭제해줘|수정해줘|계산해줘|추적해줘',question):return False
-    if re.search(r'기능|사용법|원리|장치|수신기',question):return False
-    return bool(re.search(r'데이터|자료|정보|수집|등록|보유|확보|연결|현황|출처|snapshot|data|available|loaded',question,re.I)
-        and re.search(r'있|없|등록|보유|확보|연결|현황|출처|수집|언제|몇|얼마나|목록|실시간|최신|available|loaded|status|source|when|how many|\bhave\b|is there',question,re.I)
-        or re.fullmatch(r'\s*AIS\s*(?:가|는|도)?\s*(?:있어|있나요|있나|있니|없어|없나)[?.!]*\s*',question,re.I))
+    return isinstance(question,str) and not document_question(question) and not is_navigation_question(question) and inventory_request(question)==['ais']
 
 
 def catalog_status_answer(ctx,question):
@@ -202,7 +197,7 @@ def catalog_status_answer(ctx,question):
     return save_answer(ctx,question,language,navigation,notice)
 
 
-def try_answer(ctx):
+def try_answer(ctx, *, force=False):
     payload = ctx.body
     raw = payload.get("question")
     if payload.get('task','auto')=='auto' and is_ais_status_question(raw):
@@ -215,7 +210,7 @@ def try_answer(ctx):
     prior=owned_navigation(ctx.db,ctx.user['id'],context,payload.get('conversationId')) if candidate else None
     pending=bool(prior and prior.get('status')=='needs_ship' and isinstance(prior.get('request_question'),str) and
         slot_reply(raw,labels=[s['name'] for s in ctx.db.ships()],ships=True))
-    if not (is_navigation_question(raw) or followup or pending):return None
+    if not (force or is_navigation_question(raw) or followup or pending):return None
     question = text(raw, "질문", 2000)
     language = payload.get("language", "auto")
     require(language in ("auto", "ko", "en"), "언어를 확인해 주세요.")

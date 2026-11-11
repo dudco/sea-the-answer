@@ -39,6 +39,9 @@ class LLMSettings:
     response_format: str = "text"
     # Path appended to base_url; Mindlogic's documented gateway route ends with "/".
     completions_path: str = "/chat/completions"
+    generation_timeout: int = 60
+    max_tokens: int | None = None
+    enable_thinking: bool | None = None
 
 
 def llm_settings() -> LLMSettings | None:
@@ -74,7 +77,21 @@ def llm_settings() -> LLMSettings | None:
     key = (os.getenv(key_name) or "").strip() if key_name else ""
     if key_name and not key:
         return None
-    return LLMSettings(str(url).rstrip("/"), model, key, output_format, completions_path)
+    try:
+        timeout=int(os.getenv('LLM_GENERATION_TIMEOUT_SECONDS','').strip() or '60')
+        maximum=os.getenv('LLM_MAX_TOKENS','').strip()
+        maximum=int(maximum) if maximum else None
+        thinking=os.getenv('LLM_ENABLE_THINKING','').strip().lower()
+        if not 1<=timeout<=90 or maximum is not None and not 32<=maximum<=4096 or thinking not in ('','true','false'):
+            return None
+    except ValueError:return None
+    return LLMSettings(str(url).rstrip("/"), model, key, output_format, completions_path,
+                       timeout,maximum,None if not thinking else thinking=='true')
+
+
+def ask_timeout_ms():
+    settings=llm_settings()
+    return max(32000,(settings.generation_timeout+35)*1000) if settings else 32000
 
 
 def llm_configured() -> bool:

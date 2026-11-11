@@ -12,6 +12,10 @@ from test_question_workflows import DB,ask,mock_reference
     '실시간 AIS 데이터야?', 'AIS 정보는 최신이야?', 'AIS가 아니라 MRV의 뜻을 알려줘',
     'AIS 자료 확보되어 있나?', 'AIS 자료 출처 알려줘', 'Do we have AIS data?',
     'Is there AIS data?', 'AIS snapshot status', 'AIS 자료 목록 보여줘',
+    'AIS 관련 정보를 알려줘', 'AIS 정보 알려줘', 'ais 관련 데이터 보여 주세요',
+    'AIS에 대한 자료를 간단히 정리해 줘', '선박자동식별시스템 관련 정보 조회해줘',
+    'Tell me about AIS information', 'Please show me AIS data',
+    'Give me information about AIS', 'ＡＩＳ 관련 정보를 알려줘',
 ])
 def test_status_wording_uses_current_catalog_and_explanations_stay_documents(setup,question):
     ctx,loader,calculator=setup;ctx.body['question']=question
@@ -22,6 +26,19 @@ def test_status_wording_uses_current_catalog_and_explanations_stay_documents(set
         assert answer is not None and answer['navigation']['kind']=='catalog-status'
         assert answer['navigation']['catalog']['ais_observation_count']>0
     calculator.assert_not_called()
+
+
+@pytest.mark.parametrize('question',[
+    'AIS 관련 규정을 알려줘', 'AIS 정보 보호 절차를 설명해줘',
+    'AIS 수신기 오류 정보를 알려줘', 'AIS 자료 등록하는 방법은?',
+    'AIS 데이터 구조를 알려줘', 'AIS에 대해 알려줘',
+    'AIS 정보와 MRV 정보를 알려줘', 'Show me AIS receiver fault information',
+    'Tell me how to use AIS data', 'AIS 관련 정보 삭제해 줘',
+])
+def test_specific_ais_topics_are_not_replaced_with_snapshot_totals(setup,question):
+    ctx,loader,calculator=setup;ctx.body['question']=question
+    assert navigation.try_answer(ctx) is None
+    loader.assert_not_called();calculator.assert_not_called()
 
 
 @pytest.mark.parametrize('question',[
