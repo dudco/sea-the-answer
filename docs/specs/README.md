@@ -34,3 +34,5 @@
 | [`prepare-data.md`](prepare-data.md) | 실제·합성 구분, 출처·품질·집계 적격성, migration·적재 경계 | 구현됨 (데이터 계약 v1) |
 
 - [자동 색인 작업 계약](rag-index-jobs.md) — 구현됨
+
+- [OpenSearch 키워드 검색](rag-lexical.md) — 구현됨

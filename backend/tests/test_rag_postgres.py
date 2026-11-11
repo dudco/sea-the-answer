@@ -32,6 +32,7 @@ def post(client, headers, data):
     return client.post("/api/changes", headers=headers, json={"kind": "document.save", "payload": data})
 
 
+@pytest.mark.usefixtures("prepared_lexical")
 def test_real_document_upload_search_revision_access_and_rollback(database):
     client = TestClient(main.app, base_url="http://localhost:5173")
     guest = TestClient(main.app, base_url="http://localhost:5173")
@@ -101,6 +102,7 @@ def test_legacy_same_hash_keeps_existing_chunks(database):
     assert database.all("SELECT * FROM chunks WHERE document_id=%s ORDER BY position", (old_id,)) == before
 
 
+@pytest.mark.usefixtures("prepared_lexical")
 def test_metadata_api_preserves_document_chunks_pdf_and_rejects_stale_writes(database):
     client = TestClient(main.app, base_url="http://localhost:5173")
     guest = TestClient(main.app, base_url="http://localhost:5173")
@@ -147,6 +149,7 @@ def test_zero_chunks_leaves_previous_active_document_unchanged(database):
     assert database.all("SELECT * FROM chunks WHERE document_id=%s ORDER BY position", (current_id,)) == before
 
 
+@pytest.mark.usefixtures("prepared_lexical")
 def test_bm25_api_ranking_filters_and_original_citations(database):
     # This rollback-only schema's ranking fixture owns its corpus. Bundled
     # knowledge can legitimately contain "ballast" and grow between releases.

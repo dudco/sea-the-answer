@@ -29,6 +29,7 @@ class Index:
         self.stored = set()
         self.created = 0
         self.hook = None
+        self.verified = []
 
     def index(self, rows, batch_size):
         if self.hook:
@@ -36,6 +37,12 @@ class Index:
         keys = {content_hash(row) for row in rows}
         self.created += len(keys - self.stored)
         self.stored.update(keys)
+
+    def verify(self, rows, *, apply=False):
+        assert all(content_hash(row) in self.stored for row in rows)
+        if apply:
+            self.verified.append(jobs.snapshot_hash(rows))
+        return {"failed_documents": 0}
 
 
 @pytest.fixture
@@ -97,6 +104,7 @@ def test_commit_rollback_and_no_query_time_work(db_factory):
         assert not index.stored
     assert run(db_factory, index)
     assert state(db_factory, identity)["state"] == "done"
+    assert len(index.verified) == 1
     failed = payload()
     failed["document"]["id"] = "rollback-document"
     with pytest.raises(RuntimeError), db_factory() as writer:
@@ -197,6 +205,7 @@ def test_change_during_embedding_cannot_complete_new_generation(db_factory, chan
         assert state(db_factory, identity)["generation"] == 2
     else:
         assert state(db_factory, identity)["state"] == "cancelled"
+    assert not index.verified  # Superseded claims cannot publish a receipt.
     run(db_factory, index)
     if change == "retire":
         assert state(db_factory, identity)["state"] == "cancelled"
@@ -226,6 +235,7 @@ def test_preexisting_inactive_jobs_and_explicit_repair_only(db_factory):
     assert not index.stored
 
 
+@pytest.mark.usefixtures("prepared_lexical")
 def test_real_chroma_automatic_index_and_search(db_factory, tmp_path):
     import chromadb
     from chromadb.config import Settings
@@ -268,6 +278,7 @@ def test_retry_limit_and_current_model_only(db_factory):
         assert store.one("SELECT state FROM rag_index_jobs WHERE fingerprint='other-model'")["state"] == "pending"
 
 
+@pytest.mark.usefixtures("prepared_lexical")
 def test_worker_real_chroma_mixed_vectors_after_content_revision(db_factory, tmp_path):
     import chromadb
     from chromadb.config import Settings
@@ -363,3 +374,34 @@ def test_new_migration_down_up_and_foreign_key_cleanup(db_factory):
         store.run("DELETE FROM document_meta WHERE id=%s", (identity,))
         store.run("DELETE FROM documents WHERE id=%s", (identity,))
         assert store.one("SELECT count(*) AS n FROM rag_index_jobs")["n"] == 0
+
+
+def test_verification_failure_is_retryable_and_never_done(db_factory):
+    identity = saved(db_factory)
+    index = Index()
+    original = index.verify
+    index.verify = lambda *args, **kwargs: {"failed_documents": 1}
+    assert run(db_factory, index)
+    assert state(db_factory, identity)["state"] == "failed"
+    assert state(db_factory, identity)["error_code"] == "index_verification_failed"
+    assert not index.verified
+    index.verify = original
+    with db_factory() as store:
+        manage(store, "retry", apply=True)
+    assert run(db_factory, index)
+    assert state(db_factory, identity)["state"] == "done"
+    assert len(index.verified) == 1
+
+
+def test_content_change_without_enqueue_cannot_publish(db_factory):
+    identity = saved(db_factory)
+    index = Index()
+    def change_source():
+        index.hook = None
+        with db_factory() as store:
+            store.run("UPDATE documents SET reference='changed reference' WHERE id=%s", (identity,))
+    index.hook = change_source
+    assert run(db_factory, index)
+    assert state(db_factory, identity)["state"] == "failed"
+    assert state(db_factory, identity)["error_code"] == "document_changed"
+    assert not index.verified

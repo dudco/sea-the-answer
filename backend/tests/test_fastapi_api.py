@@ -228,6 +228,7 @@ def test_automatic_backup_lock_rejects_restore_without_changes_then_allows_retry
     assert client.get('/api/operations').status_code == 401
 
 
+@pytest.mark.usefixtures("prepared_lexical")
 def test_bilingual_document_search_matches_korean_evidence():
     store = object.__new__(Workspace)
     store.all = lambda _sql, _params=(): [{

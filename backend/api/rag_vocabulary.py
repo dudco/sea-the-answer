@@ -4,8 +4,9 @@ Aliases are search hints, not regulatory equivalence statements. Add narrow
 phrases plus positive/negative retrieval tests instead of broad substring rules.
 """
 
-# Keep maritime compounds intact before stripping particles/endings with Kiwi.
+# Nori user dictionary. Query synonyms are expanded once after Nori analysis.
 KOREAN_TERMS = (
+    "연료",
     "선급", "평형수", "선급정지", "선급등록", "강선규칙", "선급검사",
     "복원성", "감항성", "흘수", "재화중량", "총톤수", "황함유량",
     "탄소집약도", "배출규제해역", "구명설비", "소화설비", "갑판화물",
@@ -35,4 +36,6 @@ STOPWORDS = frozenset({
     "is", "are", "was", "were", "be", "been", "being", "this", "that", "these", "those",
     "what", "which", "how", "please",
     "및", "또는", "그리고", "대해", "대한", "해당", "무엇", "어떻게", "뭐",
+    # Nori user-dictionary boundaries can tag these particles as MM/NNG.
+    "이", "의",
 })

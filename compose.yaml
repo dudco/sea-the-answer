@@ -83,6 +83,7 @@ services:
       HAEDAP_EMBED_MODEL_DIR: /opt/models/e5-small
       HAEDAP_CHROMA_HOST: chroma
       HAEDAP_CHROMA_PORT: "8000"
+      HAEDAP_OPENSEARCH_URL: http://opensearch:9200
       HF_HUB_DISABLE_TELEMETRY: "1"
       HAEDAP_IMPORT_DIR: /data/imports
     volumes:
@@ -92,6 +93,34 @@ services:
       migrate: { condition: service_completed_successfully }
     restart: unless-stopped
     # Not published: only reachable through the frontend's /api proxy.
+    networks: [default, lexical]
+
+  lexical-worker:
+    build: { context: ./backend, target: prod }
+    command: ["python", "-m", "api.rag_lexical_worker", "run"]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-haedap}:${POSTGRES_PASSWORD:-haedap-local}@db:5432/${POSTGRES_DB:-haedap}
+      HAEDAP_OPENSEARCH_URL: http://opensearch:9200
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      opensearch: { condition: service_healthy }
+    healthcheck: { disable: true }
+    networks: [default, lexical]
+    stop_grace_period: 60s
+    restart: unless-stopped
+
+  # Trusted local development only: no public port, dedicated internal network.
+  opensearch:
+    build: { context: ./backend, dockerfile: Dockerfile.opensearch }
+    environment: &opensearch-env
+      discovery.type: single-node
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      DISABLE_SECURITY_PLUGIN: "true"
+      OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
+    mem_limit: 2g
+    networks: [lexical]
+    volumes: [lexical-data:/usr/share/opensearch/data]
+    restart: unless-stopped
 
   # Automatic indexing runs after document commits, independently of searches.
   rag-worker:
@@ -164,9 +193,40 @@ services:
       OPENAI_API_KEY: ""
       OPENAI_MODEL: ""
       HAEDAP_IMPORT_DIR: /data/imports
+      HAEDAP_OPENSEARCH_URL: http://e2e-opensearch:9200
     tmpfs: ["/data/backups:uid=10001,gid=10001", "/data/imports:uid=10001,gid=10001"]
     depends_on:
       e2e-migrate: { condition: service_completed_successfully }
+
+  e2e-opensearch:
+    build: { context: ./backend, dockerfile: Dockerfile.opensearch }
+    profiles: [e2e]
+    environment: *opensearch-env
+    mem_limit: 2g
+    tmpfs: ["/usr/share/opensearch/data:uid=1000,gid=1000"]
+
+  e2e-lexical-worker:
+    build: { context: ./backend, target: prod }
+    profiles: [e2e]
+    command: ["python", "-m", "api.rag_lexical_worker", "run"]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-haedap}:${POSTGRES_PASSWORD:-haedap-local}@e2e-db:5432/${POSTGRES_DB:-haedap}
+      HAEDAP_OPENSEARCH_URL: http://e2e-opensearch:9200
+    healthcheck: { disable: true }
+    depends_on:
+      e2e-lexical-ready: { condition: service_completed_successfully }
+
+  e2e-lexical-ready:
+    build: { context: ./backend, target: prod }
+    profiles: [e2e]
+    command: ["python", "-m", "api.rag_lexical_worker", "run", "--drain"]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-haedap}:${POSTGRES_PASSWORD:-haedap-local}@e2e-db:5432/${POSTGRES_DB:-haedap}
+      HAEDAP_OPENSEARCH_URL: http://e2e-opensearch:9200
+    healthcheck: { disable: true }
+    depends_on:
+      e2e-backend: { condition: service_healthy }
+      e2e-opensearch: { condition: service_healthy }
 
   e2e-frontend:
     build: { context: ./frontend, target: prod }
@@ -188,6 +248,7 @@ services:
       - ./e2e/playwright-report:/e2e/playwright-report
     depends_on:
       e2e-frontend: { condition: service_healthy }
+      e2e-lexical-worker: { condition: service_started }
 
 volumes:
   db-data:
@@ -195,3 +256,8 @@ volumes:
   maritime-imports:
   # Legacy rag-models volume is intentionally not mounted or deleted.
   rag-vectors:
+  lexical-data:
+
+networks:
+  lexical:
+    internal: true

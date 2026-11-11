@@ -54,7 +54,7 @@ def test_document_filters_narrow_corpus_before_scoring_and_are_combined():
     corpus = [chunk("a", "ballast", title="Alpha manual"), chunk("b", "ballast", title="Beta manual")]
     report = debug.build_report("ballast", corpus, document_title="ALPHA", document_id="doc-a")
     assert report["corpus_size"] == 1
-    assert report["results"][0]["score"] == retrieve("ballast", corpus[:1])[0]["score"] < 0
+    assert report["results"][0]["score"] == retrieve("ballast", corpus[:1])[0]["score"] > 0
     assert debug.build_report("ballast", corpus, document_title="Beta", document_id="doc-a")["results"] == []
     assert debug.build_report("ballast", corpus, document_id="missing")["corpus_size"] == 0
 
@@ -65,10 +65,10 @@ def test_no_matches(query, corpus):
     assert debug.build_report(query, corpus)["results"] == []
 
 
-def test_zero_score_ties_missing_page_and_preview_are_preserved():
+def test_scores_ties_missing_page_and_preview_are_preserved():
     corpus = [chunk("a", "ballast\ninspection", page=None), chunk("b", "galley checks")]
     row = debug.build_report("ballast", corpus, preview_chars=0)["results"][0]
-    assert row["score"] == 0 and row["page"] is None and row["preview"] == ""
+    assert row["score"] > 0 and row["page"] is None and row["preview"] == ""
     assert debug.build_report("ballast", corpus)["results"][0]["preview"] == "ballast inspection"
     tied = [chunk(str(i), "ballast") for i in range(7)]
     assert [r["chunk_id"] for r in debug.build_report("ballast", tied, top_k=3)["results"]] == ["0", "1", "2"]
@@ -153,3 +153,6 @@ def test_db_errors_do_not_leak_connection_details(monkeypatch, capsys):
     captured = capsys.readouterr()
     assert captured.out == "" and "secret" not in captured.err
     assert "DB 조회 실패" in captured.err
+
+
+pytestmark = pytest.mark.usefixtures("prepared_lexical")

@@ -86,26 +86,15 @@
 
 `scripts/debug_bm25.py`는 HTTP API가 아닌 DB 접근 권한이 있는 개발자용 도구다. `query`, `--top-k`(기본 5), `--document-id`(개정 ID 완전 일치), `--document-title`(대소문자 무시 부분 일치), `--kind`(all/imo/manual), `--username`(활성 계정의 열람 범위 시뮬레이션), `--preview-chars`(기본 240, 0이면 본문 생략), `--json`을 받는다. 기본 사용자는 guest이며 문서 필터를 권한 검사 대신 사용하지 않는다. username 옵션은 웹 로그인 기능이 아니며 DB 자격 증명을 보유한 운영자만 사용한다.
 
-DB의 READ ONLY 트랜잭션에서 기존 `DocumentStore.search_candidates`를 사용한다. 추가 문서 필터는 BM25 **이전**에 AND 조건으로 적용한다. 필터 후 corpus 크기·IDF가 달라지므로 필터 없는 UI 검색과 점수가 다를 수 있다. 같은 계정·kind·corpus·top-k이면 기존 `retrieve`의 순서·점수를 유지한다. 비활성 개정·상태 및 열람 불가 청크는 통계에서도 제외된다.
+DB READ ONLY 트랜잭션에서 `DocumentStore.search_candidates`로 권한·상태·kind·선택 문서를 제한한다. OpenSearch의 전역 통계를 사용하므로 후보 제한은 IDF 범위를 바꾸지 않는다. 같은 색인·질의·후보에서는 웹과 CLI가 같은 BM25 점수·정렬을 사용한다.
 
-출력은 query 원문, 실제 확장 query_tokens, corpus_size, 역할·필터·top_k, results의 rank/chunk_id/document_id/title/page/heading/score/matched_tokens/preview다. score는 rank-bm25의 최종 합산 float이며 반올림·재계산하지 않는다. matched_tokens는 실제 질의 토큰과 **title/reference/heading/text 전체** 토큰의 교집합(질의 순서)이지 토큰별 기여도가 아니다. 작은 corpus의 0·음수 점수도 유지한다. 빈 질의/토큰/corpus/불일치는 빈 results, 잘못된 옵션·DB 오류·없는/비활성 계정은 비정상 종료한다. DB 오류의 접속 문자열·자격 증명은 출력하지 않는다. bootstrap·저장·마이그레이션·질의 이력·LLM 호출은 하지 않는다.
+출력은 query, Nori 기반 확장 query_tokens, corpus_size, 역할·필터·top_k, coverage와 results(rank/chunk_id/document_id/title/page/heading/score/matched_tokens/preview)다. score는 OpenSearch의 최종 `_score`이고 matched_tokens는 실제 검색 필드 분석 토큰의 교집합이지 점수 기여도가 아니다. 본문 미리보기는 명시한 길이만 표시한다. 빈 질의·일치 없음은 빈 결과, 엔진 미준비·DB 오류·잘못된 계정은 안전한 오류로 종료한다. 초기화·색인·질의 이력·LLM 호출은 하지 않는다.
 
 #### 기존 API 검색 계약
 
-`POST /api/search`의 `{question, filter}` 및 `{evidence: [...]}`, `/api/ask`의 evidence 형식은 유지한다. 질문은 기존처럼 비어 있지 않은 최대 2,000자 문자열이며 `filter`는 `all|imo|manual`이다. `GET /api/health.retrieval`은 `hybrid-rrf` 정책을 반환한다.
+`POST /api/search`의 입력과 evidence 형식, `/api/ask` 인용 계약은 유지한다. 질문은 최대 2,000자, filter는 all/imo/manual이며 `health.retrieval`은 `hybrid-rrf` 정책이다. 검색 전에 현재 활성 개정·상태·열람 범위·종류·선택 문서를 제한하고, 검색 후 반환 ID만 PostgreSQL에서 다시 읽어 권한·내용을 확인한다.
 
-- `DocumentStore.search`가 PostgreSQL에서 현재 개정(`active=true`) 청크를 읽고, 문서 상태·사용자 scope·종류 필터를 적용한 뒤에만 검색 모듈에 전달한다. 제한된 청크는 BM25 통계에도 포함하지 않는다.
-- 업무 스킬의 선택 문서 검색은 `document_ids`의 활성·열람 권한을 검증하고 SQL에서 해당 ID로 후보를 제한한 뒤 같은 하이브리드 검색을 적용한다. 선택하지 않은 문서는 BM25 통계·벡터 후보에도 포함하지 않는다. CLI의 기본 전체 후보 조회도 공통 `search_candidates`를 사용한다.
-- `api/rag_retrieval.py`의 `retrieve(query, chunks, top_k=5)`는 원본 청크 필드와 숫자 `score`를 가진 사본 목록을 반환한다. `DocumentStore`는 내부 점수만 제거하여 기존 API 응답을 유지한다. 문서 ID·제목·페이지·heading·본문은 변경하지 않는다.
-- corpus는 `title`, `reference`, `heading`, `text`를 같은 비중으로 결합한다. Unicode NFKC 정규화·소문자화 후 한국어 구간을 Kiwi(`cong`)로 분석한다. 명사·수사·동사/형용사 어간·일반 부사·어근과 부정어 `않`을 남기고 조사·어미·접사 등을 제외한다. 인위적인 한글 2글자 분할은 하지 않는다. 영숫자와 소수·조항 번호(`0.50`, `901.1`, `5d`)는 정규식으로 보존한다. 원문·인용은 변경하지 않는다.
-- `api/rag_vocabulary.py`에 Kiwi 사용자 단어(선급·평형수 등), 제한된 해사 한영 별칭(중량 갑판화물/heavy deck cargo 등), 불용어를 둔다. 질문과 corpus에 같은 토큰화·불용어 규칙을 적용한다. 부정어, 수치, 단위, 적용·기준·검사 같은 도메인 단어는 불용어에서 제외한다. 사전 별칭은 검색 보조이며 규제상 동등성을 보장하지 않는다.
-- `경우`는 불용어로 제거하지 않으며 질문과 청크의 검색 토큰에 보존한다.
-- 질의의 처음 30개 형태소/영숫자 토큰에 토큰 또는 연속 구 단위로 일치하는 별칭 그룹을 한 번 확장하고 중복을 제거한다. 부분 문자열 및 확장어를 다시 확장하는 연쇄 처리는 하지 않는다. corpus에는 별칭을 추가하지 않고 반복 토큰을 빈도 계산에 유지한다. 영문 stemming은 없으며 필요한 복수형은 사전에 명시한다.
-- BM25Okapi 기본값(`k1=1.5`, `b=0.75`, `epsilon=0.25`)으로 계산한다. 일치 토큰이 없는 청크는 반환하지 않는다. 작은 corpus에서 0·음수 점수인 일치 청크도 반환하며 점수 내림차순, 동점은 입력 순서(DB의 문서 ID·청크 순서)를 유지한다. 점수는 확률이나 corpus 간 비교 가능한 신뢰도가 아니다.
-- 검색 모듈은 빈 질의·빈 corpus·토큰 없는 corpus에 빈 목록을 반환한다. `top_k`는 양의 정수여야 한다. 외부 API의 기존 빈 질문 검증은 그대로 유지한다.
-- 매 요청 허용 청크로 메모리 인덱스를 만들며 검색 변경에는 DB 재등록·재청킹이 필요 없다. Kiwi 분석기·고정 별칭과 내용 기반 문서 분석 토큰을 프로세스 내 재사용한다. 문서 토큰은 title/reference/heading/text 전체의 SHA-256을 키로 최대 2,048항목·계산 객체 크기 합 16MiB의 LRU에 보관하고 반환 시 목록을 복사한다. 원문 문자열·사용자 질의·권한·검색 결과·BM25 인덱스는 요청 간 캐시하지 않는다. 현재 DB 후보로 통계를 매번 다시 만들며 삭제·개정·권한·선택 범위 변경을 우회하지 않는다. 내용 변경·캐시 퇴출·프로세스 재시작 후 첫 분석 비용은 남는다. 어휘/분석 코드 변경 시 프로세스를 재시작한다. 토큰에도 민감한 단어가 남을 수 있고 크기 한도는 전체 RSS 상한이 아님은 [ADR 0017](../adr/0017-bounded-chunk-token-reuse.md)에 명시한다. 의미 검색·벡터 검색은 포함하지 않는다.
-
-웹의 벡터/RRF 결합과 fallback은 별도 [계약](rag-vector.md)을 따른다. 위 토큰화·점수·캐시 설명은 BM25 구성 요소에 한정된다.
+`rag_retrieval.retrieve`는 OpenSearch BM25, `rag_search.retrieve`는 웹 하이브리드 진입점이다. 원본 청크와 내부 score를 반환하고 API에서는 score를 제거한다. Nori·사전·전역 통계·준비 상태·독립 worker 및 장애 정책은 [키워드 검색 계약](rag-lexical.md), 벡터와 RRF는 [벡터 계약](rag-vector.md)을 따른다. 두 엔진 모두 사용할 수 없으면 `SEARCH_UNAVAILABLE`(503)을 반환한다.
 
 ## 4. 문서 등록 payload (`document.save`)
 
@@ -214,7 +203,7 @@ CLI 일괄 수집 명령은 제거되었습니다(Node 버전의 `npm run ingest
 
 웹은 BM25·벡터 후보를 RRF로 결합한다. `/search`와 답변 흐름의 evidence 필드/최종 Top-5는 유지한다.
 `health.retrieval`은 `hybrid-rrf` 정책이며 모델·색인의 준비 보증이 아니다.
-준비 실패 시 BM25 fallback하며 안전한 서버 경고/개발자 CLI에 표시한다. 방식별 비교는 개발자 CLI에서 수행한다.
+한 엔진만 준비되면 해당 방식으로 검색하고, 둘 다 불가하면 SEARCH_UNAVAILABLE(503)을 반환한다. 범위·사유는 안전한 로그/비교 CLI에 표시한다.
 구체적인 준비·권한·색인 누락·RRF 동작은 [rag-vector.md](rag-vector.md)를 따른다.
 
 ### 보고서 삭제 (2026-10-18)

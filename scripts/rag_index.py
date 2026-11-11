@@ -46,12 +46,13 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("prepare", help="Download pinned public model ONLY (about 0.5 GB)")
-    index = sub.add_parser("index", help="Default is dry-run; no vector/DB changes")
-    add_filters(index)
-    action = index.add_mutually_exclusive_group()
-    action.add_argument("--apply", action="store_true")
-    action.add_argument("--dry-run", action="store_true")
-    index.add_argument("--batch-size", type=positive_int, default=16)
+    for command in ("index", "verify"):
+        index = sub.add_parser(command, help="Index or audit; writes require --apply")
+        add_filters(index)
+        action = index.add_mutually_exclusive_group()
+        action.add_argument("--apply", action="store_true")
+        action.add_argument("--dry-run", action="store_true")
+        index.add_argument("--batch-size", type=positive_int, default=16)
     args = parser.parse_args(argv)
     load_dotenv(ROOT / ".env", override=False)
     start = perf_counter()
@@ -63,14 +64,22 @@ def main(argv=None) -> int:
         else:
             if args.batch_size > 256:
                 parser.error("batch-size must not exceed 256")
-            rows = load_candidates(os.getenv("DATABASE_URL", ""), **filter_options(args))
-            if not args.apply:
+            options = filter_options(args)
+            limit = options.pop("limit")
+            all_rows = load_candidates(os.getenv("DATABASE_URL", ""), **options)
+            rows = all_rows[:limit] if limit else all_rows
+            if args.command == "index" and not args.apply:
                 result = {"dry_run": True, "chunks": len(rows),
                           "documents": len({row["document_id"] for row in rows}),
                           "note": "No model/index initialization; no DB writes"}
             else:
                 from api.rag_vector import VectorIndex
-                result = VectorIndex(create=True).index(rows, args.batch_size)
+                from api.rag_readiness import complete_selection, documents
+                complete = complete_selection(all_rows, rows)
+                ix = VectorIndex(create=args.apply)
+                result = ix.index(rows, args.batch_size) if args.command == "index" else {}
+                result["verification"] = ix.verify(complete, apply=args.apply)
+                result["partial_documents_not_certified"] = len(documents(rows)) - len(documents(complete))
         result["seconds"] = round(perf_counter() - start, 3)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0

@@ -37,6 +37,9 @@ API payload/응답 계약은 바뀌지 않는다. 오류는 허용 목록의 고
 - Chroma에서 재사용한 ndarray와 새 임베딩 리스트는 upsert 직전에 모두 float 리스트로 통일한다.
   부분 완료 후 재시도에서도 배치 순서에 따라 입력 형식이 달라지지 않는다.
 - Chroma 성공 후 PG 완료 기록 실패는 재처리로 복구한다. 오래된 벡터는 검색 후보에 포함되지 않는다.
+- done은 작업 이력이다. 검색 준비는 [문서 snapshot별 확인 정보](rag-vector.md)로 별도 판정한다.
+  worker는 최종 문서/작업 잠금 아래 세대·claim·내용을 재확인하고 전체 record 검증 후 확인 정보를 기록한다.
+  검증 실패는 `index_verification_failed`로 재시도한다. 확인 정보 기록 후 PG 완료 실패도 같은 snapshot으로 멱등 복구한다.
 - 백업 JSON에 작업을 포함하지 않는다. 복원 후 enqueue --apply로 재구축한다. 실제 앱 기존 자료를 자동 소급 색인하지 않는다.
 - Docker 빌드에서 pinned 모델 다운로드/로컬 로딩 검증. 런타임은 /opt/models/e5-small, 다운로드 금지.
 

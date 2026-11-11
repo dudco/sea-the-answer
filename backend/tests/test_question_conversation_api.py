@@ -68,7 +68,7 @@ def test_ais_status_wording_in_ai_mode_uses_actual_http_catalog_reader_not_gener
     assert len(history)==len(questions)
 
 
-def test_formula_explanation_does_not_attach_unrequested_operation_totals(database):
+def test_formula_explanation_does_not_attach_unrequested_operation_totals(database, prepared_lexical):
     actor={'id':'fixture','role':'admin'}
     database.change(actor,'ship.save',{'id':'formula-ship','name':'계산 검증호','type':'Bulk carrier','dwt':1000,'sample':True})
     database.change(actor,'operation.save',{'ship':'formula-ship','date':'2025-01-01','fuel':2,'factor':3.114,

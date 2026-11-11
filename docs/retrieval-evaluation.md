@@ -2,17 +2,17 @@
 
 ## 목적과 준비물
 
-저장소 기본 문서의 질문–정답 인용을 이용해 현재 전처리와 BM25 검색을 재현한다. 기존 API·DB·화면을 변경하지 않으며, DB 주소·계정·LLM 키가 필요 없다. 준비물은 Python과 uv, 최초 의존성 설치용 인터넷이다. 설치 후 평가 자체는 네트워크를 호출하지 않는다.
+저장소 기본 문서의 질문–정답 인용을 이용해 현재 전처리와 BM25 검색을 재현한다. 기존 API·DB·화면을 변경하지 않으며, DB 주소·계정·LLM 키가 필요 없다. 준비물은 Python·uv와 격리 OpenSearch/Nori다. HAEDAP_OPENSEARCH_URL은 평가 전용 엔진을 가리켜야 한다. 앱 색인에 평가 자료를 섞지 않는다.
 
 저장소 최상위에서 실행한다.
 
 ```powershell
 cd backend
 uv sync --frozen
-uv run python ../scripts/evaluate_retrieval.py --repeats 3
+uv run python ../scripts/evaluate_retrieval.py --index haedap-lexical-eval-example --prepare --repeats 3
 ```
 
-기본 결과는 저장소의 `output/retrieval-evaluation/`에 생성된다. `output/`은 Git 제외다. 질문별 진행 상태를 표시하며 실제 검색 함수를 사용한다. 첫 검색은 문서를 분석하고, 이후 같은 내용의 청크 토큰은 크기 제한 메모리에서 재사용한다. 문서 규모와 캐시 수용 여부에 따라 실행 시간이 달라진다. 과거 측정 요약은 [변경 이력](changelog.md)에 남긴다. 이전 실행을 보존하려면 아래처럼 `--output`을 다르게 지정한다.
+기본 결과는 저장소의 `output/retrieval-evaluation/`에 생성된다. `output/`은 Git 제외다. 질문별 진행 상태를 표시하며 실제 검색 함수를 사용한다. --prepare는 새 평가 색인을 만들고 문서를 먼저 색인한다. 재실행 시 --prepare를 빼고 같은 --index를 사용한다. 검색은 이미 생성된 역인덱스를 사용하며 색인 준비 시간과 검색 지연은 구분한다. 과거 측정 요약은 [변경 이력](changelog.md)에 남긴다. 이전 실행을 보존하려면 아래처럼 `--output`을 다르게 지정한다.
 
 - `results.md`: 요약, 질문별 결과, 실패·부분 검색과 답 없는 질문 후보 목록, 재현 환경.
 - `results.json`: 정답 라벨, 검색 청크 ID·제목·페이지·점수, 반복 시간, 지표, 입력·코드 SHA-256 해시와 패키지 버전.

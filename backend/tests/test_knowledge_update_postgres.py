@@ -23,6 +23,7 @@ def dsn(monkeypatch):
     return value
 
 
+@pytest.mark.usefixtures("prepared_lexical")
 def test_new_database_full_registration_and_page_search(dsn):
     from api.rag_retrieval import retrieve
     with isolated_workspace(dsn) as (db, _):

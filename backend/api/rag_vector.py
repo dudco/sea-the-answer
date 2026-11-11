@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 
 from .rag_embeddings import (VectorUnavailable, content_hash, contract, digest, embedder, passage)
+from .rag_readiness import Readiness, coverage
 
 
 def client(*, create=False):
@@ -27,6 +28,7 @@ class VectorIndex:
         self.fingerprint = digest(self.contract)
         self.encoder = encoder
         db = db if db is not None else client(create=create)
+        self.db = db
         name = "haedap-" + self.fingerprint[:32]
         metadata = {"fingerprint": self.fingerprint, "contract": str(self.contract)}
         if create:
@@ -68,6 +70,10 @@ class VectorIndex:
                     found.add(identity)
         return found
 
+    def verify(self, complete_chunks: list[dict], *, apply=False) -> dict:
+        """Offline only: caller supplies FULL document snapshots, never a batch."""
+        return Readiness(self).verify(complete_chunks, apply=apply)
+
     def reusable_vectors(self, chunks: list[dict]) -> dict:
         keys = list({self.input_hash(row) for row in chunks})
         if not keys:
@@ -102,22 +108,30 @@ class VectorIndex:
             count += len(batch)
         return {"requested": len(chunks), "indexed": count, "already_current": len(existing)}
 
-    def search(self, query: str, chunks: list[dict], top_k: int = 5) -> list[dict]:
+    def search(self, query: str, chunks: list[dict], top_k: int = 5, *, diagnostics=None,
+               complete_chunks=None) -> list[dict]:
         if type(top_k) is not int or top_k < 1:
             raise ValueError("top_k must be positive")
         if not chunks or not query.strip():
             return []
-        allowed = {self.record_id(row): row for row in chunks}
-        if self.present(chunks) != set(allowed):
-            raise VectorUnavailable("index_incomplete_or_stale")
+        diagnostics = diagnostics if diagnostics is not None else coverage(chunks)
+        ready = Readiness(self).select(chunks, diagnostics, complete_chunks=complete_chunks)
+        allowed = {self.record_id(row): row for row in ready}
         vector = (self.encoder or embedder()).query(query)
         # Restrict BEFORE ranking, never global top-k followed by scope filtering.
         result = self.collection.query(query_embeddings=[vector], ids=list(allowed),
-            n_results=min(top_k, len(allowed)), include=["distances"])
+            n_results=min(top_k, len(allowed)), include=["distances", "metadatas"])
+        ids, distances, metas = result["ids"][0], result["distances"][0], result["metadatas"][0]
+        if len(ids) != min(top_k, len(allowed)) or len(set(ids)) != len(ids) or not len(ids) == len(distances) == len(metas):
+            raise VectorUnavailable("index_result_incomplete")
         rows = []
-        for identity, distance in zip(result["ids"][0], result["distances"][0]):
+        for identity, distance, meta in zip(ids, distances, metas):
             if identity not in allowed:
                 raise VectorUnavailable("index_scope_mismatch")
+            expected = self.metadata(allowed[identity])
+            legacy = {key: value for key, value in expected.items() if key != "embedding_input_hash"}
+            if meta != expected and meta != legacy:
+                raise VectorUnavailable("index_result_stale")
             rows.append({**allowed[identity], "score": 1.0 - float(distance)})
         positions = {row["id"]: i for i, row in enumerate(chunks)}
         return sorted(rows, key=lambda row: (-row["score"], positions[row["id"]]))

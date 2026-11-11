@@ -57,15 +57,16 @@ def test_real_chroma_upsert_scope_restart_stale(index):
     a, b = chunk("a"), chunk("b", "연료 황 함유량")
     assert ix.index([a, b])["indexed"] == 2
     assert ix.index([a, b])["already_current"] == 2
+    ix.verify([a, b], apply=True)
     restored = VectorIndex(db=db, encoder=Encoder(), model_contract={"test": 1})
     assert restored.search("선급", [a, b])[0]["id"] == "a"
     # The globally best 'a' is inaccessible: only b enters ANN query.
     assert [r["id"] for r in restored.search("선급", [b])] == ["b"]
     assert restored.search("", [a]) == []
     revised = {**a, "text": "선급 수정 본문"}
-    with pytest.raises(VectorUnavailable, match="stale"):
-        restored.search("선급", [revised, b])
+    assert [r["id"] for r in restored.search("선급", [revised, b])] == ["b"]
     assert restored.index([revised])["indexed"] == 1
+    restored.verify([revised], apply=True)
     assert restored.search("선급", [revised])[0]["text"] == revised["text"]
     # Old vectors may remain, but their IDs are outside the permitted query.
     assert restored.collection.count() == 3
@@ -77,8 +78,8 @@ def test_missing_and_mismatched_metadata(index):
     ix, _ = index
     a = chunk("a")
     ix.index([a])
-    with pytest.raises(VectorUnavailable):
-        ix.search("선급", [a, chunk("missing")])
+    ix.verify([a], apply=True)
+    assert [r["id"] for r in ix.search("선급", [a, chunk("missing")])] == ["a"]
     ix.collection.update(ids=[ix.record_id(a)], metadatas=[{"content_hash": "corrupt"}])
     with pytest.raises(VectorUnavailable):
         ix.search("선급", [a])
@@ -94,6 +95,7 @@ def test_reuse_embedding_input_across_revisions_but_keep_metadata(index):
     assert calls == [1]
     revised = chunk("revision", page=25, version="2", meta={"scope": "admin"})
     assert ix.index([revised])["indexed"] == 1
+    ix.verify([revised], apply=True)
     assert calls == [1]
     assert ix.search("선급", [revised])[0]["page"] == 25
     for field in ("title", "reference", "heading", "text"):
@@ -107,6 +109,7 @@ def test_legacy_vector_metadata_still_searchable(index):
     meta = {k: v for k, v in ix.metadata(a).items() if k != "embedding_input_hash"}
     ix.collection.upsert(ids=[ix.record_id(a)], embeddings=Encoder().documents([a]), metadatas=[meta])
     assert ix.index([a])["already_current"] == 1
+    ix.verify([a], apply=True)
     assert ix.search("선급", [a])[0]["id"] == "legacy"
 
 
@@ -127,6 +130,7 @@ def test_mixed_reused_and_new_vectors_resume_and_reindex(index, reuse_first):
     restored = VectorIndex(db=db, encoder=Encoder(), model_contract={"test": 1})
     assert restored.index([original, *batch])["already_current"] == 3
     assert restored.collection.count() == 3
+    restored.verify([original, *batch], apply=True)
     result = restored.search("선급", batch)
     assert result[0]["id"] == reused["id"]
     assert result[0]["page"] == 22
@@ -136,10 +140,10 @@ def test_dispatch_default_and_fallback(monkeypatch, caplog):
     import api.rag_search as module
     a = chunk("a")
     calls = []
-    monkeypatch.setattr(module, "bm25", lambda q, c, k: calls.append((q, c, k)) or [{**a, "score": 3}])
+    monkeypatch.setattr(module, "bm25", lambda q, c, k, **kwargs: calls.append((q, c, k)) or [{**a, "score": 3}])
     assert search("선급", [a], mode="bm25")["effective_mode"] == "bm25"
     class Failed:
-        def search(self, *args):
+        def search(self, *args, **kwargs):
             raise RuntimeError("secret body and DSN")
     result = search("선급", [a], mode="hybrid", vector_index=Failed())
     assert result["effective_mode"] == "bm25"
@@ -153,9 +157,9 @@ def test_hybrid_uses_sufficient_candidates(monkeypatch):
     import api.rag_search as module
     a, b = chunk("a"), chunk("b")
     sizes = []
-    monkeypatch.setattr(module, "bm25", lambda q, c, k: sizes.append(k) or [{**a, "score": 90}, {**b, "score": 1}])
+    monkeypatch.setattr(module, "bm25", lambda q, c, k, **kwargs: sizes.append(k) or [{**a, "score": 90}, {**b, "score": 1}])
     class V:
-        def search(self, q, rows, k):
+        def search(self, q, rows, k, **kwargs):
             sizes.append(k)
             return [{**b, "score": .9}, {**a, "score": .1}]
     result = search("query", [a, b], top_k=1, mode="hybrid", vector_index=V())
@@ -175,12 +179,12 @@ def test_web_hybrid_ignores_legacy_environment(monkeypatch, legacy_mode):
         monkeypatch.setenv("HAEDAP_RETRIEVAL_MODE", legacy_mode)
     rows = [chunk(str(i)) for i in range(7)]
     sizes = []
-    def lexical(q, candidates, k):
+    def lexical(q, candidates, k, **kwargs):
         assert candidates == rows
         sizes.append(k)
         return [{**row, "score": 100 - i} for i, row in enumerate(rows)]
     class V:
-        def search(self, q, candidates, k):
+        def search(self, q, candidates, k, **kwargs):
             assert candidates == rows
             sizes.append(k)
             return [{**row, "score": .9} for row in reversed(rows)]
@@ -192,7 +196,7 @@ def test_web_hybrid_ignores_legacy_environment(monkeypatch, legacy_mode):
     expected = rrf([lexical("query", rows, 30), V().search("query", rows, 30)])
     assert report["results"] == expected
     store = documents.DocumentStore()
-    monkeypatch.setattr(store, "search_candidates", lambda *args: rows)
+    monkeypatch.setattr(store, "search_candidates", lambda *args, **kwargs: rows)
     evidence = store.search({"role": "operator"}, "query")
     assert len(evidence) == 5
     assert [row["id"] for row in evidence] == [row["id"] for row in expected]
@@ -210,7 +214,7 @@ def test_store_final_current_db_recheck(monkeypatch, legacy_mode):
     a, b = chunk("a"), chunk("b")
     snapshots = iter([[a, b], [{**b, "text": "changed"}]])
     store = module.DocumentStore()
-    monkeypatch.setattr(store, "search_candidates", lambda *args: next(snapshots))
+    monkeypatch.setattr(store, "search_candidates", lambda *args, **kwargs: next(snapshots))
     monkeypatch.setattr(module, "retrieve", lambda q, rows, top_k: rows)
     assert store.search({"role": "guest"}, "선급") == []
 
@@ -231,9 +235,9 @@ def test_compare_explicit_modes_and_fallback(monkeypatch, caplog, reason):
     import api.rag_search as module
     monkeypatch.setenv("HAEDAP_RETRIEVAL_MODE", "bm25")
     a, b = chunk("a"), chunk("b")
-    monkeypatch.setattr(module, "bm25", lambda *args: [{**a, "score": 3}, {**b, "score": 1}])
+    monkeypatch.setattr(module, "bm25", lambda *args, **kwargs: [{**a, "score": 3}, {**b, "score": 1}])
     class V:
-        def search(self, *args):
+        def search(self, *args, **kwargs):
             if reason:
                 raise VectorUnavailable(reason)
             return [{**b, "score": .9}, {**a, "score": .1}]
@@ -308,10 +312,13 @@ def test_filter_before_dispatch(monkeypatch, mode):
         return [public, admin, deleted, retired, official]
     monkeypatch.setattr(store, "all", all_rows, raising=False)
     class V:
-        def search(self, q, rows, k):
+        def search(self, q, rows, k, **kwargs):
             assert [r["id"] for r in rows] == ["public"]
             return [{**rows[0], "score": .7}]
     monkeypatch.setattr(module, "retrieve", lambda q, rows, top_k: dispatch(q, rows, top_k, mode=mode, vector_index=V())["results"])
     result = store.search({"role": "guest"}, "선급 정지", kind="manual")
     assert [row["id"] for row in result] == ["public"]
     assert "score" not in result[0]
+
+
+pytestmark = pytest.mark.usefixtures("stub_lexical")
