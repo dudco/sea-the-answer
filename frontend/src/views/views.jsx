@@ -57,10 +57,6 @@ export function createMainViews(model, views) {
         ></UiControl>
         <div className={'composer-bottom'}>
           <div className={'query-controls'}>
-            <UiControl as="select" aria-label="답변 방식" data-field="mode" value={state.mode} onChange={noop}>
-              {state.health?.llmConfigured && <option value="llm"><UiText>{'AI 답변'}</UiText></option>}
-              <option value="extractive"><UiText>{'원문 발췌'}</UiText></option>
-            </UiControl>
             <UiControl as="select"
               aria-label={'검색 범위'}
               data-field={'filter'}
@@ -94,20 +90,31 @@ export function createMainViews(model, views) {
     if (!a) return '';
     const en = a.language === 'en',
       sources = [...new Set(a.evidence.map((e) => e.document_id))],
-      presentation = validatedPresentation(a.presentation, a.evidence);
+      presentation = validatedPresentation(a.presentation, a.evidence),
+      toolCalls = Array.isArray(a.routing?.toolCalls) ? a.routing.toolCalls : [],
+      related = Array.isArray(a.relatedEvidence) ? a.relatedEvidence : [],
+      relatedSources = [...new Set(related.map((e) => e.document_id))],
+      // Clarifications, refusals and tool results speak through the notice; document answers through statements.
+      // A finished data lookup answers with its result; its generic notice belongs behind the toggle.
+      workflowDone = !!a.workflow && ['completed', 'partial'].includes(a.status),
+      noticeIsAnswer = !workflowDone && (!a.statements.length || a.status === 'needs_input' || ['clarification', 'unsupported', 'tool', 'position'].includes(a.task)),
+      // A requested chart/table is the whole answer; the summary and per-period results move behind the toggle.
+      presentationIsAnswer = !!presentation,
+      showSources = !a.navigation && sources.length > 0,
+      documentCount = (showSources ? sources.length : 0) + relatedSources.length;
     return (
       <article className={'card answer'} data-answer-id={a.id}>
         <div className={'inline wrap'}>
-          <h2>
+          <h2 className={'a11y-hidden'}>
             <UiText>{en
               ? 'Answer & evidence'
               : a.status === 'insufficient_evidence'
                 ? '답변 근거를 확인해 주세요'
                 : '답변과 확인 근거'}</UiText>
           </h2>
-          {badge(a.dataStatus ? '자료 등록 현황' : a.routing?.route==='clarify' ? '질문 확인' : a.navigation?.kind==='catalog-status' ? 'AIS 자료 현황' : a.navigation ? '항구 참조 비교' : a.workflow ? '업무 조회·계산' : a.skill ? '업무 스킬' : a.generation === 'llm' ? 'AI 초안' : '문서 검색', 'teal')}
+          {badge(a.task === 'clarification' ? '질문 확인' : a.task === 'unsupported' ? '지원 범위 밖' : a.task === 'position' ? (a.position?.projected ? '예상 기록 위치' : '기록 기준 위치') : a.task === 'tool' ? '계산 도구' : a.dataStatus ? '자료 등록 현황' : a.routing?.route==='clarify' ? '질문 확인' : a.navigation?.kind==='catalog-status' ? 'AIS 자료 현황' : a.navigation ? '항구 참조 비교' : a.workflow ? '업무 조회·계산' : a.skill ? '업무 스킬' : a.generation === 'llm' ? 'AI 초안' : '문서 검색', 'teal')}
         </div>
-        <p className={'small muted'}>{a.notice}</p>
+        {noticeIsAnswer && a.notice ? <p className={'small muted'}>{a.notice}</p> : ''}
         {/* Only model warnings mean the AI answer failed; e.g. OPERATIONS_CONTEXT_REQUIRED has its own notice. */}
         <UiText>{a.warnings.some((w) => w === 'MODEL_FAILED_EXTRACTIVE_FALLBACK' || w === 'MODEL_NOT_CONFIGURED')
           ? notice(
@@ -146,7 +153,7 @@ export function createMainViews(model, views) {
           );
         })}
         <AnswerPresentation answer={a} presentation={presentation} />
-        <UiText>{!a.evidence.length && !a.dataStatus && a.routing?.route!=='clarify' && !a.workflow && !a.skill && !a.operations?.count && presentation?.source !== 'operations'
+        <UiText>{!a.evidence.length && !['clarification', 'unsupported', 'tool', 'position'].includes(a.task) && !a.dataStatus && a.routing?.route!=='clarify' && !a.workflow && !a.skill && !a.operations?.count && presentation?.source !== 'operations'
           ? notice(
               en
                 ? 'Insufficient document evidence. Ask the responsible officer.'
@@ -154,46 +161,106 @@ export function createMainViews(model, views) {
               'warning',
             )
           : ''}</UiText>
-        {operationAnswer(a)}
+        {presentationIsAnswer && a.warnings.includes('PROJECTED_OPERATIONS') ? <p className={'small muted'}><UiText>{'시뮬레이션 예상 기록이 포함되어 있습니다. 실제 운항 실적이 아닙니다.'}</UiText></p> : ''}
+        {!presentationIsAnswer && operationAnswer(a)}
         {a.skill && <><h3>{a.skill.name}</h3><SkillResult answer={a} /></>}
         {a.toolRuns.map((t, __index) => (
           <React.Fragment key={__index}>
             {
               <div className={'card pad mt'}>
-                {'CO₂ '}
-                {n(t.emission, 3)}
-                <UiText>{' t · 집약도 '}</UiText>
-                {n(t.intensity, 3)}
-                {' gCO₂/(DWT·nm)'}
+                {t.name === 'voyage_time' ? (
+                  <>
+                    <UiText>{en ? 'Elapsed ' : '경과 시간 '}</UiText>
+                    {n(t.elapsedHours, 2)}
+                    <UiText>{en ? ' h · ship clock ' : ' 시간 · 선내 시각 기준 '}</UiText>
+                    {n(t.clockHours, 2)}
+                    <UiText>{en ? ' h' : ' 시간'}</UiText>
+                  </>
+                ) : (
+                  <>
+                    {'CO₂ '}
+                    {n(t.emission, 3)}
+                    <UiText>{' t · 집약도 '}</UiText>
+                    {n(t.intensity, 3)}
+                    {' gCO₂/(DWT·nm)'}
+                  </>
+                )}
               </div>
             }
           </React.Fragment>
         ))}
-        {sources.length ? (
-          <div className={'answer-sources'}>
-            <h3><UiText>{en ? 'Sources' : '확인한 근거'}</UiText></h3>
-            {sources.map((id, __index) => (
-              <React.Fragment key={__index}>
-                {sourceCard(id, a.evidence.find((e) => e.document_id === id)?.id)}
-              </React.Fragment>
-            ))}
-          </div>
-        ) : (
-          ''
-        )}
         </>}
+        {a.position && (
+          <div className={'card pad mt'} data-testid={'recorded-position'}>
+            <p>
+              {a.position.ship.name}{' · '}{a.position.position}
+            </p>
+            <p className={'small muted'}>
+              <UiText>{a.position.asOf ? `${a.position.date} 24:00 UTC 기록 기준` : `${a.position.date} 운항기록 기준`}</UiText>
+              {a.position.note ? <> · {a.position.note}</> : ''}
+            </p>
+            {a.position.projected && <p className={'notice warning'}><UiText>{'시뮬레이션 예상 기록입니다. 실제 운항 위치가 아닙니다.'}</UiText></p>}
+          </div>
+        )}
         {a.navigation && <NavigationAnswer answer={a} />}
         {a.dataStatus && <DatasetStatus value={a.dataStatus} />}
-        {a.workflow && <QuestionWorkflow answer={a} />}
-        <div className={'answer-actions'}>
-          <UiText>{canWrite() && (a.statements.length || a.operations?.count || a.toolRuns.length)
-            ? btn(en ? 'Add to report' : '보고서에 담기', 'answerReport', 'primary', 'edit')
-            : ''}</UiText>
-          <UiText>{a.reportSuggested && canWrite()
-            ? btn(en ? 'Choose report template' : '보고서 양식 선택', 'reportList', '', 'file')
-            : ''}</UiText>
-        </div>
-        <SkillsPanel group="evaluation" targetAnswerId={a.id} />
+        {a.workflow && <QuestionWorkflow answer={a} part={'answer'} results={!presentationIsAnswer} />}
+        <details className={'answer-details'} data-testid={'answer-details'}>
+          <summary>
+            <UiText>{en ? 'Evidence and details' : '근거·상세 정보'}</UiText>
+            {documentCount ? <UiText>{en ? ` · ${documentCount} documents` : ` · 문서 ${documentCount}개`}</UiText> : ''}
+          </summary>
+          {!noticeIsAnswer && a.notice ? <p className={'small muted'}>{a.notice}</p> : ''}
+          {a.workflow && <QuestionWorkflow answer={a} part={'details'} results={presentationIsAnswer} />}
+          {presentationIsAnswer && operationAnswer(a)}
+          {/* Tools the server ran after validating the model's choice (ADR 0024); not live progress. */}
+          {toolCalls.length ? (
+            <p className={'small muted tool-calls'} data-testid={'tool-calls'}>
+              <UiText>{en ? 'Tools used: ' : '사용한 도구: '}</UiText>
+              {toolCalls.map((t, __index) => (
+                <React.Fragment key={__index}>
+                  {__index ? ' → ' : ''}
+                  <code className={t.status === 'needs_input' || t.status === 'unsupported' ? 'muted' : ''}>{String(t.name)}</code>
+                </React.Fragment>
+              ))}
+            </p>
+          ) : (
+            ''
+          )}
+          {showSources ? (
+            <div className={'answer-sources'}>
+              <h3><UiText>{en ? 'Sources' : '확인한 근거'}</UiText></h3>
+              {sources.map((id, __index) => (
+                <React.Fragment key={__index}>
+                  {sourceCard(id, a.evidence.find((e) => e.document_id === id)?.id)}
+                </React.Fragment>
+              ))}
+            </div>
+          ) : (
+            ''
+          )}
+          {relatedSources.length ? (
+            <div className={'answer-sources'}>
+              <h3><UiText>{en ? 'Related documents' : '관련 문서'}</UiText></h3>
+              {relatedSources.map((id, __index) => (
+                <React.Fragment key={__index}>
+                  {sourceCard(id, related.find((e) => e.document_id === id)?.id)}
+                </React.Fragment>
+              ))}
+            </div>
+          ) : (
+            ''
+          )}
+          <div className={'answer-actions'}>
+            <UiText>{canWrite() && (a.statements.length || a.operations?.count || a.toolRuns.length)
+              ? btn(en ? 'Add to report' : '보고서에 담기', 'answerReport', 'primary', 'edit')
+              : ''}</UiText>
+            <UiText>{a.reportSuggested && canWrite()
+              ? btn(en ? 'Choose report template' : '보고서 양식 선택', 'reportList', '', 'file')
+              : ''}</UiText>
+          </div>
+          <SkillsPanel group="evaluation" targetAnswerId={a.id} />
+        </details>
       </article>
     );
   }

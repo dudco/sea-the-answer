@@ -1,0 +1,296 @@
+[
+ {
+  "id": "h-definition-dcs",
+  "question": "IMO DCS가 무슨 제도야?",
+  "expected": {
+   "tools": []
+  }
+ },
+ {
+  "id": "h-regulation-ballast",
+  "question": "선박 평형수 처리 기준을 알려줘",
+  "expected": {
+   "tools": []
+  }
+ },
+ {
+  "id": "h-procedure-fuel",
+  "question": "저유황유 전환 절차가 어떻게 돼?",
+  "expected": {
+   "tools": []
+  }
+ },
+ {
+  "id": "h-status-dwt",
+  "question": "우리가 가진 DWT 자료 현황 알려줘",
+  "expected": {
+   "tools": [
+    "get_dataset_status"
+   ],
+   "args": {
+    "datasets": [
+     "dwt"
+    ]
+   }
+  }
+ },
+ {
+  "id": "h-status-ports",
+  "question": "항만 자료는 언제 수집한 거야?",
+  "expected": {
+   "tools": [
+    "get_dataset_status"
+   ],
+   "args": {
+    "datasets": [
+     "ports"
+    ]
+   }
+  }
+ },
+ {
+  "id": "h-ais-ship",
+  "question": "별빛호 AIS 기록이 남아 있어?",
+  "expected": {
+   "tools": [
+    "get_ais_catalog_status",
+    "get_dataset_status"
+   ],
+   "args": {
+    "ship_mentions": [
+     "별빛호"
+    ]
+   }
+  }
+ },
+ {
+  "id": "h-ops-distance",
+  "question": "해답호 2025년 3월 운항 거리 총합",
+  "expected": {
+   "tools": [
+    "summarize_operations"
+   ],
+   "args": {
+    "ship_mentions": [
+     "해답호"
+    ],
+    "period_text": "2025년 3월"
+   }
+  }
+ },
+ {
+  "id": "h-ops-table",
+  "question": "별빛호 올해 연료 소비 추이를 표로 보여줘",
+  "expected": {
+   "tools": [
+    "summarize_operations"
+   ],
+   "args": {
+    "ship_mentions": [
+     "별빛호"
+    ],
+    "period_text": "올해",
+    "display": "table"
+   }
+  }
+ },
+ {
+  "id": "h-mrv-compare",
+  "question": "해답호 2023년과 2024년 탄소집약도 참고값 비교해줘",
+  "expected": {
+   "tools": [
+    "calculate_mrv_reference"
+   ],
+   "args": {
+    "ship_mentions": [
+     "해답호"
+    ]
+   }
+  }
+ },
+ {
+  "id": "h-mrv-two-years-ago",
+  "question": "별빛호 재작년 MRV 기준 탄소집약도는?",
+  "expected": {
+   "tools": [
+    "calculate_mrv_reference"
+   ],
+   "args": {
+    "ship_mentions": [
+     "별빛호"
+    ],
+    "period_text": "재작년"
+   }
+  }
+ },
+ {
+  "id": "h-combined",
+  "question": "해답호 작년 운항 실적이랑 MRV 참고값 둘 다 보여줘",
+  "expected": {
+   "tools": [
+    "calculate_operations_and_mrv"
+   ],
+   "args": {
+    "ship_mentions": [
+     "해답호"
+    ],
+    "period_text": "작년"
+   }
+  }
+ },
+ {
+  "id": "h-port-beam",
+  "question": "인천항에서 폭 제한이 30m 이하인 선석만 보여줘",
+  "expected": {
+   "tools": [
+    "compare_port_conditions"
+   ],
+   "args": {
+    "port_mentions": [
+     "인천항"
+    ],
+    "filters": [
+     {
+      "dimension": "beam",
+      "op": "<=",
+      "value_m": 30
+     }
+    ]
+   }
+  }
+ },
+ {
+  "id": "h-port-sort-ship",
+  "question": "별빛호 기준으로 부산항 선석을 흘수 제한 작은 순으로 정렬해줘",
+  "expected": {
+   "tools": [
+    "compare_port_conditions"
+   ],
+   "args": {
+    "ship_mention": "별빛호",
+    "sort": {
+     "dimension": "draught",
+     "direction": "asc"
+    }
+   }
+  }
+ },
+ {
+  "id": "h-selected-document",
+  "question": "MARPOL 부속서 VI 요약 문서만 보고 황 함유량 기준 정리해줘",
+  "expected": {
+   "tools": [
+    "ask_selected_documents"
+   ],
+   "args": {
+    "document_mentions": [
+     "MARPOL 부속서 VI 요약"
+    ]
+   }
+  }
+ },
+ {
+  "id": "h-emissions",
+  "question": "연료 250톤에 배출계수 3.206이면 배출량이 얼마야? DWT는 80000, 거리는 3000해리야",
+  "expected": {
+   "tools": [
+    "calculate_emissions"
+   ],
+   "args": {
+    "fuel_t": 250,
+    "factor": 3.206,
+    "dwt": 80000,
+    "distance_nm": 3000
+   }
+  }
+ },
+ {
+  "id": "h-last-position",
+  "question": "해답호 지금 어디 있어?",
+  "expected": {
+   "tools": [
+    "get_last_recorded_position"
+   ],
+   "args": {
+    "ship_mentions": [
+     "해답호"
+    ]
+   }
+  }
+ },
+ {
+  "id": "h-decline-forecast",
+  "question": "내년 탄소집약도 등급 예측해줘",
+  "expected": {
+   "tools": [
+    "decline_request"
+   ],
+   "args": {
+    "reason": "forecast"
+   }
+  }
+ },
+ {
+  "id": "h-decline-change",
+  "question": "운항 기록을 수정해줘",
+  "expected": {
+   "tools": [
+    "decline_request"
+   ],
+   "args": {
+    "reason": "data_change"
+   }
+  }
+ },
+ {
+  "id": "h-clarify",
+  "question": "이거 좀 알려줘",
+  "expected": {
+   "tools": [
+    "request_clarification"
+   ]
+  }
+ },
+ {
+  "id": "h-followup-year",
+  "question": "그럼 2023년은?",
+  "expected": {
+   "tools": [
+    "calculate_mrv_reference"
+   ],
+   "args": {
+    "ship_mentions": [
+     "별빛호"
+    ],
+    "period_text": "2023년"
+   }
+  },
+  "previous": {
+   "task": "workflow",
+   "question": "별빛호 2024년 탄소집약도 참고값",
+   "action": "mrv_reference",
+   "ships": [
+    "별빛호"
+   ],
+   "years": [
+    2024
+   ],
+   "periods": [],
+   "missing": []
+  }
+ },
+ {
+  "id": "h-ops-yesterday-distance",
+  "question": "별빛호 전날 이동 거리 알려줘",
+  "expected": {
+   "tools": [
+    "summarize_operations"
+   ],
+   "args": {
+    "ship_mentions": [
+     "별빛호"
+    ]
+   }
+  }
+ }
+]

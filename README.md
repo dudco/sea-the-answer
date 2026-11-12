@@ -310,6 +310,8 @@ LLM_RESPONSE_FORMAT=text
 
 앱의 생성 대기는 기본 60초이며 `LLM_GENERATION_TIMEOUT_SECONDS`로 1–90초를 지정합니다. 로컬 모델을 미리 적재하고 서버 앞단 프록시 제한도 함께 확인하세요. 기본 호환 요청은 공급자별 선택 필드와 출력 토큰 한도를 보내지 않으며, 지원이 확인된 서버에만 `LLM_MAX_TOKENS`를 지정합니다. 앱은 최대 5개 답변 문장과 인용을 검증합니다. 상태 확인의 `llmConfigured=true`는 설정 유무이며 실제 모델 응답 성공을 보증하지 않습니다. 상세 형식·제약은 [공급자 계약](docs/specs/llm-provider.md)에 있습니다.
 
+2026-11-12 초안부터 통합 질문의 자동 작업 선택에 모델이 필요합니다. 서버는 질문마다 문서를 검색하고, 모델이 OpenAI 호환 `tools`(tool calling)로 고른 데이터 도구를 검증해 실행합니다([ADR 0024](docs/adr/0024-llm-tool-selection.md)). 사용하는 모델 서버가 `tools` 파라미터를 지원해야 하며, 도구 선택 대기는 `HAEDAP_PLANNER_TIMEOUT_SECONDS`(기본 20초)로 조정합니다. 모델 없이 이전 규칙 경로를 쓰려면 `HAEDAP_QUESTION_ROUTER=legacy`를 설정합니다. 모델이 tool calling 형식을 안정적으로 지키지 못하면 `HAEDAP_PLANNER_FORMAT=json`으로 구조화 출력(`response_format` JSON 스키마) 방식을 쓸 수 있고, 추론 모델은 `HAEDAP_PLANNER_REASONING_EFFORT=none`(Ollama)으로 도구 선택 단계의 추론을 끌 수 있습니다. 실제 모델의 도구 선택 정확도는 `cd backend && uv run python ../scripts/evaluate_tool_selection.py [--format json] [--cases ../scripts/fixtures/tool-selection-holdout.json]`로 측정합니다.
+
 push·PR에는 [GitHub Actions 검증](.github/workflows/verify.yaml)이 연결됩니다. backend 테스트(임시 PostgreSQL 포함), frontend 단위 테스트·빌드, Compose 구성 검사와 격리 브라우저 E2E를 실행합니다. 실제 외부 모델 키는 사용하지 않습니다. CI PR #14의 워크플로를 이 브랜치에도 통합했으며 실제 수행한 검증은 [변경 이력](docs/changelog.md)에 기록합니다.
 
 ## API

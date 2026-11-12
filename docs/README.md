@@ -144,3 +144,6 @@
 - [OpenSearch 키워드 검색](specs/rag-lexical.md) — 구현됨
 - [OpenSearch 전환 계획](plans/2026-11-11-opensearch-retrieval.md) — 완료
 - [ADR 0023](adr/0023-opensearch-lexical-index.md) — 채택
+
+- [질문 분석을 LLM 도구 선택으로 전환 계획](plans/2026-11-12-llm-tool-selection.md) — 초안
+- [ADR 0024 LLM 도구 선택과 서버 검증](adr/0024-llm-tool-selection.md) — 제안

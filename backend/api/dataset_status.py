@@ -20,10 +20,11 @@ LABELS={'ais':'AIS 수집본','mrv':'실제 MRV 연간 보고','dwt':'DWT 공개
         'noon':'Synthetic Noon','operations':'일별 운항 기록','documents':'열람 가능한 문서','ports':'항만·선석 공개 참조'}
 
 
-def answer(ctx, datasets):
+def answer(ctx, datasets, *, scope_text=None):
+    """scope_text: model-provided ship/period wording; defaults to the question (legacy rules)."""
     if not datasets or len(set(datasets))!=len(datasets) or any(d not in DATASETS for d in datasets):
         raise ValueError('Invalid inventory request')
-    q=ctx.body['question'];engine=None
+    q=ctx.body['question'] if scope_text is None else scope_text;engine=None
     result={'datasets':[],'scope':{'coverage':'server_inventory'},'assessed_at':utc_now()}
     try:
         years,periods=date_slots(q)
@@ -89,6 +90,8 @@ def answer(ctx, datasets):
                             'count(*) FILTER (WHERE body->>\'sample\'=\'true\') AS sample_count,'
                             'min(date) AS first_period,max(date) AS last_period FROM operations'+where,tuple(params))
                         ctx.db.one("SELECT set_config('statement_timeout',%s,true)",(old_timeout,))
+                    # PostgreSQL date columns arrive as date objects; answers are stored as JSON.
+                    row={k:(v.isoformat() if hasattr(v,'isoformat') else v) for k,v in row.items()}
                     item.update(row,status='available' if row['row_count'] else 'empty',
                                 notice='앱 일별 기록이며 MRV 연간 보고와 별개입니다. 가상 예시 건수를 따로 표시합니다.')
             except (SQLAlchemyError,HTTPException,ApiError,ValueError,psycopg.Error):

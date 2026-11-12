@@ -54,3 +54,5 @@
 0016/0017/0018을 0019/0020/0021로 재번호화했다. 결정 내용은 바꾸지 않았다.
 
 - [0023 OpenSearch/Nori 키워드 검색](0023-opensearch-lexical-index.md) — 채택
+
+- [0024 LLM 도구 선택과 서버 검증](0024-llm-tool-selection.md) — 제안

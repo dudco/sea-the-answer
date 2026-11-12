@@ -1,5 +1,23 @@
 # 아키텍처
 
+## LLM 도구 선택 (2026-11-12 초안)
+
+`/api/ask`의 자동 질문은 `question_router.answer()`에서 문서 검색(`DocumentStore.search`)과 도구 선택 모델 호출(`tool_planner.plan`)을 병렬로 실행한다. 도구 정의·인자 스키마는 `tool_registry.py` 한곳에 있고, `tool_dispatch.py`가 모델이 낸 선박·문서·항구 표기와 기간 표현을 등록 목록·열람 권한·`question_intent.date_slots`로 바꾼 뒤 기존 실행기(`question_workflows.execute`, `navigation_query.try_answer(planned=…)`, `dataset_status.answer(scope_text=…)`, `ToolStore`)를 호출한다. 데이터 도구가 없으면 같은 검색 결과로 문서 답변을 만든다. 실행한 도구는 응답 `routing.toolCalls`에 남는다. 기존 규칙 우선 경로는 `legacy_answer()`로 남아 `HAEDAP_QUESTION_ROUTER=legacy`일 때만 쓴다. 계약은 [통합 답변 명세](specs/integrated-answer.md), 결정은 [ADR 0024](adr/0024-llm-tool-selection.md).
+
+```mermaid
+flowchart LR
+  Q[질문] --> S[문서 검색]
+  Q --> P[도구 선택 모델]
+  P -->|0개| D[문서 답변 생성]
+  P -->|1개| V[서버 검증·식별자 변환]
+  V --> X[기존 실행기]
+  S --> D
+  S --> R[relatedEvidence]
+  X --> A[답변 + routing.toolCalls]
+  D --> A
+  R --> A
+```
+
 ## 관리자 운항 자료 가져오기 (2026-11-06)
 
 기존 CSV 버튼의 `OperationImport`가 관리자 세션/CSRF로 파일을 나눠 전송한다. `api/operation_uploads.py`는 소유자·크기·TTL·순서·미리보기 해시를 관리한다. `tools/operation_import.py`는 알려진 CSV/준비 ZIP·JSON을 판별하고 기존 테이블의 고정 열·FK·출처·실제/가상 경계를 검증한다. 미리보기는 savepoint에서 실제 제약을 검사한 뒤 롤백하며 등록은 단일 DB 트랜잭션이다. 같은 키의 다른 행은 거절하고 같은 행은 보존한다. 임의 경로·DDL·실행 파일·SQL·LLM 도구는 공개하지 않는다.

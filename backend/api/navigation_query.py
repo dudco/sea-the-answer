@@ -159,7 +159,9 @@ def is_ais_status_question(question):
     return isinstance(question,str) and not document_question(question) and not is_navigation_question(question) and inventory_request(question)==['ais']
 
 
-def catalog_status_answer(ctx,question):
+def catalog_status_answer(ctx,question,*,scope_text=None):
+    """scope_text: model-provided ship wording; the stored question stays the user's text."""
+    scope=question if scope_text is None else scope_text
     language=ctx.body.get('language','auto')
     require(language in ('auto','ko','en'),'언어를 확인해 주세요.')
     if language=='auto':language='ko' if re.search(r'[가-힣]',question) else 'en'
@@ -175,12 +177,12 @@ def catalog_status_answer(ctx,question):
                 f"The connected AIS snapshot contains {summary['ais_observation_count']} observations for {summary['ais_unique_vessels']} vessels. "
                 'This does not establish a live feed or MRV database availability.')
         ships=ctx.db.ships()
-        scoped=bool(re.search(r'우리\s*(?:배|선박)|본선|이\s*(?:배|선박)|해당\s*선박|\b(?:ship|vessel)\b|\bIMO\s*[:#]?\s*\d{7}',question,re.I)
-            or any(mentions(question,s['name']) for s in ships))
+        scoped=bool(re.search(r'우리\s*(?:배|선박)|본선|이\s*(?:배|선박)|해당\s*선박|\b(?:ship|vessel)\b|\bIMO\s*[:#]?\s*\d{7}',scope,re.I)
+            or any(mentions(scope,s['name']) for s in ships))
         if scoped:
             context=ctx.body.get('context') or {}
             require(isinstance(context,dict),'선박 문맥을 확인해 주세요.')
-            ship=select_ship(question,ships,context)
+            ship=select_ship(scope,ships,context)
             imo=imo_of(ship) if ship else ''
             navigation['ship']={k:ship.get(k) for k in ('id','name','imo')} if ship else None
             check={'status':'needs_ship' if not ship else 'sample_ship' if ship.get('sample') else 'invalid_imo' if not valid_imo(imo) else 'not_in_snapshot'}
@@ -197,20 +199,21 @@ def catalog_status_answer(ctx,question):
     return save_answer(ctx,question,language,navigation,notice)
 
 
-def try_answer(ctx, *, force=False):
+def try_answer(ctx, *, force=False, planned=None):
+    """planned: {'ship_text','ports_text','conditions'} validated from a model tool call (ADR 0024)."""
     payload = ctx.body
     raw = payload.get("question")
-    if payload.get('task','auto')=='auto' and is_ais_status_question(raw):
+    if planned is None and payload.get('task','auto')=='auto' and is_ais_status_question(raw):
         return catalog_status_answer(ctx,text(raw,'질문',2000))
-    followup = is_followup(raw)
+    followup = planned is None and is_followup(raw)
     if payload.get("task", "auto") != "auto" or not isinstance(raw,str):
         return None
     context=payload.get('context') or {}
-    candidate=not is_navigation_question(raw) and not document_question(raw) and isinstance(context,dict) and context.get('previousQueryId')
+    candidate=planned is None and not is_navigation_question(raw) and not document_question(raw) and isinstance(context,dict) and context.get('previousQueryId')
     prior=owned_navigation(ctx.db,ctx.user['id'],context,payload.get('conversationId')) if candidate else None
     pending=bool(prior and prior.get('status')=='needs_ship' and isinstance(prior.get('request_question'),str) and
         slot_reply(raw,labels=[s['name'] for s in ctx.db.ships()],ships=True))
-    if not (force or is_navigation_question(raw) or followup or pending):return None
+    if not (force or planned is not None or is_navigation_question(raw) or followup or pending):return None
     question = text(raw, "질문", 2000)
     language = payload.get("language", "auto")
     require(language in ("auto", "ko", "en"), "언어를 확인해 주세요.")
@@ -228,8 +231,8 @@ def try_answer(ctx, *, force=False):
     request_question=prior['request_question'] if pending else question
     if followup and prior and not context.get('ship') and prior.get('ship'):
         context={**context,'ship':prior['ship']['id']}
-    ship = select_ship(question, ships, {} if pending else context)
-    conditions, condition_issue = parse_conditions(request_question)
+    ship = select_ship(planned['ship_text'] if planned is not None else question, ships, {} if pending else context)
+    conditions, condition_issue = (planned['conditions'], None) if planned is not None else parse_conditions(request_question)
     navigation = {"kind": "port-reference", "reference_only": True, "admission": "not_assessed",
         "request_question":request_question,
         "status": "needs_ship", "ship": {k: ship.get(k) for k in ("id", "name", "imo")} if ship else None,
@@ -242,11 +245,11 @@ def try_answer(ctx, *, force=False):
         navigation["status"] = "needs_real_ship"
         msg = message("선택한 선박은 가상 예시입니다. 실제 MRV 선박과 연결된 앱 선박이 필요합니다.",
                       "The selected ship is a sample. A real app ship explicitly linked to MRV is required.")
-    elif re.search(r"가까운|근처|최단|항로|예상\s*도착|날씨|기상|풍속|바람|실시간\s*(?:대기|혼잡)|nearest|nearby|closest|route|weather|\bwind\b|\beta\b|(?:예선|tugs?|ukc|선저\s*여유)\s*(?:이|가|:|=)?\s*\d+", request_question, re.I):
+    elif planned is None and re.search(r"가까운|근처|최단|항로|예상\s*도착|날씨|기상|풍속|바람|실시간\s*(?:대기|혼잡)|nearest|nearby|closest|route|weather|\bwind\b|\beta\b|(?:예선|tugs?|ukc|선저\s*여유)\s*(?:이|가|:|=)?\s*\d+", request_question, re.I):
         navigation["status"] = "unsupported_scope"
         msg = message("현재 위치·항로·도착 시각·기상·실시간 혼잡 기반 추천은 지원하지 않습니다. 질문에 적은 운항 가정값은 적용하지 않았습니다. 운항 화면의 가정 조건 비교에서 풍속·예선·선저 여유를 명시해 일부 게시 조건을 시험할 수 있습니다.",
                       "Location, route, ETA, weather and live congestion suitability are not assessed. Operational assumptions in text were not applied. Use the operation panel's explicitly hypothetical conditions to test selected published rules.")
-    elif re.search(r"(?:흘수|전장|선폭|길이|draught|draft|length|beam|loa)\s*(?:이|가|는|은|:|=)?\s*\d+(?:[.,]\d+)?\s*(?:m(?![a-z])|미터|metre|meter)", request_question, re.I):
+    elif planned is None and re.search(r"(?:흘수|전장|선폭|길이|draught|draft|length|beam|loa)\s*(?:이|가|는|은|:|=)?\s*\d+(?:[.,]\d+)?\s*(?:m(?![a-z])|미터|metre|meter)", request_question, re.I):
         navigation["status"] = "needs_verified_inputs"
         msg = message("질문에 적은 치수를 저장된 선박 제원으로 대신 사용하지 않습니다. 현재 측정값·시각·출처를 확인하거나 저장된 신고값으로 조회해 주세요.",
                       "Hypothetical dimensions are not substituted for ship data. Confirm measured values/time/source or ask to use stored reported values.")
@@ -263,7 +266,7 @@ def try_answer(ctx, *, force=False):
             snapshot = service.load_snapshot()
             catalog = snapshot[0]
             navigation["port_options"] = [{"port_id":p.port_id,"name":p.name,"unlocode":p.unlocode} for p in catalog.ports]
-            ports, berth, issue, values = select_ports(request_question, catalog)
+            ports, berth, issue, values = select_ports(planned['ports_text'] if planned is not None else request_question, catalog)
             previous = previous_navigation(ctx.db, ctx.user["id"], context, ship,payload.get('conversationId')) if followup else None
             if followup and not previous:
                 issue = "needs_previous_query"

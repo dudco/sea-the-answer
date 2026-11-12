@@ -7,10 +7,11 @@ import {SkillResult} from './skill-result';
 const statuses={completed:'조회 완료',estimated:'참고값 계산 완료',blocked:'계산 불가',no_data:'기간 내 기록 없음',unavailable:'자료 확인 불가'};
 const metrics={fuel_t:'연료 사용량',calculated_co2_t:'계산 CO₂',distance_nm:'항해거리',reference_dwt_intensity:'MRV 참고 탄소집약도'};
 
-export default function QuestionWorkflow({answer}) {
-  return <Workflow key={answer.id} answer={answer} />;
+// part='answer': clarification and results (what the user asked); part='details': interpreted scope (behind the toggle).
+export default function QuestionWorkflow({answer, part='all', results=true}) {
+  return <Workflow key={answer.id} answer={answer} part={part} results={results} />;
 }
-function Workflow({answer}) {
+function Workflow({answer, part, results}) {
   const {workspace}=useWorkspace(), flow=answer.workflow, scope=flow.scope;
   const [error,setError]=useState('');
   const [visibleChoices,setVisibleChoices]=useState(8);
@@ -37,7 +38,9 @@ function Workflow({answer}) {
     try { await workspace.ask(choice.question,choice.input,answer.id); }
     catch(e){setError(e.message);}
   }
-  return <section className="mt" data-question-workflow>
+  const showScope=part!=='answer', showClarify=part!=='details';
+  return <section className="mt" data-question-workflow={part}>
+    {showScope && <>
     <h3><UiText>{"해석한 실행 범위"}</UiText></h3>
     <p><UiText>{scope.action==='selected_document' ? `선택 문서 ${scope.document_ids.length}개` : scope.ships?.map(s=>s.name+(s.imo ? ` · IMO ${String(s.imo).replace(/^IMO\s*/i,'')}` : '')).join(' / ') || '선박 미지정'}</UiText>
       {documents.length>0 && <> · {documents.join(' / ')}</>}
@@ -46,7 +49,8 @@ function Workflow({answer}) {
     <p className="small muted"><UiText>{flow.routing.method==='llm'?'AI 작업 선택·서버 범위 검증':'규칙 기반 조건 해석'}</UiText>
       {flow.routing.fallback && ' · 모델 제안을 사용할 수 없어 규칙/추가 확인으로 처리'}
       {flow.previous_query_id && ' · 이전 범위를 연결해 현재 자료로 재조회'}</p>
-    {missing.length>0 && field && current && <div className="mt" data-workflow-clarification>
+    </>}
+    {showClarify && missing.length>0 && field && current && <div className="mt" data-workflow-clarification>
       <p className="small"><UiText>{'아래 질문창에 답하면 이어서 조회합니다.'}</UiText></p>
       {choices.length>0 && <>
         <UiControl as="div" role="group" aria-label="현재 질문의 후보" className="actions wrap mt">
@@ -62,12 +66,12 @@ function Workflow({answer}) {
       </>}
       {error && <p role="alert">{error}</p>}
     </div>}
-    {flow.results?.map((row,i)=><section className="card pad mt" key={i} data-workflow-result>
+    {results && flow.results?.map((row,i)=><section className="card pad mt" key={i} data-workflow-result>
       {row.kind==='mrv_reference' && <h3>{row.label}</h3>}
       <p className="small"><UiText>{row.kind==='mrv_reference'?'실제 MRV 연간 자료·참고 계산':'앱 일별 운항 기록'}</UiText> · <UiText>{statuses[row.status] || row.status}</UiText></p>
       <SkillResult answer={{result:row.result,warnings:[]}} />
     </section>)}
-    {flow.comparisons?.length>0 && <section className="card pad mt"><h3><UiText>{"입력 결과의 산술 비교"}</UiText></h3>
+    {results && flow.comparisons?.length>0 && <section className="card pad mt"><h3><UiText>{"입력 결과의 산술 비교"}</UiText></h3>
       {flow.comparisons.map((c,i)=><p key={i}>{c.base} → {c.target}<br /><UiText>{metrics[c.metric] || c.metric}</UiText><UiText>{": 차이"}</UiText>{c.difference ?? '비교 불가'} {c.unit}<UiText>{"· 변화율"}</UiText><UiText>{c.percent_change==null?'산출 불가':`${c.percent_change}%`}</UiText></p>)}
       <p className="small muted">{flow.comparisons[0].notice}</p>
     </section>}

@@ -136,6 +136,11 @@ def period(body):
     return {"ship": body.context.ship, "from": start.isoformat(), "to": end.isoformat()}
 
 
+def projected_record(row):
+    """Simulated future days are stored with a "예상" note (scripts/simulate_round_trip.py)."""
+    return bool(re.search(r"예상\s*운항|입항\s*예정", str(row.get("note") or "")))
+
+
 def operation_result(db, body, *, summary=None):
     scope = period(body)
     raw = db.operation_summary(scope) if summary is None else summary
@@ -171,6 +176,7 @@ def operation_result(db, body, *, summary=None):
         else None,
         "sample": raw["sample"],
         "reported_days": len(dates),
+        "projected_days": sum(1 for r in rows if projected_record(r)),
         "calendar_days": count_days,
         "missing_days": count_days - len(dates),
         "official_cii": None,

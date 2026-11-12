@@ -45,6 +45,11 @@ x-backend-env: &backend-env
   DONGUK_AI_CHAT_API_KEY: ${DONGUK_AI_CHAT_API_KEY:-}
   OPENAI_MODEL: ${OPENAI_MODEL:-}
   HAEDAP_PLANNER_MODEL: ${HAEDAP_PLANNER_MODEL:-}
+  HAEDAP_PLANNER_TIMEOUT_SECONDS: ${HAEDAP_PLANNER_TIMEOUT_SECONDS:-}
+  HAEDAP_PLANNER_MAX_TOKENS: ${HAEDAP_PLANNER_MAX_TOKENS:-}
+  HAEDAP_PLANNER_REASONING_EFFORT: ${HAEDAP_PLANNER_REASONING_EFFORT:-}
+  HAEDAP_PLANNER_FORMAT: ${HAEDAP_PLANNER_FORMAT:-}
+  HAEDAP_QUESTION_ROUTER: ${HAEDAP_QUESTION_ROUTER:-}
   LLM_API_BASE_URL: ${LLM_API_BASE_URL:-}
   LLM_RESPONSE_FORMAT: ${LLM_RESPONSE_FORMAT:-text}
   LLM_GENERATION_TIMEOUT_SECONDS: ${LLM_GENERATION_TIMEOUT_SECONDS:-60}
@@ -192,6 +197,9 @@ services:
       HAEDAP_BOOTSTRAP_PASSWORD: E2e-initial-only-2026
       OPENAI_API_KEY: ""
       OPENAI_MODEL: ""
+      # No model in the disposable stack: browser tests exercise the rule path kept by ADR 0024.
+      # Model tool selection is covered by backend tests with fixture model replies.
+      HAEDAP_QUESTION_ROUTER: legacy
       HAEDAP_IMPORT_DIR: /data/imports
       HAEDAP_OPENSEARCH_URL: http://e2e-opensearch:9200
     tmpfs: ["/data/backups:uid=10001,gid=10001", "/data/imports:uid=10001,gid=10001"]

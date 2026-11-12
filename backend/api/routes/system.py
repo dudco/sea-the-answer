@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .. import config
+from .. import config, tool_registry
 from ..store import TOOL_DEFINITIONS
 from ..web import security
 
@@ -17,7 +17,8 @@ def health(ctx):
 
 
 def tools(_ctx):
-    return {"tools": TOOL_DEFINITIONS}
+    # assistantTools: what the model may request on /api/ask (ADR 0024).
+    return {"tools": TOOL_DEFINITIONS, "assistantTools": tool_registry.catalog()}
 
 
 def calculate_emissions(ctx):

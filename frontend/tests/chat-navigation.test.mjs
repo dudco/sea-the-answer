@@ -54,19 +54,13 @@ test('sending and completing a follow-up preserves the conversation without scro
   w.dispose();
 });
 
-test('configured AI is actually sent by default and explicit excerpt preference survives reconnect',async()=>{
-  const t=setup({llmConfigured:true}),w=t.workspace;
-  await w.start();assert.equal(w.state.mode,'llm');
-  const first=w.ask('질문');assert.equal(t.requests[0].mode,'llm');
-  t.pending.shift().resolve({id:'ai'});await first;
-  w.events.onChange({target:{dataset:{field:'mode'},value:'extractive'}});
-  await t.reconnect();assert.equal(w.state.mode,'extractive');
-  const second=w.ask('원문으로 확인');assert.equal(t.requests[1].mode,'extractive');
-  t.pending.shift().resolve({id:'source'});await second;w.dispose();
-});
-
-test('no model configuration keeps normal questions in excerpt mode',async()=>{
-  const t=setup(),w=t.workspace;await w.start();assert.equal(w.state.mode,'extractive');w.dispose();
+test('questions never send an answer mode: the server always routes with the model (ADR 0024)',async()=>{
+  for(const llmConfigured of [true,false]){
+    const t=setup({llmConfigured}),w=t.workspace;
+    await w.start();assert.equal('mode' in w.state,false);
+    const asked=w.ask('질문');assert.equal('mode' in t.requests[0],false);
+    t.pending.shift().resolve({id:'answer'});await asked;w.dispose();
+  }
 });
 test('chat tab starts a new conversation and discards a late response and its scroll request',async()=>{
   const t=setup(),w=t.workspace;

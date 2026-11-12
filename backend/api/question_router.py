@@ -1,7 +1,9 @@
-"""Reuse validated handlers, with closed semantic routing for unmatched wording."""
+"""Question routing: model tool selection by default (ADR 0024); rule-first routing kept as legacy."""
+from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 import re
+from time import monotonic
 from typing import Literal
 from uuid import UUID, uuid4
 
@@ -9,9 +11,9 @@ import httpx
 from psycopg.types.json import Jsonb
 from pydantic import BaseModel, ConfigDict, model_validator
 
-from . import config, dataset_status, llm, navigation_query, question_workflows
+from . import config, dataset_status, llm, navigation_query, question_intent, question_workflows, tool_dispatch, tool_planner
 from .dataset_intent import DATASETS, inventory_request, sources
-from .errors import require
+from .errors import ApiError, require
 from .question_intent import explanation_request
 from .validation import text, utc_now
 
@@ -129,13 +131,119 @@ def inventory_followup(ctx,q):
     return None
 
 
-def answer(ctx):
+def validate_request(ctx):
     body=ctx.body;q=text(body.get('question'),'질문',2000)
     body['question']=q
     require(isinstance(body.get('context') or {},dict),'질문 문맥을 확인해 주세요.')
     require(body.get('mode','extractive') in ('llm','extractive'),'답변 모드를 확인해 주세요.')
     require(body.get('language','auto') in ('auto','ko','en'),'언어를 확인해 주세요.')
+    return body,q
+
+
+def router_mode():
+    return 'legacy' if os.getenv('HAEDAP_QUESTION_ROUTER','').strip().lower()=='legacy' else 'model'
+
+
+def previous_summary(ctx):
+    """Owner-checked, compact description of the previous answer for the tool planner."""
+    context=ctx.body.get('context') or {};parent=context.get('previousQueryId')
+    try:
+        if not isinstance(parent,str) or str(UUID(parent))!=parent.lower():return None
+    except ValueError:return None
+    row=ctx.db.one('''SELECT q.response FROM queries q JOIN query_owner o ON o.id=q.id
+        WHERE q.id=%s AND o.owner=%s''',(parent,ctx.user['id']))
+    prior=row['response'] if row else None
+    if not isinstance(prior,dict):return None
+    conversation=ctx.body.get('conversationId')
+    if conversation and prior.get('conversationId',prior.get('id'))!=conversation:return None
+    summary={'task':prior.get('task'),'question':str(prior.get('question',''))[:300]}
+    flow=prior.get('workflow')
+    if isinstance(flow,dict) and isinstance(flow.get('scope'),dict):
+        scope=flow['scope']
+        summary.update(action=scope.get('action'),ships=[s.get('name') for s in scope.get('ships',[]) if isinstance(s,dict)],
+            years=scope.get('years',[]),periods=scope.get('periods',[]),missing=flow.get('missing',[]))
+    nav=prior.get('navigation')
+    if isinstance(nav,dict):
+        summary.update(navigation=nav.get('kind'),ship=(nav.get('ship') or {}).get('name'),
+            ports=[p.get('name') for p in nav.get('ports',[]) if isinstance(p,dict)][:5])
+    status=prior.get('dataStatus')
+    if isinstance(status,dict):
+        summary['datasets']=[d.get('dataset') for d in status.get('datasets',[]) if isinstance(d,dict)]
+    tools=(prior.get('routing') or {}).get('toolCalls') if isinstance(prior.get('routing'),dict) else None
+    if isinstance(tools,list):summary['tools']=[t.get('name') for t in tools if isinstance(t,dict)]
+    return summary
+
+
+def finalize(ctx,answer,routing,related=()):
+    answer['routing']={**(answer.get('routing') if isinstance(answer.get('routing'),dict) else {}),**routing}
+    if related and not answer.get('evidence'):answer['relatedEvidence']=list(related)
+    ctx.db.run('UPDATE queries SET response=%s WHERE id=%s',(Jsonb(answer),answer['id']))
+    return answer
+
+
+def answer(ctx):
+    body,q=validate_request(ctx)
     if body.get('task','auto')!='auto':return ctx.db.answer(ctx.user,body)
+    if router_mode()=='legacy':return legacy_answer(ctx)
+    # A clarification card reply is structured input, not wording to interpret.
+    if body.get('workflowInput') is not None:
+        result=question_workflows.try_answer(ctx,allow_model=False)
+        if result is not None:return result
+    settings=config.llm_settings()
+    if settings is None:
+        raise ApiError(503,'MODEL_NOT_CONFIGURED','AI 모델이 연결되어 있지 않아 질문을 처리할 수 없습니다. 관리자에게 모델 설정을 요청해 주세요.')
+    # Answer mode is no longer a user choice (ADR 0024): every generator downstream uses the model.
+    body['mode']='llm'
+    summary=previous_summary(ctx)
+    calls=None;error=None
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        planned=monotonic()
+        titles=[d.get('title','') for d in ctx.db.documents(ctx.user)]
+        future=pool.submit(tool_planner.plan,q,today=question_intent.local_today(),summary=summary,documents=titles,settings=settings)
+        searched=monotonic()
+        evidence=ctx.db.search(ctx.user,q,body.get('filter','all'))
+        search_ms=round((monotonic()-searched)*1000,3)
+        try:calls=future.result()
+        except tool_planner.PlanError as exc:error=exc.code
+        except httpx.HTTPError as exc:error=llm.failure_details(exc)['code']
+        except (ValueError,KeyError,IndexError,TypeError):error='MODEL_RESPONSE_INVALID'
+        plan_ms=round((monotonic()-planned)*1000,3)
+    log=[{'name':'search_documents','arguments':{'filter':body.get('filter','all')},'status':'completed',
+          'resultCount':len(evidence),'durationMs':search_ms}]
+    routing={'method':'model_tools','toolCalls':log,'searchMs':search_ms,'planMs':plan_ms}
+    if error:
+        routing['error']=error
+        result=tool_dispatch.clarification(ctx,'MODEL_ROUTING_UNAVAILABLE','AI 모델이 질문에 필요한 도구를 고르지 못했습니다. '
+            '잠시 후 다시 시도하거나 대상·기간을 더 구체적으로 적어 주세요. 관련 문서 검색 결과는 함께 표시합니다.')
+        return finalize(ctx,result,routing,evidence)
+    if len(calls)>1:
+        routing['requested']=[c.tool.name for c in calls]
+        result=tool_dispatch.clarification(ctx,'MULTIPLE_TOOLS_REQUESTED','한 번에 한 가지 작업만 실행할 수 있습니다. '
+            '확인할 작업 하나를 골라 다시 질문해 주세요.')
+        return finalize(ctx,result,routing,evidence)
+    if not calls:
+        result=ctx.db.answer(ctx.user,{**body,'task':'documents','mode':'llm'},evidence=evidence)
+        return finalize(ctx,result,routing)
+    call=calls[0]
+    try:tool_dispatch.check_mentions(call,q,summary)
+    except tool_dispatch.ArgumentError as exc:
+        routing['requested']=[call.tool.name]
+        result=tool_dispatch.clarification(ctx,exc.code,'질문에 없는 선박·항구·문서·기간이 선택되어 실행하지 않았습니다. '
+            '대상을 질문에 직접 적어 다시 질문해 주세요.')
+        return finalize(ctx,result,routing,evidence)
+    period,origin=tool_dispatch.period_source(call,q,summary)
+    started=monotonic()
+    result=tool_dispatch.run(ctx,call,period if origin!='none' else None)
+    entry={'name':call.tool.name,'arguments':call.args.model_dump(mode='json'),'status':result.get('status'),
+           'durationMs':round((monotonic()-started)*1000,3)}
+    if origin=='question':entry['periodSource']='question'
+    log.append(entry)
+    return finalize(ctx,result,routing,evidence)
+
+
+def legacy_answer(ctx):
+    """Rule-first routing kept for explicit HAEDAP_QUESTION_ROUTER=legacy (ADR 0024)."""
+    body=ctx.body;q=body['question']
     followup=inventory_followup(ctx,q)
     if followup is not None:return followup
     datasets=inventory_request(q)

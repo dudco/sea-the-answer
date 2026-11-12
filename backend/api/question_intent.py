@@ -68,7 +68,7 @@ def classify(q):
     # Explanation/procedure requests keep the evidence-only document path.
     if explanation_request(q):return 'unknown'
     metric_fragment=bool(re.search(r'연료\s*(?:사용량|소비량)|(?:CO[2₂]\s*)?배출량|항해\s*거리|운항\s*실적',q,re.I)
-        and re.search(r'\d{4}|\d월|지난|이번|올해|작년|최근|오늘|어제|(?:은|는)\s*\?',q))
+        and re.search(r'\d{4}|\d월|지난|이번|올해|작년|최근|오늘|어제|(?<![가-힣])전날|(?:은|는)\s*\?',q))
     ask=metric_fragment or re.search(r'계산|분석|비교|요약|정리|조회|보여|알려|얼마|구해|합산|합계|집계|추이|왜|이유|원인|calculate|compare|show|summari|total|sum|forecast|predict',q,re.I)
     if not ask:return 'unknown'
     mrv=bool(re.search(r'mrv|cii|탄소\s*집약도|carbon intensity',q,re.I))
@@ -104,7 +104,7 @@ def slot_reply(question, *, labels=(), dates=False, reference=False, ships=False
         # ask for a correction rather than sending them to document retrieval.
         pattern=(r'(?:최근|지난)\s*\d+\s*일|\d{4}-\d{2}-\d{2}|(?:19|20)\d{2}년?|\d{1,2}\s*월|\d{1,2}\s*일|'
                  r'재작년|작년|지난해|올해|금년|전월|'
-                 r'(?:지난|이번)\s*(?:달|주)|오늘|어제|그제|last year|this year|last week|this week|today|yesterday')
+                 r'(?:지난|이번)\s*(?:달|주)|오늘|어제|(?<![가-힣])전날|그제|last year|this year|last week|this week|today|yesterday')
         value,count=re.subn(pattern,' ',value)
         found=found or bool(count)
     if reference:
@@ -182,7 +182,7 @@ def date_slots(q,today=None,default_year=None):
             if not 1 <= days <= 367:raise ValueError('최근 일수는 1~367일로 알려 주세요.')
             periods=[Period(start=(today-timedelta(days=days-1)).isoformat(),end=today.isoformat())]
         longer_periods=bool(periods)
-        for match in re.finditer(r'오늘|어제|그제|\btoday\b|\byesterday\b|지난\s*주|이번\s*주|last week|this week',q,re.I):
+        for match in re.finditer(r'오늘|어제|(?<![가-힣])전날|그제|\btoday\b|\byesterday\b|지난\s*주|이번\s*주|last week|this week',q,re.I):
             if longer_periods and not re.search(r'비교|compare',q,re.I):continue
             token=match[0].replace(' ','').casefold()
             if token in ('지난주','lastweek'):
@@ -190,10 +190,10 @@ def date_slots(q,today=None,default_year=None):
             elif token in ('이번주','thisweek'):
                 start=today-timedelta(days=today.weekday());end=today
             else:
-                offset=2 if token=='그제' else 1 if token in ('어제','yesterday') else 0
+                offset=2 if token=='그제' else 1 if token in ('어제','전날','yesterday') else 0
                 start=end=today-timedelta(days=offset)
             periods.append(Period(start=start.isoformat(),end=end.isoformat()))
-    if not periods and not years and re.search(r'최근|지난|이번|오늘|어제',q):raise ValueError('해당 표현의 시작일과 종료일을 날짜로 알려 주세요.')
+    if not periods and not years and re.search(r'최근|지난|이번|오늘|어제|(?<![가-힣])전날',q):raise ValueError('해당 표현의 시작일과 종료일을 날짜로 알려 주세요.')
     if re.search(r'대비|보다',q) and len(years)<2 and len(periods)<2:
         raise ValueError('비교 기준과 대상의 연도 또는 날짜 범위를 둘 다 알려 주세요.')
     if len(years)>3 or len(periods)>2:raise ValueError('연도는 최대 3개, 기간은 최대 2개로 좁혀 주세요.')

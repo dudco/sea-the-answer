@@ -6,6 +6,45 @@
 
 ## 1. 목적
 
+### LLM 도구 선택 (2026-11-12 초안)
+
+[ADR 0024](../adr/0024-llm-tool-selection.md)·[계획](../plans/2026-11-12-llm-tool-selection.md)의 구현 계약이다. 확정 전까지 아래 다른 절과 충돌하면 이 절이 우선하는 초안이며, 구현 후 다른 절을 함께 고친다.
+
+**흐름.** `task=auto` 질문은 다음 순서로 처리한다.
+
+1. 입력 검증. `workflowInput`(되묻기 카드의 구조화 응답)은 기존 업무 경로로 처리한다.
+2. 서버 환경변수 `HAEDAP_QUESTION_ROUTER=legacy`이면 기존 규칙 경로를 그대로 쓴다. 기본값은 `model`.
+3. 모델이 설정되지 않았으면 `503 MODEL_NOT_CONFIGURED`를 반환한다.
+4. 문서 검색(`DocumentStore.search`, 열람 권한 필터 선적용)과 도구 선택 모델 호출을 병렬로 실행한다. 도구 선택 입력은 질문, 오늘 날짜, 소유권을 확인한 이전 답변의 요약(작업 종류·선박 이름·기간·되묻기 항목), 사용자가 열람할 수 있는 문서 제목(최대 50개, 각 100자)뿐이며 검색 본문은 넣지 않는다. `HAEDAP_PLANNER_FORMAT=json`이면 `tools` 대신 `response_format` JSON 스키마로 `{"tool": <등록 도구 이름>, "arguments": {...}}` 하나만 받고, 인자는 같은 등록부 스키마로 검증한다. 모델이 tool_calls 대신 글로 낸 호출은 `<tool_call>` JSON, `{"name"|"function", "arguments"}` JSON, `도구이름(키=리터럴)` 형식만 읽으며 리터럴 외 표현은 거절한다. 도구 이름 없이 인자만 낸 응답은 추측하지 않고 문서 답변으로 처리한다.
+5. 모델은 항상 도구를 하나 호출하며, 문서만으로 답할 질문은 `answer_from_documents`를 고른다. 데이터 도구 호출이 0개이면 검색 근거로 문서 답변을 생성한다(기존 인용 검증). 1개이면 서버가 인자를 검증해 해당 실행기를 호출하고, 검색 근거를 `relatedEvidence`로 함께 반환한다. 2개 이상이면 되묻기로 처리한다(이번 범위는 질문당 데이터 도구 1개, 운항+MRV는 결합 도구 1개로 처리).
+6. 모델 호출 실패·시간 초과·등록되지 않은 도구·인자 검증 실패는 `needs_input` 되묻기(`warnings: ["MODEL_ROUTING_UNAVAILABLE"]`)로 응답한다. 규칙 경로로 자동 대체하지 않는다.
+
+**도구.** 정의는 `backend/api/tool_registry.py` 한곳에서 만들며 `GET /api/tools`의 `assistantTools`로도 제공한다. 모든 인자 객체는 추가 필드를 거절한다.
+
+| 도구 | 인자 | 서버 검증·변환 | 실행기 |
+|---|---|---|---|
+| `get_dataset_status` | `datasets`: `ais`·`mrv`·`dwt`·`noon`·`operations`·`documents`·`ports` 1~7개(중복 불가), `ship_mentions` ≤1, `period_text` ≤100자 | 자료 종류 allowlist, 선박 대조, 기간 해석 | `dataset_status` |
+| `get_ais_catalog_status` | `ship_mentions` ≤1 | 선박 대조 | `navigation_query.catalog_status_answer` |
+| `summarize_operations` | `ship_mentions` ≤2, `period_text` ≤100자, `display`: `text`·`table`·`chart` | 기간 ≤2개·각 366일 이하, 표·차트는 1척·1기간 | `question_workflows` |
+| `get_last_recorded_position` | `ship_mentions` ≤1 | 선박 1척 대조(없으면 대화의 선박, 그래도 없으면 되묻기). 위치가 저장된 가장 최근 일별 기록을 고른다. 24:00 UTC 위치를 담는 가상 기록(`note`에 `UTC 일자`)은 그 UTC 날짜가 끝난 뒤에만 쓴다. `note`에 `예상 운항`·`입항 예정`이 있으면 `projected=true`, 안내 문구 앞에 `[예상 기록]`, `warnings`에 `PROJECTED_OPERATIONS`. 실시간 추적이 아님을 항상 밝힌다 | `OperationStore.recent_positions` → `task="position"`, `position` 필드 |
+| `calculate_mrv_reference` | `ship_mentions` ≤2, `period_text`(보고연도), `accept_reference`(bool) | 연도 ≤3, `accept_reference`는 직전 소유 답변이 참고값 동의를 물었을 때만 반영 | `question_workflows` |
+| `calculate_operations_and_mrv` | 위 두 도구의 인자 | 동일, 총 조회 ≤4회 | `question_workflows` |
+| `compare_port_conditions` | `ship_mention`, `port_mentions` ≤5, `berth_mention`, `filters` ≤3(`dimension`: `length`·`beam`·`draught`, `op`: `>=`·`<=`·`>`·`<`·`=`, `value_m` 0 초과 ≤1000), `sort`(`dimension`, `direction`: `asc`·`desc`), `status_filter` | 항구 카탈로그 이름 대조, 실제 MRV 연결 선박만 | `navigation_query` |
+| `ask_selected_documents` | `document_mentions` ≤5 | 열람 가능한 문서 제목 대조 | `question_workflows` |
+| `calculate_emissions` | `fuel_t`, `factor`, `dwt`, `distance_nm` | 기존 수치 범위 | `ToolStore.calculate_emissions` |
+| `voyage_time` | `start`, `end`(UTC ISO), `start_offset_min`, `end_offset_min` | 기존 형식·범위 | `ToolStore.voyage_time` |
+| `answer_from_documents` | 없음 | 데이터 도구 0개로 처리(검색은 이미 실행) | 문서 답변 생성 |
+| `request_clarification` | `missing`: `task`·`ships`·`periods`·`years`·`documents`·`ports` | — | 되묻기 저장 |
+| `decline_request` | `reason`: `realtime_position`·`weather`·`forecast`·`data_change`·`entry_approval`·`off_topic` | `realtime_position`은 실시간 연속 추적 요청에만 쓴다(마지막 위치는 위 도구) | 지원 불가 안내 저장 |
+
+**예상 기록.** 왕복 시나리오처럼 미래 날짜가 미리 저장된 가상 기록은 위치 답변뿐 아니라 운항 합계에도 표시한다. `summarize_operations` 결과의 `projected_days`가 1 이상이면 답변 `warnings`에 `PROJECTED_OPERATIONS`를 넣고 화면에 "예상 기록 N일 포함"을 보인다. 날짜 해석기는 `전날`을 `어제`와 같이 해석한다.
+
+**모델이 낸 값의 처리.** 기간 표현(`period_text`)이 질문·이전 답변 요약에 그대로 있으면 그 표현을, 모델이 바꿔 쓴 표현이면 질문 원문을 기존 날짜 해석기로 해석하고 `toolCalls[].periodSource="question"`을 남긴다. 선박·문서·항구 표기는 질문 원문 또는 이전 답변 요약에 실제로 나온 문자열이어야 하며, 서버가 등록 목록·열람 권한·카탈로그와 대조해 식별자로 바꾼다. 일치하지 않으면 후보를 보여 주는 되묻기로 응답한다. 기간 표현은 `question_intent.date_slots`가 해석하며 실패하면 기간 되묻기로 응답한다. 모델은 SQL·식별자·수치 결과·답변 문장을 만들지 않는다.
+
+**응답 추가 필드.** `routing`은 `{method: "model_tools", toolCalls: [{name, arguments, status, durationMs}], searchMs, planMs}`이다. `arguments`는 서버가 검증·변환한 값만 담고 모델 원시 응답은 저장하지 않는다. `relatedEvidence[]`는 데이터 도구 응답에 붙는 검색 근거이며 `evidence[]`와 같은 형식·권한 검사를 따른다.
+
+**요청 변경.** `mode`는 더 이상 쓰지 않는다. 보내도 무시하며 답변 생성은 항상 모델을 사용한다. 생성 실패 시 검색 문단 표시(`MODEL_FAILED_EXTRACTIVE_FALLBACK`)는 유지한다.
+
 ### 자료 현황과 의미 기반 경로 보완 (2026-11-11 확정)
 
 자동 질문은 MRV·AIS·DWT·Synthetic Noon·일별 운항·열람 가능 문서의 등록 여부/건수/출처 요청을 조회·계산/문서 설명과 구분한다. 현황은 현재 서버 자료에서 읽고, 빈 자료와 읽기 실패를 구분한다. 전체 등록 건수와 계산 적격 건수는 별개다. 선박·연도 조건을 적용할 수 없으면 전체 수치를 해당 조건의 결과로 대신 제공하지 않는다. 문서 현황은 현재 계정의 열람 범위만 센다.
@@ -73,7 +112,7 @@
 | `question` | 문자열 ≤2,000자 | 필수 |
 | `task` | `auto` · `documents` · `operations` · `integrated` · `report` | `auto`는 단어 규칙으로 운항 분석 필요 여부를 판단 |
 | `language` | `auto` · `ko` · `en` | `auto`는 한글 포함 여부로 결정 |
-| `mode` | `extractive` · `llm` | `llm`은 모델이 설정된 경우에만 동작, 실패 시 발췌로 되돌림 |
+| `mode` | `extractive` · `llm` | 2026-11-12 초안부터 자동 질문에서 무시(위 LLM 도구 선택 절). 생성 실패 시 발췌 표시는 유지 |
 | `filter` | `all` · `imo` · `manual` | `imo` = `official-summary`, `manual` = 그 외 |
 | `context` | `{ship, from, to, previousQueryId?}` | 기존 경로의 운항 범위. auto workflow에서는 검증한 자연어 조건을 우선하고 현재 소유자 답변에만 후속 연결 |
 | `workflowInput` | 위 보완 계약 | auto workflow 되묻기용. 현재 부모 답변 필요 |

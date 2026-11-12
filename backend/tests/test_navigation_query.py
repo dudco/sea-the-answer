@@ -179,6 +179,7 @@ def test_sample_unmapped_and_unavailable_inputs_are_explained(setup):
 
 
 def test_normal_ask_endpoint_uses_session_csrf_and_never_calls_generic_rag_for_port_question(setup,monkeypatch):
+    monkeypatch.setenv('HAEDAP_QUESTION_ROUTER','legacy')  # rule path kept by ADR 0024
     ctx,loader,calculator=setup
     class BrowserStore(FakeWorkspace,Store):
         writes=[]

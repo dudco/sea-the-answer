@@ -1,0 +1,382 @@
+[
+ {
+  "id": "definition-cii",
+  "question": "CII가 뭐야?",
+  "expected": {
+   "tools": []
+  }
+ },
+ {
+  "id": "regulation-sulphur",
+  "question": "MARPOL 부속서 VI 연료 황 함유량 기준 알려줘",
+  "expected": {
+   "tools": []
+  }
+ },
+ {
+  "id": "procedure-ballast",
+  "question": "평형수 교환 절차를 설명해줘",
+  "expected": {
+   "tools": []
+  }
+ },
+ {
+  "id": "status-mrv",
+  "question": "MRV 자료 있어?",
+  "expected": {
+   "tools": [
+    "get_dataset_status"
+   ],
+   "args": {
+    "datasets": [
+     "mrv"
+    ]
+   }
+  }
+ },
+ {
+  "id": "status-all",
+  "question": "지금 어떤 해사 자료를 쓸 수 있어?",
+  "expected": {
+   "tools": [
+    "get_dataset_status"
+   ],
+   "args": {
+    "datasets": [
+     "ais",
+     "mrv",
+     "dwt",
+     "noon",
+     "operations",
+     "documents",
+     "ports"
+    ]
+   }
+  }
+ },
+ {
+  "id": "status-ais-count",
+  "question": "AIS 데이터 몇 건이야?",
+  "expected": {
+   "tools": [
+    "get_dataset_status",
+    "get_ais_catalog_status"
+   ]
+  }
+ },
+ {
+  "id": "ais-ship",
+  "question": "해답호가 AIS 수집본에 있어?",
+  "expected": {
+   "tools": [
+    "get_ais_catalog_status"
+   ],
+   "args": {
+    "ship_mentions": [
+     "해답호"
+    ]
+   }
+  }
+ },
+ {
+  "id": "ops-last-month",
+  "question": "해답호 지난달 연료 사용량 합계 알려줘",
+  "expected": {
+   "tools": [
+    "summarize_operations"
+   ],
+   "args": {
+    "ship_mentions": [
+     "해답호"
+    ],
+    "period_text": "지난달"
+   }
+  }
+ },
+ {
+  "id": "ops-compare",
+  "question": "해답호와 별빛호의 2025년 1월 연료 소비를 비교해줘",
+  "expected": {
+   "tools": [
+    "summarize_operations"
+   ],
+   "args": {
+    "ship_mentions": [
+     "해답호",
+     "별빛호"
+    ],
+    "period_text": "2025년 1월"
+   }
+  }
+ },
+ {
+  "id": "ops-chart",
+  "question": "해답호 2025년 1월 일별 CO2 배출량을 차트로 보여줘",
+  "expected": {
+   "tools": [
+    "summarize_operations"
+   ],
+   "args": {
+    "ship_mentions": [
+     "해답호"
+    ],
+    "display": "chart"
+   }
+  }
+ },
+ {
+  "id": "mrv-last-year",
+  "question": "해답호 작년 탄소집약도 참고값 계산해줘",
+  "expected": {
+   "tools": [
+    "calculate_mrv_reference"
+   ],
+   "args": {
+    "ship_mentions": [
+     "해답호"
+    ],
+    "period_text": "작년"
+   }
+  }
+ },
+ {
+  "id": "combined",
+  "question": "별빛호 2024년 운항 실적과 MRV 참고 탄소집약도를 같이 보여줘",
+  "expected": {
+   "tools": [
+    "calculate_operations_and_mrv"
+   ],
+   "args": {
+    "ship_mentions": [
+     "별빛호"
+    ],
+    "period_text": "2024년"
+   }
+  }
+ },
+ {
+  "id": "port-draught",
+  "question": "해답호가 부산항에서 흘수 제한 12m 이상인 선석 알려줘",
+  "expected": {
+   "tools": [
+    "compare_port_conditions"
+   ],
+   "args": {
+    "ship_mention": "해답호",
+    "port_mentions": [
+     "부산항"
+    ],
+    "filters": [
+     {
+      "dimension": "draught",
+      "op": ">=",
+      "value_m": 12
+     }
+    ]
+   }
+  }
+ },
+ {
+  "id": "port-sort",
+  "question": "부산항 선석을 길이 제한이 큰 순으로 보여줘",
+  "expected": {
+   "tools": [
+    "compare_port_conditions"
+   ],
+   "args": {
+    "port_mentions": [
+     "부산항"
+    ],
+    "sort": {
+     "dimension": "length",
+     "direction": "desc"
+    }
+   }
+  }
+ },
+ {
+  "id": "selected-document",
+  "question": "선박 안전 문서만 근거로 비상 절차를 요약해줘",
+  "expected": {
+   "tools": [
+    "ask_selected_documents"
+   ],
+   "args": {
+    "document_mentions": [
+     "선박 안전 문서"
+    ]
+   }
+  }
+ },
+ {
+  "id": "emissions",
+  "question": "연료 100톤, 배출계수 3.114, DWT 50000, 거리 1200해리일 때 배출량 계산해줘",
+  "expected": {
+   "tools": [
+    "calculate_emissions"
+   ],
+   "args": {
+    "fuel_t": 100,
+    "factor": 3.114,
+    "dwt": 50000,
+    "distance_nm": 1200
+   }
+  }
+ },
+ {
+  "id": "voyage-time",
+  "question": "2026-01-01T00:00:00Z부터 2026-01-03T12:00:00Z까지 항해 시간 계산해줘",
+  "expected": {
+   "tools": [
+    "voyage_time"
+   ],
+   "args": {
+    "start": "2026-01-01T00:00:00Z",
+    "end": "2026-01-03T12:00:00Z"
+   }
+  }
+ },
+ {
+  "id": "last-position",
+  "question": "지금 해답호 위치가 어디야?",
+  "expected": {
+   "tools": [
+    "get_last_recorded_position"
+   ],
+   "args": {
+    "ship_mentions": [
+     "해답호"
+    ]
+   }
+  }
+ },
+ {
+  "id": "decline-weather",
+  "question": "내일 부산 날씨 어때?",
+  "expected": {
+   "tools": [
+    "decline_request"
+   ],
+   "args": {
+    "reason": "weather"
+   }
+  }
+ },
+ {
+  "id": "decline-forecast",
+  "question": "다음 달 연료 소비량을 예측해줘",
+  "expected": {
+   "tools": [
+    "decline_request"
+   ],
+   "args": {
+    "reason": "forecast"
+   }
+  }
+ },
+ {
+  "id": "decline-change",
+  "question": "MRV 데이터 삭제해줘",
+  "expected": {
+   "tools": [
+    "decline_request"
+   ],
+   "args": {
+    "reason": "data_change"
+   }
+  }
+ },
+ {
+  "id": "decline-entry",
+  "question": "해답호가 부산항에 입항해도 되는지 승인해줘",
+  "expected": {
+   "tools": [
+    "decline_request"
+   ],
+   "args": {
+    "reason": "entry_approval"
+   }
+  }
+ },
+ {
+  "id": "clarify-vague",
+  "question": "그거 계산해줘",
+  "expected": {
+   "tools": [
+    "request_clarification"
+   ]
+  }
+ },
+ {
+  "id": "followup-period",
+  "question": "그럼 2월은?",
+  "expected": {
+   "tools": [
+    "summarize_operations"
+   ],
+   "args": {
+    "ship_mentions": [
+     "해답호"
+    ]
+   }
+  },
+  "previous": {
+   "task": "workflow",
+   "question": "해답호 2025년 1월 연료 합계",
+   "action": "operations_summary",
+   "ships": [
+    "해답호"
+   ],
+   "years": [],
+   "periods": [
+    {
+     "start": "2025-01-01",
+     "end": "2025-01-31"
+    }
+   ],
+   "missing": []
+  }
+ },
+ {
+  "id": "followup-consent",
+  "question": "응, 참고값으로 계산해줘",
+  "expected": {
+   "tools": [
+    "calculate_mrv_reference"
+   ],
+   "args": {
+    "ship_mentions": [
+     "해답호"
+    ],
+    "accept_reference": true
+   }
+  },
+  "previous": {
+   "task": "workflow",
+   "question": "해답호 2024년 탄소집약도",
+   "action": "mrv_reference",
+   "ships": [
+    "해답호"
+   ],
+   "years": [
+    2024
+   ],
+   "periods": [],
+   "missing": [
+    "reference_ack"
+   ]
+  }
+ },
+ {
+  "id": "decline-tracking",
+  "question": "해답호 실시간으로 계속 추적해줘",
+  "expected": {
+   "tools": [
+    "decline_request"
+   ],
+   "args": {
+    "reason": "realtime_position"
+   }
+  }
+ }
+]
