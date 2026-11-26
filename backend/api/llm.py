@@ -13,7 +13,7 @@ from .config import LLMSettings
 from .answer_presentation import TABLE_SCHEMA, validate_document_table
 from .validation import source_quote
 
-PAYLOAD_BYTE_BUDGET = 8192
+PAYLOAD_BYTE_BUDGET = 32_768
 MAX_RESPONSE_BYTES = 128 * 1024
 
 
@@ -69,7 +69,8 @@ def _user_payload(question: str, evidence: list[dict]) -> str:
 
 
 def bound_evidence(question: str, evidence: list[dict], *, max_bytes: int = PAYLOAD_BYTE_BUDGET,
-                   max_evidence: int = 5) -> tuple[list[dict], dict]:
+                   max_evidence: int = 5,
+                   byte_budget_omissions: list[str] | None = None) -> tuple[list[dict], dict]:
     """Admit complete ranked chunks by serialized UTF-8 bytes, never tokens."""
     if (not isinstance(question, str) or not question.strip() or len(question) > 2000
             or not isinstance(evidence, list) or type(max_bytes) is not int or max_bytes < 1
@@ -81,9 +82,12 @@ def bound_evidence(question: str, evidence: list[dict], *, max_bytes: int = PAYL
                 or any(not isinstance(item.get(key), str) or not item[key].strip()
                        for key in ("id", "title", "text"))):
             raise ValueError("Invalid model evidence")
-        if (len(selected) < max_evidence
-                and len(_user_payload(question, selected + [item]).encode("utf-8")) <= max_bytes):
+        if len(selected) >= max_evidence:
+            continue
+        if len(_user_payload(question, selected + [item]).encode("utf-8")) <= max_bytes:
             selected.append(item)
+        elif byte_budget_omissions is not None:
+            byte_budget_omissions.append(item["id"])
     size = len(_user_payload(question, selected).encode("utf-8"))
     return selected, {"candidateEvidence": len(evidence), "usedEvidence": len(selected),
                       "omittedEvidence": len(evidence) - len(selected),

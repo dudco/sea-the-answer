@@ -252,17 +252,45 @@ def test_missing_operations_and_unsupported_figure_have_clear_notices_without_mo
     assert "presentation" not in figure and figure["presentationNotice"]
 
 
-def test_utf8_byte_budget_keeps_whole_evidence_and_order():
-    evidence = deepcopy(EVIDENCE) + [{"id": "large", "title": "Large", "text": "가" * 3000}]
-    selected, stats = llm.bound_evidence("질문", evidence)
-    assert selected == EVIDENCE and stats["usedEvidence"] == 1 and stats["omittedEvidence"] == 1
-    assert stats["payloadBytes"] <= stats["payloadByteBudget"] == 8192
-    assert evidence[1]["text"] == "가" * 3000
+def test_utf8_byte_budget_keeps_whole_evidence_and_order(model):
+    question = "선박평형수의 목적은 무엇인가요?"
+    original = deepcopy(EVIDENCE)
+    background = {"id": "background", "title": "Background", "text": "가" * 2600}
+    relevant = {"id": "purpose", "title": "Ballast water",
+                "text": "선박의 균형과 안정성을 유지하기 위해 사용한다." + "나" * 330}
+    ranked = [background, original[0], relevant]
+    old_selected, _ = llm.bound_evidence(question, ranked, max_bytes=8192)
+    assert old_selected == ranked[:2]
+    large = {"id": "large", "title": "Large", "text": "가" * 11_000}
+    calls = model({"insufficient": False, "statements": [{
+        "text": "선박의 균형과 안정성을 유지하기 위한 물입니다.",
+        "chunkId": relevant["id"], "quote": "선박의 균형과 안정성을 유지하기 위해 사용한다.",
+    }]})
+    tail = [{"id": f"tail-{i}", "title": "Note", "text": "Short note."} for i in range(3)]
+    evidence = [*ranked, large, *tail]
+    workspace = Workspace(evidence=evidence)
+    records = []
+    workspace.audit = lambda *_args: records.append(_args[-1])
+    result = answer(workspace, question=question, outputFormat="text")
+    assert result["generation"] == "llm" and result["statements"][0]["chunkId"] == "purpose"
+    message = json.loads(calls[0].content)["messages"][1]["content"]
+    assert json.loads(message)["evidence"] == [
+        {"chunkId": row["id"], "title": row["title"], "text": row["text"]}
+        for row in [*ranked, *tail[:2]]
+    ]
+    stats = result["generationStats"]
+    assert stats == {"candidateEvidence": 7, "usedEvidence": 5, "omittedEvidence": 2,
+                     "payloadBytes": len(message.encode("utf-8")), "payloadByteBudget": 32_768,
+                     "modelCallAttempted": True}
+    assert 8192 < stats["payloadBytes"] <= 32_768
+    assert records[-1]["evidenceOmission"] == {
+        "reason": "BYTE_BUDGET_EXCEEDED", "chunkIds": ["large"], "count": 1,
+    }
 
 
 def test_oversized_sources_skip_model_and_keep_honest_excerpt_fallback(model):
     calls = model({})
-    huge = [{**EVIDENCE[0], "text": "source words " * 1000}]
+    huge = [{**EVIDENCE[0], "text": "source words " * 3000}]
     diagnostics = {}
     with pytest.raises(llm.InputBudgetExceeded):
         llm.grounded_statements("question", huge, "en", SETTINGS, diagnostics=diagnostics)
