@@ -76,7 +76,8 @@ def test_arguments_reject_extra_fields_and_out_of_range_values():
 
 def plan(payload, **options):
     client = Client(payload)
-    result = planner.plan('MRV 자료 있어?', today='2026-11-12', settings=SETTINGS, client=client, **options)
+    options.setdefault('settings', SETTINGS)
+    result = planner.plan('MRV 자료 있어?', today='2026-11-12', client=client, **options)
     return result, client.bodies[0]
 
 
@@ -403,6 +404,16 @@ def test_reasoning_effort_is_sent_only_when_configured(monkeypatch):
     monkeypatch.setenv('HAEDAP_PLANNER_REASONING_EFFORT', 'everything')
     _, body = plan(reply(content='문서', finish='stop'))
     assert 'reasoning_effort' not in body
+
+
+def test_planner_inherits_general_reasoning_effort_unless_overridden(monkeypatch):
+    monkeypatch.delenv('HAEDAP_PLANNER_REASONING_EFFORT', raising=False)
+    inherited = config.LLMSettings('http://model.test/v1', 'qwen-test', '', 'json_schema', reasoning_effort='none')
+    _, body = plan(reply(content='문서', finish='stop'), settings=inherited)
+    assert body['reasoning_effort'] == 'none'
+    monkeypatch.setenv('HAEDAP_PLANNER_REASONING_EFFORT', 'low')
+    _, body = plan(reply(content='문서', finish='stop'), settings=inherited)
+    assert body['reasoning_effort'] == 'low'
 
 
 def test_text_none_for_an_optional_argument_means_omitted():

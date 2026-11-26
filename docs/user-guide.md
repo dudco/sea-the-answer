@@ -243,7 +243,7 @@ LLM_RESPONSE_FORMAT=json_schema
 
 위 예시는 2026-10-21 검증 환경을 재현하는 설정입니다. 당시 3B의 영문 근거 답변은 확인했지만 한국어 질문은 근거 부족 응답을 반환했습니다. 2026-10-28에는 가상 한국어 단문으로 실제 브라우저의 모델 답변·원문 열기와 오류 시 발췌 전환을 확인했습니다. 다만 고정 근거 비교에서는 시간 초과·인용 검증 실패·언어/조건 오류가 남아 **일반 한국어 품질 기준을 충족한 것으로 보지 않습니다**. 1.5B에서는 형식·인용 오류도 관찰했습니다. 한국어 업무용 모델 선정과 품질 평가는 별도로 필요합니다. 검증용 3B 모델에는 [Qwen Research License](https://ollama.com/library/qwen2.5:3b)가 적용됩니다.
 
-로컬 주소에는 OpenAI·동국 키를 전송하지 않습니다. 다른 공급자를 위해 보관 중인 키를 지울 필요는 없습니다. 모델 최초 적재가 오래 걸리면 `ollama run`으로 먼저 적재한 뒤 질문합니다. 앱의 생성 대기는 기본 60초이며 `LLM_GENERATION_TIMEOUT_SECONDS`로 1–90초를 지정합니다. 시간 초과·잘못된 인용은 사유와 함께 발췌로 전환합니다. 문서 검색 결과가 없는 경우에는 문서 답변 생성용 모델을 호출하지 않습니다.
+로컬 주소에는 OpenAI·동국 키를 전송하지 않습니다. 다른 공급자를 위해 보관 중인 키를 지울 필요는 없습니다. 모델 최초 적재가 오래 걸리면 `ollama run`으로 먼저 적재한 뒤 질문합니다. Qwen3 계열 등 추론(thinking) 모델은 답변 전에 추론 토큰을 먼저 생성해 응답이 크게 늦어질 수 있습니다. Ollama에서는 `LLM_REASONING_EFFORT=none`으로 끕니다(`LLM_ENABLE_THINKING`은 vLLM 전용이라 Ollama에는 적용되지 않음). 모델이 일정 시간 뒤 내려가 첫 질문이 느리면 Ollama 서버 쪽 `OLLAMA_KEEP_ALIVE`(예: `-1`은 계속 유지)를 설정하고, `ollama ps`의 PROCESSOR가 `100% GPU`인지 확인합니다. 구간별 시간은 `uv run --project backend python scripts/benchmark_latency.py model`로 측정합니다. 앱의 생성 대기는 기본 60초이며 `LLM_GENERATION_TIMEOUT_SECONDS`로 1–90초를 지정합니다. 시간 초과·잘못된 인용은 사유와 함께 발췌로 전환합니다. 문서 검색 결과가 없는 경우에는 문서 답변 생성용 모델을 호출하지 않습니다.
 
 Docker Desktop 백엔드라면 주소를 `http://host.docker.internal:11434/v1`로 바꾸고 Ollama 수신 주소·방화벽을 확인해야 합니다. 컨테이너와 호스트의 `127.0.0.1`은 다릅니다. [공급자 계약](specs/llm-provider.md#접속-위치별-기본-url)의 네트워크 조건을 따르고, 호스트 직접 호출 성공을 컨테이너 연결 성공으로 간주하지 않습니다.
 

@@ -274,6 +274,19 @@ uv run --project backend python scripts/evaluate_llm_load.py --mode llm --case s
 
 결과에서 공급/선택 근거 수·바이트·생략된 ID·정답 근거 포함 여부, 실행 시간과 오류를 확인합니다. 바이트는 토큰 수가 아니며, 인용 검사 통과를 의미 정답으로 집계하지 않습니다. API의 단계별 계산 시간과 클라이언트가 측정한 전체 응답 시간도 구분합니다.
 
+### 응답 지연 구간별 측정
+
+질문 응답이 느릴 때 어느 구간이 오래 걸리는지 확인합니다. `model`은 DB·검색 없이 앱과 같은 도구 선택·답변 생성 요청을 스트리밍으로 다시 보내 첫 토큰·추론(thinking)·본문 시간을 나누고, `reasoning_effort=none` 변형과 비교합니다. Ollama이면 GPU 적재 비율과 문맥 길이도 표시합니다. `api`는 실행 중인 앱에 로그인해 `/api/ask`의 검색·도구 선택·생성 시간과 P95(목표 15초)를 집계하며, 일반 질문처럼 질의 이력이 남습니다. 스크립트는 `.env`를 읽지 않으므로 먼저 환경변수로 불러옵니다.
+
+```bash
+set -a; . ./.env; set +a
+# 호스트에서 실행하고 .env 주소가 host.docker.internal이면 덮어씀
+LLM_API_BASE_URL=http://127.0.0.1:11434/v1 uv run --project backend python scripts/benchmark_latency.py model --repeats 3
+uv run --project backend python scripts/benchmark_latency.py api --base-url http://127.0.0.1:5173 --username <계정>
+```
+
+비밀번호는 실행 후 입력하거나 `HAEDAP_BENCH_PASSWORD`로 전달합니다. `--output <새 파일>.json`으로 결과를 저장합니다.
+
 ## 설정 (`.env`)
 
 | 변수 | 기본값 | 설명 |
@@ -287,6 +300,7 @@ uv run --project backend python scripts/evaluate_llm_load.py --mode llm --case s
 | `DONGUK_AI_CHAT_API_KEY` | (비움) | `dongguk.edu`·하위 도메인 또는 동국 AI Chat 게이트웨이 `factchat-cloud.mindlogic.ai`에만 전송. 해당 호스트에서 필수 |
 | `LLM_API_BASE_URL` | `https://api.openai.com/v1` | OpenAI 호환 API 접두 주소. `/chat/completions`는 앱에서 붙임. backend에만 전달 |
 | `LLM_RESPONSE_FORMAT` | `text` | 기본은 JSON 출력 지시와 앱 내부 검증. 지원 서버·모델에서 `json_object` 또는 `json_schema` 선택 |
+| `LLM_REASONING_EFFORT` | (비움) | 모든 모델 호출에 `reasoning_effort` 전송. Ollama의 Qwen3 추론을 끄려면 `none` ([공급자 계약](docs/specs/llm-provider.md)) |
 | `MARITIME_DATA_API_TOKEN`, `MARITIME_DATA_DATABASE_URL` | (비움) | 해사 데이터 Tool 라우트(`/api/maritime-data/*`) 활성화 |
 | `DATABASE_URL`, `HAEDAP_API_ORIGIN` | — | Docker 없이 실행할 때만 사용 (`DATABASE_URL`은 dbmate도 사용) |
 
