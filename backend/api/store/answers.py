@@ -105,7 +105,9 @@ class AnswerStore:
                            "새 그림·도식 생성과 원문 그림 자동 추출은 지원하지 않습니다. 기존 원문 열람으로 확인해 주세요.")
 
         # Observability describes the exact user-message projection, not token counts.
-        selected, stats = llm.bound_evidence(question, evidence)
+        byte_budget_omissions = []
+        selected, stats = llm.bound_evidence(
+            question, evidence, byte_budget_omissions=byte_budget_omissions if mode == "llm" else None)
         stats["modelCallAttempted"] = False
         failure=None
         settings=config.llm_settings()
@@ -193,7 +195,13 @@ class AnswerStore:
             answer["operationNotice"] = operation_notice
         self.run("INSERT INTO queries VALUES(%s,%s,%s,%s)", (answer_id, question, Jsonb(answer), utc_now()))
         self.run("INSERT INTO query_owner VALUES(%s,%s)", (answer_id, user["id"]))
-        self.audit(user, "query", "질의", answer_id, {"question": question, "task": answer["task"]})
+        audit_detail = {"question": question, "task": answer["task"]}
+        if byte_budget_omissions:
+            audit_detail["evidenceOmission"] = {
+                "reason": "BYTE_BUDGET_EXCEEDED", "chunkIds": byte_budget_omissions,
+                "count": len(byte_budget_omissions),
+            }
+        self.audit(user, "query", "질의", answer_id, audit_detail)
         return answer
 
     @staticmethod

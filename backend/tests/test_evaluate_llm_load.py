@@ -89,9 +89,9 @@ def test_real_mode_records_actual_transport_and_admitted_input_separately(monkey
     assert report["execution"] == "real_model"
     assert report["model"] == "mock-model"  # This test is explicitly mocked.
     large = report["results"][1]
-    assert large["supplied_evidence_count"] == 5
-    assert large["generationStats"]["usedEvidence"] < 5
-    assert large["generationStats"]["omittedEvidence"] > 0
+    assert large["supplied_evidence_count"] == large["generationStats"]["usedEvidence"] == 5
+    assert large["generationStats"]["omittedEvidence"] == 0
+    assert 8192 < large["generationStats"]["payloadBytes"] <= large["generationStats"]["payloadByteBudget"] == 32_768
     assert len(large["used_evidence_ids"]) == large["generationStats"]["usedEvidence"]
     assert len(large["omitted_evidence_ids"]) == large["generationStats"]["omittedEvidence"]
     assert large["labelled_evidence_included"] is True
