@@ -1,4 +1,5 @@
 """Hybrid web retrieval with independent lexical/vector availability."""
+from concurrent.futures import ThreadPoolExecutor
 import logging
 import os
 
@@ -43,26 +44,48 @@ def search(query, chunks, top_k=5, *, mode=None, vector_index=None, complete_chu
     except ValueError:
         return {**report, "effective_mode": "unavailable", "fallback_reason": "invalid_configuration", "results": []}
     lexical, vectors = None, None
+
+    def run_lexical():
+        return bm25(query, chunks, count, diagnostics=report["lexical_coverage"], complete_chunks=complete_chunks)
+
+    def run_vector():
+        index = vector_index
+        if index is None:
+            from .rag_vector import VectorIndex
+            index = VectorIndex()
+        return index.search(query, chunks, count, diagnostics=report["coverage"], complete_chunks=complete_chunks)
+
+    # Hybrid: the engines are independent (OpenSearch HTTP vs CPU embedding + Chroma), so run
+    # them together; each writes only its own diagnostics dict, errors are recorded afterwards.
     # Explicit modes diagnose their engine. Preserve vector-to-BM25 fallback.
-    if requested != "vector":
-        try:
-            lexical = bm25(query, chunks, count, diagnostics=report["lexical_coverage"], complete_chunks=complete_chunks)
-        except Exception as exc:
-            report["errors"]["bm25"] = safe_reason(exc, "lexical")
-    if requested != "bm25":
-        try:
-            if vector_index is None:
-                from .rag_vector import VectorIndex
-                vector_index = VectorIndex()
-            vectors = vector_index.search(query, chunks, count, diagnostics=report["coverage"], complete_chunks=complete_chunks)
-        except Exception as exc:
-            report["errors"]["vector"] = safe_reason(exc, "vector")
+    pending = {}
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        if requested != "vector":
+            pending["bm25"] = pool.submit(run_lexical)
+        if requested != "bm25":
+            pending["vector"] = pool.submit(run_vector)
+        outcomes = {}
+        for engine, future in pending.items():
+            try:
+                outcomes[engine] = future.result()
+            except Exception as exc:
+                outcomes[engine] = exc
+    if "bm25" in outcomes:
+        if isinstance(outcomes["bm25"], Exception):
+            report["errors"]["bm25"] = safe_reason(outcomes["bm25"], "lexical")
+        else:
+            lexical = outcomes["bm25"]
+    if "vector" in outcomes:
+        if isinstance(outcomes["vector"], Exception):
+            report["errors"]["vector"] = safe_reason(outcomes["vector"], "vector")
             report["coverage"]["status"] = "fallback"
             if requested == "vector":
                 try:
-                    lexical = bm25(query, chunks, count, diagnostics=report["lexical_coverage"], complete_chunks=complete_chunks)
+                    lexical = run_lexical()
                 except Exception as error:
                     report["errors"]["bm25"] = safe_reason(error, "lexical")
+        else:
+            vectors = outcomes["vector"]
     if lexical is not None and vectors is not None:
         results = rrf([lexical, vectors], top_k=top_k, k=k)
     elif lexical is not None:

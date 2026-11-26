@@ -1,5 +1,12 @@
 # 변경 이력과 검증 기록
 
+## 2026-11-26 — 질문 응답 지연 진단과 개선
+
+- `scripts/benchmark_latency.py`를 추가했다. `model`은 앱이 보내는 도구 선택·답변 생성 요청을 그대로 스트리밍 재전송해 첫 토큰·추론·본문 시간과 토큰 수를 나누고 `reasoning_effort=none` 변형과 비교한다. Ollama이면 `/api/ps`의 GPU 적재 비율과 문맥 길이를 함께 표시한다. `api`는 로그인한 `/api/ask` 응답의 `searchMs`·`planMs`·`generationMs`와 P95(목표 15초)를 집계한다.
+- 답변 생성·작업 스킬 호출에는 추론 제어 필드가 없어 Ollama의 Qwen3가 매 답변 전에 추론 토큰을 생성할 수 있었다. `LLM_ENABLE_THINKING`은 vLLM 전용 `chat_template_kwargs`라 Ollama `/v1`에는 적용되지 않는다. `LLM_REASONING_EFFORT`(none·minimal·low·medium·high)를 추가해 설정 시 모든 모델 호출에 `reasoning_effort`를 보낸다. 도구 선택은 `HAEDAP_PLANNER_REASONING_EFFORT`가 우선한다. 기본(공백)은 기존과 같이 보내지 않는다.
+- 하이브리드 검색의 어휘 검색과 벡터 검색을 동시에 실행한다. 엔진별 진단·오류·벡터 실패 시 어휘 대체 규칙은 유지한다.
+- PostgreSQL 16 환경 backend **1,430 passed / 103 skipped**(70.67초). 건너뛴 항목은 OpenSearch·별도 해사 데이터 DB가 필요한 기존 검사다. torch는 이 검증 환경에서 설치할 수 없어 버전 메타데이터만 두었고 실제 임베딩 모델 실행은 포함하지 않았다. 새 측정·추론 제어·병렬 검색 검사는 모두 모의 응답이며, **실제 Ollama·qwen3.6:35b에서 응답 시간이 줄었는지는 아직 측정하지 않았다**. 추론을 끈 설정의 답변 품질은 `scripts/evaluate_llm.py`로 따로 확인해야 한다.
+
 ## 2026-11-23 — 보고서 탭과 단일 질문 처리
 
 - 보고서 생성 아래에 본인 초안을 여는 이어 작성하기 버튼을 배치했다. 초안 JSON 가져오기를 제거하고 목록에서 바로 5쪽 빈 양식 PDF를 연다.

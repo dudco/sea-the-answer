@@ -2,7 +2,7 @@
 
 ## LLM 도구 선택 (2026-11-12 초안)
 
-`/api/ask`의 자동 질문은 `question_router.answer()`에서 문서 검색(`DocumentStore.search`)과 도구 선택 모델 호출(`tool_planner.plan`)을 병렬로 실행한다. 도구 정의·인자 스키마는 `tools/registry.py`와 `tools/schemas.py` 한곳에 있고, `tools/execution.py`가 모델이 낸 선박·문서·항구 표기와 기간 표현을 등록 목록·열람 권한·`question_intent.date_slots`로 바꾼 뒤 기존 실행기(`question_workflows.execute`, `navigation_query.try_answer(planned=…)`, `dataset_status.answer(scope_text=…)`, `ToolStore`)를 호출한다. 데이터 도구가 없으면 같은 검색 결과로 문서 답변을 만든다. 실행한 도구는 응답 `routing.toolCalls`에 남는다. 기존 규칙 우선 경로는 `legacy_answer()`로 남아 `HAEDAP_QUESTION_ROUTER=legacy`일 때만 쓴다. 계약은 [통합 답변 명세](specs/integrated-answer.md), 결정은 [ADR 0024](adr/0024-llm-tool-selection.md).
+`/api/ask`의 자동 질문은 `question_router.answer()`에서 문서 검색(`DocumentStore.search`)과 도구 선택 모델 호출(`tool_planner.plan`)을 병렬로 실행한다. 하이브리드 검색 안에서도 OpenSearch 어휘 검색과 E5·Chroma 벡터 검색을 동시에 실행하고 결과를 RRF로 합친다(`rag_search.search`). 도구 정의·인자 스키마는 `tools/registry.py`와 `tools/schemas.py` 한곳에 있고, `tools/execution.py`가 모델이 낸 선박·문서·항구 표기와 기간 표현을 등록 목록·열람 권한·`question_intent.date_slots`로 바꾼 뒤 기존 실행기(`question_workflows.execute`, `navigation_query.try_answer(planned=…)`, `dataset_status.answer(scope_text=…)`, `ToolStore`)를 호출한다. 데이터 도구가 없으면 같은 검색 결과로 문서 답변을 만든다. 실행한 도구는 응답 `routing.toolCalls`에 남는다. 기존 규칙 우선 경로는 `legacy_answer()`로 남아 `HAEDAP_QUESTION_ROUTER=legacy`일 때만 쓴다. 계약은 [통합 답변 명세](specs/integrated-answer.md), 결정은 [ADR 0024](adr/0024-llm-tool-selection.md).
 
 ```mermaid
 flowchart LR
