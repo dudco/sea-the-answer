@@ -169,6 +169,37 @@ def test_hybrid_uses_sufficient_candidates(monkeypatch):
     assert result["results"][0]["score"] == pytest.approx(1 / 61 + 1 / 62)
 
 
+def test_hybrid_runs_lexical_and_vector_concurrently(monkeypatch):
+    # Each engine waits for the other; sequential execution breaks the barrier and records a failure.
+    import threading
+    import api.rag_search as module
+    a, b = chunk("a"), chunk("b")
+    barrier = threading.Barrier(2, timeout=2)
+    def lexical(q, c, k, **kwargs):
+        barrier.wait()
+        return [{**a, "score": 2}]
+    monkeypatch.setattr(module, "bm25", lexical)
+    class V:
+        def search(self, q, rows, k, **kwargs):
+            barrier.wait()
+            return [{**b, "score": .9}]
+    result = search("query", [a, b], mode="hybrid", vector_index=V())
+    assert result["errors"] == {} and result["effective_mode"] == "hybrid"
+    assert {row["id"] for row in result["results"]} == {"a", "b"}
+
+
+def test_hybrid_concurrency_keeps_each_engine_failure_separate(monkeypatch):
+    import api.rag_search as module
+    a = chunk("a")
+    monkeypatch.setattr(module, "bm25", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("PRIVATE")))
+    class V:
+        def search(self, q, rows, k, **kwargs):
+            return [{**a, "score": .9}]
+    result = search("query", [a], mode="hybrid", vector_index=V())
+    assert result["effective_mode"] == "vector" and result["errors"] == {"bm25": "lexical_backend_failure"}
+    assert result["coverage"]["status"] != "fallback"
+
+
 @pytest.mark.parametrize("legacy_mode", [None, "bm25", "vector", "hybrid"])
 def test_web_hybrid_ignores_legacy_environment(monkeypatch, legacy_mode):
     import api.rag_search as module

@@ -34,6 +34,7 @@
 | `LLM_GENERATION_TIMEOUT_SECONDS` | 기본 60, 정수 1–90 | 생성 대기 시간. 서버 전체 처리 예산과 브라우저 대기 시간에도 반영 |
 | `LLM_MAX_TOKENS` | 기본 공백, 정수 32–4096 | 명시한 경우에만 호환 서버에 `max_tokens` 전송 |
 | `LLM_ENABLE_THINKING` | 기본 공백, `true` / `false` | 명시한 경우에만 vLLM 호환 `chat_template_kwargs.enable_thinking` 전송. 해당 모델/서버의 지원 확인 필요 |
+| `LLM_REASONING_EFFORT` | 기본 공백, `none`·`minimal`·`low`·`medium`·`high` 중 하나(그 외 값은 모델 비활성) | 명시한 경우에만 모든 모델 호출(답변 생성·작업 스킬·도구 선택)에 `reasoning_effort` 전송. Ollama `/v1`은 이 필드로 추론을 제어하며 `chat_template_kwargs`는 무시한다. 도구 선택은 `HAEDAP_PLANNER_REASONING_EFFORT`가 있으면 그 값을 우선한다. 추론을 끄면 응답 시간이 줄지만 답변 품질은 [고정 근거 평가](../../README.md#한국어-답변-고정-근거-평가)로 다시 확인한다 |
 
 기본 URL의 공백·끝 슬래시를 정리한 뒤 `/chat/completions`를 한 번 붙인다. `http`·`https` 외 스킴, URL에 포함된 사용자·비밀번호, 쿼리·fragment, 잘못된 주소는 설정 오류로 처리한다. 기본 OpenAI 주소의 끝 슬래시 유무로 키 필수 조건이 달라지지 않아야 한다.
 

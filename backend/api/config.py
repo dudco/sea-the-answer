@@ -42,6 +42,11 @@ class LLMSettings:
     generation_timeout: int = 60
     max_tokens: int | None = None
     enable_thinking: bool | None = None
+    # OpenAI-compatible thinking control; Ollama /v1 turns Qwen3 thinking off with "none".
+    reasoning_effort: str | None = None
+
+
+REASONING_EFFORTS = ("none", "minimal", "low", "medium", "high")
 
 
 def llm_settings() -> LLMSettings | None:
@@ -82,11 +87,13 @@ def llm_settings() -> LLMSettings | None:
         maximum=os.getenv('LLM_MAX_TOKENS','').strip()
         maximum=int(maximum) if maximum else None
         thinking=os.getenv('LLM_ENABLE_THINKING','').strip().lower()
-        if not 1<=timeout<=90 or maximum is not None and not 32<=maximum<=4096 or thinking not in ('','true','false'):
+        effort=os.getenv('LLM_REASONING_EFFORT','').strip().lower()
+        if (not 1<=timeout<=90 or maximum is not None and not 32<=maximum<=4096 or thinking not in ('','true','false')
+                or effort and effort not in REASONING_EFFORTS):
             return None
     except ValueError:return None
     return LLMSettings(str(url).rstrip("/"), model, key, output_format, completions_path,
-                       timeout,maximum,None if not thinking else thinking=='true')
+                       timeout,maximum,None if not thinking else thinking=='true',effort or None)
 
 
 def ask_timeout_ms():

@@ -213,8 +213,9 @@ def timeout_seconds(settings):
 
 def reasoning_effort():
     # Opt-in: Ollama's /v1 endpoint turns thinking off with "none"; some servers reject the field.
+    # Unset here means the general LLM_REASONING_EFFORT (via llm.request_options) applies.
     value = os.getenv('HAEDAP_PLANNER_REASONING_EFFORT', '').strip().lower()
-    return value if value in ('none', 'minimal', 'low', 'medium', 'high') else None
+    return value if value in config.REASONING_EFFORTS else None
 
 
 LITERALS = {'true': True, 'false': False, 'null': None, 'True': True, 'False': False, 'None': None}

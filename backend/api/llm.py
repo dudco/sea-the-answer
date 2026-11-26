@@ -58,6 +58,7 @@ def request_options(settings, *, planner=False):
     options={}
     if getattr(settings,'enable_thinking',None) is not None:
         options['chat_template_kwargs']={'enable_thinking':settings.enable_thinking}
+    if getattr(settings,'reasoning_effort',None):options['reasoning_effort']=settings.reasoning_effort
     if not planner and getattr(settings,'max_tokens',None) is not None:options['max_tokens']=settings.max_tokens
     return options
 

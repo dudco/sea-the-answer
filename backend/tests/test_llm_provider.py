@@ -414,12 +414,30 @@ def test_opt_in_local_budget_reaches_provider_and_browser_health(api_client,mode
 @pytest.mark.parametrize('name,value',[
     ('LLM_GENERATION_TIMEOUT_SECONDS','0'),('LLM_GENERATION_TIMEOUT_SECONDS','91'),
     ('LLM_MAX_TOKENS','0'),('LLM_MAX_TOKENS','huge'),('LLM_ENABLE_THINKING','unknown'),
+    ('LLM_REASONING_EFFORT','everything'),
 ])
 def test_unsupported_local_model_options_disable_calls(monkeypatch,name,value):
     monkeypatch.setenv('LLM_API_BASE_URL','http://localhost:11434/v1')
     monkeypatch.setenv('OPENAI_MODEL','qwen-fixture')
     monkeypatch.setenv(name,value)
     assert config.llm_settings() is None
+
+
+def test_reasoning_effort_reaches_generation_only_when_configured(monkeypatch, model_server):
+    # Ollama /v1 controls thinking with reasoning_effort; chat_template_kwargs is vLLM-only.
+    monkeypatch.setenv('LLM_API_BASE_URL','http://localhost:11434/v1')
+    monkeypatch.setenv('OPENAI_MODEL','qwen-fixture')
+    monkeypatch.delenv('LLM_REASONING_EFFORT', raising=False)
+    calls=model_server(completion())
+    llm.grounded_statements('질문입니다', EVIDENCE, 'ko', config.llm_settings())
+    assert 'reasoning_effort' not in json.loads(calls[0].content)
+    monkeypatch.setenv('LLM_REASONING_EFFORT',' None ')
+    settings=config.llm_settings()
+    assert settings.reasoning_effort=='none'
+    calls=model_server(completion())
+    llm.grounded_statements('질문입니다', EVIDENCE, 'ko', settings)
+    assert json.loads(calls[0].content)['reasoning_effort']=='none'
+    assert llm.request_options(settings, planner=True)=={'reasoning_effort':'none'}
 
 
 def test_insufficient_evidence_is_not_a_failed_model_call(api_client, model_server):
